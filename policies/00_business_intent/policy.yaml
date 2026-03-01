@@ -1,0 +1,18 @@
+# Business Intent Policy
+# Risk classification determines strictness of downstream gates
+
+risk_levels:
+  low:
+    description: "Low-stakes decisions, minimal regulatory impact"
+    gate_strictness: relaxed
+    explainability_required: basic
+  med:
+    description: "Moderate business impact, standard governance"
+    gate_strictness: standard
+    explainability_required: shap_or_lime
+  high:
+    description: "High-stakes, regulatory, or fairness-critical"
+    gate_strictness: strict
+    explainability_required: shap_plus_monotonic
+
+default_risk_level: med

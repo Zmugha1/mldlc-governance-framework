@@ -1,0 +1,7 @@
+{
+  "cursor.rules.enabled": true,
+  "cursor.rules.location": ".cursorrules",
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": true
+  }
+}

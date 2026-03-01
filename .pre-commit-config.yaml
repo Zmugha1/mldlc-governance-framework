@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: check-governance-headers
+        name: Check Zone Headers
+        entry: python scripts/check_headers.py
+        language: python
+        files: \.py$
+
+      - id: check-hardcoded-thresholds
+        name: Check Hardcoded Thresholds
+        entry: python scripts/check_thresholds.py
+        language: python
+        files: \.py$

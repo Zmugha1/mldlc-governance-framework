@@ -1,0 +1,14 @@
+# Feature Governance Policy
+# Feature dictionary, leakage, transformations
+
+feature_dictionary_required: true
+target_leakage_forbidden: true
+future_data_contamination_forbidden: true
+
+transformations:
+  must_be_declared: true
+  allowed_types:
+    - scaling
+    - encoding
+    - imputation
+    - aggregation
