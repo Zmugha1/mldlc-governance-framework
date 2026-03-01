@@ -8,7 +8,10 @@
 # Install dependencies
 pip install -e .
 
-# Run the Streamlit governance dashboard
+# Run the Streamlit governance dashboard (Mission Control)
+streamlit run app/app.py
+
+# Legacy single-file app
 streamlit run app/streamlit_app.py
 
 # Run the Iris zone progression demo
@@ -63,15 +66,18 @@ runs/<run_id>/     # Generated (gitignored)
   explainability_bundle.json
 ```
 
-## Streamlit Dashboard
+## Streamlit Dashboard (Mission Control)
 
-5 pages:
+6 pages (`app/app.py`):
 
-1. **VTCO & Zone Control** — Initialize runs, set risk level
-2. **Stage Gate Monitor** — Force gate checks, view status
-3. **Artifact Registry** — Verify hashes, download explainability bundle
-4. **The Lab (Challenger)** — Train models, promote to Contender
-5. **Champion Deployment** — Read-only, drift monitoring, rollback
+1. **VTCO Navigator** — Vision, Thesis, Constraints, Outcomes
+2. **Zone Control** — Challenger / Contender / Champion
+3. **Stage Gates** — Gates 0-6 validation
+4. **Artifact Registry** — SHA-256 tracked outputs, verify integrity
+5. **Explainability** — Executive summary bundle viewer
+6. **The Lab** — Challenger zone playground (Iris demo)
+
+Deploy to [Streamlit Cloud](https://share.streamlit.io) with main file `app/app.py`.
 
 ## Pre-commit Hooks
 
