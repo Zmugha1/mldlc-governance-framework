@@ -62,7 +62,7 @@ zone_badge(st.session_state.zone)
 st.sidebar.divider()
 st.sidebar.markdown("### Navigation")
 st.sidebar.markdown("""
-- **VTCO Navigator** - Define Vision, Thesis, Constraints, Outcomes
+- **Task Definition (JTA)** - Define Verb, Task, Constraint, Outcome
 - **Zone Control** - Challenger / Contender / Champion
 - **Stage Gates** - Enforce the 7 governance gates
 - **Artifact Registry** - Track outputs with SHA-256 hashes
@@ -75,7 +75,7 @@ st.markdown("""
 
 This application demonstrates the Machine Learning Development Lifecycle Governance Framework:
 
-1. **VTCO Navigator**: Define Vision, Thesis, Constraints, and Outcomes
+1. **Task Definition (JTA)**: Define Verb, Task, Constraint, and Outcome
 2. **Zone Control**: Manage Challenger / Contender / Champion zones
 3. **Stage Gates**: Enforce the 7 governance gates
 4. **Artifact Registry**: Track all outputs with SHA-256 hashes

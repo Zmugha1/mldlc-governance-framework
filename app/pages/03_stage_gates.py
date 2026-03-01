@@ -36,12 +36,12 @@ else:
             if st.button(f"Run Gate Check {gate_num}", key=f"gate_{gate_num}"):
                 vtco = st.session_state.get("vtco", {})
                 if gate_num == 0:
-                    if vtco.get("vision") and vtco.get("thesis"):
+                    if vtco.get("verb") and vtco.get("task") and vtco.get("outcome"):
                         st.session_state.gates_status[f"Gate {gate_num}"] = "Pass"
-                        st.success("Gate 0 passed: VTCO complete")
+                        st.success("Gate 0 passed: VTCO complete (Verb, Task, Outcome)")
                     else:
                         st.session_state.gates_status[f"Gate {gate_num}"] = "Fail"
-                        st.error("Gate 0 failed: VTCO incomplete (vision, thesis required)")
+                        st.error("Gate 0 failed: VTCO incomplete (verb, task, outcome required)")
                 else:
                     st.session_state.gates_status[f"Gate {gate_num}"] = "Pass"
                     st.success(f"Gate {gate_num} passed (simulated)")

@@ -46,15 +46,20 @@ def _policy_hash() -> str:
 def gate_0_business_intent(vtco_dict: dict[str, Any], run_id: str) -> tuple[bool, str]:
     """
     Gate 0: Business Intent Lock.
-    Validates VTCO completeness: vision, thesis, constraints, outcomes.
+    Validates VTCO completeness: JTA format (verb, task, outcome) or legacy (vision, thesis).
     """
-    required = ["vision", "thesis", "constraints", "outcomes"]
-    missing = [k for k in required if not vtco_dict.get(k)]
-    if missing:
-        return False, f"VTCO incomplete: missing {missing}"
+    # JTA format: verb, task, outcome
+    if vtco_dict.get("verb") and vtco_dict.get("task") and vtco_dict.get("outcome"):
+        pass
+    # Legacy format: vision, thesis, constraints, outcomes
+    elif vtco_dict.get("vision") and vtco_dict.get("thesis"):
+        if not vtco_dict.get("constraints") and not vtco_dict.get("outcomes"):
+            return False, "VTCO incomplete: constraints or outcomes required"
+    else:
+        return False, "VTCO incomplete: need (verb, task, outcome) or (vision, thesis, constraints, outcomes)"
 
     risk = vtco_dict.get("risk_level", "med")
-    if risk not in ("low", "med", "medium", "high"):
+    if risk and risk not in ("low", "med", "medium", "high"):
         return False, "risk_level must be low, med, or high"
 
     emit_lineage_event(run_id, "gate_passed", {"gate": 0, "vtco": vtco_dict})

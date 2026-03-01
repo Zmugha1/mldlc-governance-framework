@@ -52,7 +52,7 @@ else:
 
     if st.button("Promote to Contender"):
         vtco = st.session_state.get("vtco", {})
-        if vtco.get("vision") and vtco.get("thesis"):
+        if vtco.get("verb") and vtco.get("task") and vtco.get("outcome"):
             st.session_state.gates_status = {f"Gate {i}": "Pass" for i in range(5)}
             st.session_state.zone = "CONTENDER"
             write_artifact_session(
@@ -71,4 +71,4 @@ else:
             )
             st.success("Promotion to Contender approved (Gates 0-4 passed)")
         else:
-            st.error("Promotion failed: Complete VTCO first (Vision, Thesis required)")
+            st.error("Promotion failed: Complete VTCO first (Verb, Task, Outcome required)")
