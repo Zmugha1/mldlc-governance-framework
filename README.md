@@ -84,6 +84,14 @@ mldlc-governance-framework/
 | Lineage Tracker | Trace artifact lineage |
 | Drift Monitor | Drift detection status |
 
+## Troubleshooting
+
+- **Port 8501 in use?** Run `streamlit run app/main.py --server.port 8502`
+- **MCP import error?** Run from repo root: `$env:PYTHONPATH=$PWD; uvicorn mcp.mcp_server:app --port 8000`
+- **Quick start:** Run `.\start.ps1` to launch both services
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file.
