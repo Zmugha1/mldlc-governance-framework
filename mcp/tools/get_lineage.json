@@ -1,0 +1,9 @@
+{
+  "name": "get_lineage",
+  "description": "Trace data/model lineage from output back to source",
+  "parameters": {
+    "entity_id": {"type": "string", "description": "Entity to trace"},
+    "direction": {"type": "string", "enum": ["upstream", "downstream", "both"]},
+    "depth": {"type": "integer", "default": 5}
+  }
+}

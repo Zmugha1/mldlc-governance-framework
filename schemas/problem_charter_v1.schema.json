@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mldlc-framework.org/schemas/problem_charter_v1.schema.json",
+  "title": "Problem Charter",
+  "description": "Schema for ML problem definition and business charter",
+  "type": "object",
+  "required": ["charter_id", "version", "created_at", "problem_statement", "success_criteria", "stakeholders"],
+  "properties": {
+    "charter_id": {"type": "string", "pattern": "^CHARTER-[A-Z]{3}-[0-9]{6}$"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "problem_statement": {
+      "type": "object",
+      "required": ["title", "description", "business_impact"],
+      "properties": {
+        "title": {"type": "string", "minLength": 10, "maxLength": 200},
+        "description": {"type": "string", "minLength": 50},
+        "business_impact": {"type": "string"},
+        "current_state": {"type": "string"},
+        "desired_state": {"type": "string"}
+      }
+    },
+    "success_criteria": {
+      "type": "object",
+      "required": ["kpis", "targets"],
+      "properties": {
+        "kpis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "definition", "measurement_method", "target_value"],
+            "properties": {
+              "name": {"type": "string"},
+              "definition": {"type": "string"},
+              "measurement_method": {"type": "string"},
+              "baseline_value": {"type": "number"},
+              "target_value": {"type": "number"},
+              "unit": {"type": "string"}
+            }
+          }
+        },
+        "targets": {
+          "type": "object",
+          "properties": {
+            "accuracy_threshold": {"type": "number", "minimum": 0, "maximum": 1},
+            "latency_p95_ms": {"type": "number", "minimum": 0},
+            "business_uplift_percent": {"type": "number"}
+          }
+        }
+      }
+    },
+    "stakeholders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "role", "approval_authority"],
+        "properties": {
+          "name": {"type": "string"},
+          "role": {"type": "string"},
+          "department": {"type": "string"},
+          "approval_authority": {"type": "string", "enum": ["none", "inform", "consult", "approve"]},
+          "signed_off": {"type": "boolean"},
+          "signed_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "budget_usd": {"type": "number", "minimum": 0},
+        "timeline_weeks": {"type": "integer", "minimum": 1},
+        "technical_constraints": {"type": "array", "items": {"type": "string"}},
+        "ethical_constraints": {"type": "array", "items": {"type": "string"}},
+        "regulatory_requirements": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "risk_assessment": {
+      "type": "object",
+      "properties": {
+        "overall_risk": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+        "risks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "risk_id": {"type": "string"},
+              "description": {"type": "string"},
+              "likelihood": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
+              "impact": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+              "mitigation": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "hash": {
+      "type": "object",
+      "properties": {
+        "algorithm": {"type": "string", "default": "SHA-256"},
+        "value": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "entities": [
+    {"type": "MLDLC_Step", "description": "Process step in the ML lifecycle"},
+    {"type": "Artifact", "description": "Output artifact from a step"},
+    {"type": "Model", "description": "Trained ML model"},
+    {"type": "Dataset", "description": "Data asset"},
+    {"type": "Metric", "description": "Performance or business metric"}
+  ],
+  "relationships": [
+    {"type": "PRODUCES", "from": "MLDLC_Step", "to": "Artifact"},
+    {"type": "PRECEDES", "from": "MLDLC_Step", "to": "MLDLC_Step"},
+    {"type": "VALIDATES", "from": "Validation_Gate", "to": "Model"}
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "risk_levels": {
+    "RED": {
+      "description": "Human-Only - High-stakes decisions",
+      "color": "#8B2635",
+      "approvers": ["Executive", "Business Sponsor"],
+      "automation": "none"
+    },
+    "YELLOW": {
+      "description": "Human-AI Augmented",
+      "color": "#B8860B",
+      "approvers": ["Team Lead", "Reviewer"],
+      "automation": "augmented"
+    },
+    "GREEN": {
+      "description": "Fully Automated",
+      "color": "#2E7D4A",
+      "approvers": ["Automated + Alert"],
+      "automation": "full"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+# ML Metrics Configuration
+categories:
+  - name: Data Quality
+    metrics: [completeness_pct, uniqueness_pct, validity_score]
+    collection: real-time
+  - name: Model Performance
+    metrics: [accuracy, precision, recall, f1, auc_roc]
+    collection: per_training
+  - name: Drift Detection
+    metrics: [psi_score, ks_statistic]
+    collection: hourly
