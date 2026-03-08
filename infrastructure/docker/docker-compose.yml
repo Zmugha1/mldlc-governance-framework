@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  mldlc-app:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

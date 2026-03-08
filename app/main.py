@@ -71,7 +71,7 @@ def main():
 
     st.markdown("---")
     st.subheader("📖 Documentation & Search")
-    doc_cols = st.columns(4)
+    doc_cols = st.columns(5)
     with doc_cols[0]:
         if st.button("Open Documentation", key="nav_docs"):
             st.switch_page("pages/10_Documentation.py")
@@ -84,6 +84,9 @@ def main():
     with doc_cols[3]:
         if st.button("Open LLM Router", key="nav_llm"):
             st.switch_page("pages/13_LLM_Router.py")
+    with doc_cols[4]:
+        if st.button("Open Monitoring Dashboard", key="nav_monitoring"):
+            st.switch_page("pages/14_Monitoring_Dashboard.py")
 
     st.markdown("---")
     st.subheader("🏗️ Framework Components")

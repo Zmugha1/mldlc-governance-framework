@@ -1,0 +1,29 @@
+rule:
+  id: "GOV-009"
+  category: "governance"
+  subcategory: "cost"
+  name: "cost-monitoring-budget-enforcement"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "All LLM usage must be tracked for cost with budget limits and anomaly detection."
+  severity: "high"
+  priority: 2
+  applies_to:
+    zones: ["green", "yellow", "red"]
+    always_check: true
+  requirement: |
+    Token usage must be tracked per request.
+    Costs must be calculated using current pricing.
+    Budget limits must be enforceable per user/session/model.
+    Anomaly detection must flag unusual cost spikes.
+    Cost dashboards must be available for review.
+  validation_criteria:
+    - "Cost tracking database records all requests"
+    - "Budget enforcement blocks over-limit requests"
+    - "Anomalies detected within 1 hour"
+    - "Cost summary API returns accurate data"
+  automated_check: "cost_tracking_validation"
+  references:
+    - "FinOps Best Practices 2025"

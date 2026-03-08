@@ -1,0 +1,26 @@
+rule:
+  id: "MLOPS-003"
+  category: "mlops"
+  subcategory: "monitoring"
+  name: "drift-detection"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "Monitor for data and prediction drift."
+  severity: "critical"
+  priority: 1
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    PSI calculation for distribution drift.
+    KS test for statistical significance.
+    Automated alerts when drift detected.
+  validation_criteria:
+    - "Baseline established for monitored features"
+    - "Drift reports stored and queryable"
+    - "Alerts triggered on threshold breach"
+  automated_check: "drift_detection_validation"
+  references:
+    - "MLOps Best Practices"

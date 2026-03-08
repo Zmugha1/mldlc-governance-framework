@@ -1,0 +1,30 @@
+rule:
+  id: "GOV-008"
+  category: "governance"
+  subcategory: "audit"
+  name: "audit-trail-requirements"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "All AI system decisions must be logged to an immutable audit trail with cryptographic integrity verification."
+  severity: "critical"
+  priority: 1
+  applies_to:
+    zones: ["green", "yellow", "red"]
+    always_check: true
+  requirement: |
+    Every LLM call must be logged with input/output hashes.
+    Audit logs must include timestamp, user ID, session ID, and model version.
+    Logs must be tamper-evident (blockchain-style chaining).
+    Audit trail must support regulatory export formats.
+    Integrity verification must be possible at any time.
+  validation_criteria:
+    - "Audit database exists and is append-only"
+    - "Hash chain integrity can be verified"
+    - "Export to JSON/CSV works correctly"
+    - "No events exist without proper hashes"
+  automated_check: "audit_integrity_check"
+  references:
+    - "NIST AI RMF GOV-6"
+    - "EU AI Act Article 11"

@@ -106,6 +106,24 @@
         {"id": "LLM-004", "file": "LLM-004-fallback-handling.yaml", "name": "fallback-handling", "severity": "high"}
       ]
     },
+    "governance": {
+      "description": "AI governance and compliance rules",
+      "path": "domain-rules/governance",
+      "rule_count": 3,
+      "rules": [
+        {"id": "GOV-008", "file": "GOV-008-audit-trail.yaml", "name": "audit-trail-requirements", "severity": "critical"},
+        {"id": "GOV-009", "file": "GOV-009-cost-monitoring.yaml", "name": "cost-monitoring-budget-enforcement", "severity": "high"},
+        {"id": "GOV-010", "file": "GOV-010-hitl-requirements.yaml", "name": "human-in-the-loop-requirements", "severity": "critical"}
+      ]
+    },
+    "mlops": {
+      "description": "MLOps and model monitoring rules",
+      "path": "domain-rules/mlops",
+      "rule_count": 1,
+      "rules": [
+        {"id": "MLOPS-003", "file": "MLOPS-003-drift-detection.yaml", "name": "drift-detection", "severity": "critical"}
+      ]
+    },
     "zones": {
       "description": "Zone-based enforcement rules",
       "path": "zone-rules",

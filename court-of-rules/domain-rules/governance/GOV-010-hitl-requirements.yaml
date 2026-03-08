@@ -1,0 +1,30 @@
+rule:
+  id: "GOV-010"
+  category: "governance"
+  subcategory: "hitl"
+  name: "human-in-the-loop-requirements"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "High-risk or low-confidence AI decisions must be escalated for human review before execution."
+  severity: "critical"
+  priority: 1
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    Confidence threshold default: 85% (configurable).
+    Risk threshold default: 70% (configurable).
+    Escalation rate target: 10-15%.
+    Human decisions must be logged to audit trail.
+    Review queue must be accessible to authorized reviewers.
+  validation_criteria:
+    - "Escalation triggers when confidence < threshold"
+    - "Review workflow allows approve/reject/override"
+    - "Audit trail captures human decisions"
+    - "Escalation metrics are tracked and reported"
+  automated_check: "hitl_workflow_validation"
+  references:
+    - "EU AI Act Article 14"
+    - "NIST AI RMF GOV-5"
