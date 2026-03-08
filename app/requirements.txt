@@ -17,5 +17,11 @@ docx2txt>=0.8
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 
+# RAG advanced (hybrid search, reranking, chunking)
+rank-bm25>=0.2.2
+sentence-transformers>=2.2.0
+langchain>=0.1.0
+langchain-text-splitters>=0.0.1
+
 # GraphRAG (entity extraction - optional, has regex fallback)
 spacy>=3.7.0
