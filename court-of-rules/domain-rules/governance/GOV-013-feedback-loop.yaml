@@ -1,0 +1,25 @@
+rule:
+  id: "GOV-013"
+  category: "governance"
+  subcategory: "feedback"
+  name: "feedback-loop-continuous-learning"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "Human corrections must be captured and fed back for continuous model improvement."
+  severity: "medium"
+  priority: 3
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    Corrections must be recorded with context.
+    Approved corrections must be available for training.
+    Few-shot examples must be generatable.
+    Retraining triggers must be configurable.
+  validation_criteria:
+    - "Feedback database exists"
+    - "Corrections can be recorded and retrieved"
+    - "Stats and few-shot generation work"
+  automated_check: "feedback_loop_validation"

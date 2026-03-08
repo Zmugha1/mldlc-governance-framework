@@ -1,0 +1,26 @@
+rule:
+  id: "MLOPS-002"
+  category: "mlops"
+  subcategory: "model-registry"
+  name: "model-registry-versioning"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "All models must be registered with versioning, stage management, and performance tracking."
+  severity: "high"
+  priority: 2
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    Models must be registered with version and metadata.
+    Stage transitions must be logged (dev to staging to production).
+    Performance metrics must be tracked per version.
+    A/B testing capability must be available.
+  validation_criteria:
+    - "Model registry database exists"
+    - "Models can be retrieved by name and version"
+    - "Stage transitions are logged"
+    - "A/B test assignments work correctly"
+  automated_check: "model_registry_validation"

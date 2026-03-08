@@ -1,0 +1,24 @@
+rule:
+  id: "MLOPS-004"
+  category: "mlops"
+  subcategory: "data-versioning"
+  name: "data-versioning-requirements"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "Datasets must be versioned with content hashing and lineage tracking for reproducible pipelines."
+  severity: "medium"
+  priority: 3
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    Dataset versions must be registered with content hash.
+    Lineage must be tracked for derived datasets.
+    Integrity verification must be possible.
+  validation_criteria:
+    - "Data versioning database exists"
+    - "Datasets can be registered and retrieved"
+    - "Integrity verification works"
+  automated_check: "data_versioning_validation"

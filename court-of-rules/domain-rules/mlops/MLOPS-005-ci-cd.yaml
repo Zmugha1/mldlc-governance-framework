@@ -1,0 +1,24 @@
+rule:
+  id: "MLOPS-005"
+  category: "mlops"
+  subcategory: "ci-cd"
+  name: "ci-cd-pipeline-requirements"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "CI/CD pipeline must run tests, linting, and build verification on every push."
+  severity: "medium"
+  priority: 3
+  applies_to:
+    zones: ["red"]
+    always_check: true
+  requirement: |
+    Tests must run on push and pull request.
+    Linting must pass before merge.
+    Docker image must build successfully.
+  validation_criteria:
+    - "CI/CD workflow exists"
+    - "Tests execute"
+    - "Build succeeds"
+  automated_check: "ci_cd_validation"

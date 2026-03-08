@@ -109,19 +109,34 @@
     "governance": {
       "description": "AI governance and compliance rules",
       "path": "domain-rules/governance",
-      "rule_count": 3,
+      "rule_count": 5,
       "rules": [
         {"id": "GOV-008", "file": "GOV-008-audit-trail.yaml", "name": "audit-trail-requirements", "severity": "critical"},
         {"id": "GOV-009", "file": "GOV-009-cost-monitoring.yaml", "name": "cost-monitoring-budget-enforcement", "severity": "high"},
-        {"id": "GOV-010", "file": "GOV-010-hitl-requirements.yaml", "name": "human-in-the-loop-requirements", "severity": "critical"}
+        {"id": "GOV-010", "file": "GOV-010-hitl-requirements.yaml", "name": "human-in-the-loop-requirements", "severity": "critical"},
+        {"id": "GOV-012", "file": "GOV-012-aibom.yaml", "name": "ai-bill-of-materials", "severity": "high"},
+        {"id": "GOV-013", "file": "GOV-013-feedback-loop.yaml", "name": "feedback-loop-continuous-learning", "severity": "medium"}
+      ]
+    },
+    "prompts": {
+      "description": "Prompt management and security rules",
+      "path": "domain-rules/prompts",
+      "rule_count": 1,
+      "rules": [
+        {"id": "PROMPT-001", "file": "PROMPT-001-versioning-security.yaml", "name": "prompt-versioning-security", "severity": "high"}
       ]
     },
     "mlops": {
       "description": "MLOps and model monitoring rules",
       "path": "domain-rules/mlops",
-      "rule_count": 1,
+      "rule_count": 6,
       "rules": [
-        {"id": "MLOPS-003", "file": "MLOPS-003-drift-detection.yaml", "name": "drift-detection", "severity": "critical"}
+        {"id": "MLOPS-001", "file": "MLOPS-001-feature-store.yaml", "name": "feature-store-requirements", "severity": "critical"},
+        {"id": "MLOPS-002", "file": "MLOPS-002-model-registry.yaml", "name": "model-registry-versioning", "severity": "high"},
+        {"id": "MLOPS-003", "file": "MLOPS-003-drift-detection.yaml", "name": "drift-detection", "severity": "critical"},
+        {"id": "MLOPS-004", "file": "MLOPS-004-data-versioning.yaml", "name": "data-versioning-requirements", "severity": "medium"},
+        {"id": "MLOPS-005", "file": "MLOPS-005-ci-cd.yaml", "name": "ci-cd-pipeline-requirements", "severity": "medium"},
+        {"id": "MLOPS-006", "file": "MLOPS-006-performance-monitoring.yaml", "name": "performance-monitoring", "severity": "high"}
       ]
     },
     "zones": {

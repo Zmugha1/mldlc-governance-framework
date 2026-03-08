@@ -1,0 +1,27 @@
+rule:
+  id: "MLOPS-001"
+  category: "mlops"
+  subcategory: "feature-store"
+  name: "feature-store-requirements"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "ML features must be stored in a centralized feature store with versioning and lineage tracking."
+  severity: "critical"
+  priority: 1
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    Features must be registered with metadata (type, entity, owner).
+    Online serving for real-time inference.
+    Offline serving for training with point-in-time correctness.
+    Feature lineage must be tracked.
+    Feature statistics must be monitored.
+  validation_criteria:
+    - "Feature store database exists and is queryable"
+    - "Features can be retrieved by entity ID"
+    - "Historical features can be retrieved at specific timestamps"
+    - "Feature lineage is documented"
+  automated_check: "feature_store_validation"

@@ -1,0 +1,24 @@
+rule:
+  id: "MLOPS-006"
+  category: "mlops"
+  subcategory: "performance"
+  name: "performance-monitoring"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "Latency, throughput, and error rates must be monitored for ML operations."
+  severity: "high"
+  priority: 2
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    Request latency must be tracked (p50, p95, p99).
+    Throughput must be measured.
+    Error rates must be monitored.
+  validation_criteria:
+    - "Performance metrics database exists"
+    - "Latency stats are queryable"
+    - "Error rates are tracked"
+  automated_check: "performance_monitoring_validation"

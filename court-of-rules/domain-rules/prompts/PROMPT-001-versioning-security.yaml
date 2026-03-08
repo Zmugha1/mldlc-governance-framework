@@ -1,0 +1,27 @@
+rule:
+  id: "PROMPT-001"
+  category: "prompts"
+  subcategory: "versioning-security"
+  name: "prompt-versioning-security"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "All prompts must be versioned and scanned for security issues."
+  severity: "high"
+  priority: 2
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    Prompts must be registered with version history.
+    Prompts must be scanned for injection patterns.
+    Prompts must be scanned for PII exposure.
+    A/B testing must be supported.
+    Performance must be tracked per version.
+  validation_criteria:
+    - "Prompt registry database exists"
+    - "Prompt versions can be retrieved"
+    - "Security scanning detects injection patterns"
+    - "A/B test assignments are consistent"
+  automated_check: "prompt_registry_validation"

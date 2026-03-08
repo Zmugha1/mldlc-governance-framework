@@ -1,0 +1,26 @@
+rule:
+  id: "GOV-012"
+  category: "governance"
+  subcategory: "aibom"
+  name: "ai-bill-of-materials"
+  version: "1.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "Every AI system must have an automatically generated Bill of Materials for compliance and transparency."
+  severity: "high"
+  priority: 2
+  applies_to:
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    AIBOM must include data lineage.
+    AIBOM must include model architecture and training details.
+    AIBOM must include dependencies and requirements.
+    AIBOM must include compliance status.
+    AIBOM must be exportable to JSON and Markdown.
+  validation_criteria:
+    - "AIBOM can be generated for any registered model"
+    - "AIBOM contains all required sections"
+    - "AIBOM exports to valid JSON and Markdown"
+  automated_check: "aibom_generation_validation"
