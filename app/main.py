@@ -70,6 +70,11 @@ def main():
             st.switch_page("pages/03_ML_Metrics_Dashboard.py")
 
     st.markdown("---")
+    st.subheader("📖 Documentation")
+    if st.button("Open Documentation", key="nav_docs"):
+        st.switch_page("pages/10_Documentation.py")
+
+    st.markdown("---")
     st.subheader("🏗️ Framework Components")
     components = [
         ("📋", "VTCO Process Mapping", "Every MLDLC step defined with Verb, Task, Constraint, and Outcome"),

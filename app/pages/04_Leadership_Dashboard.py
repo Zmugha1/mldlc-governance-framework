@@ -36,5 +36,5 @@ st.dataframe(df, use_container_width=True, hide_index=True)
 st.markdown("---")
 st.subheader("Risk & Compliance Status")
 risk_status = {"Status": ["Compliant", "Under Review", "Action Required"], "Count": [22, 2, 0]}
-fig = px.pie(values=risk_status["Count"], names=risk_status["Status"], title="Model Compliance Status", colors=["#2E7D4A", "#B8860B", "#8B2635"])
+fig = px.pie(values=risk_status["Count"], names=risk_status["Status"], title="Model Compliance Status", color_discrete_sequence=["#2E7D4A", "#B8860B", "#8B2635"])
 st.plotly_chart(fig, use_container_width=True)
