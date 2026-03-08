@@ -1,0 +1,134 @@
+{
+  "index_version": "2.0.0",
+  "last_updated": "2025-03-08T00:00:00Z",
+  "description": "Master index of all rules in the Court of Rules (v2.0 with RAG/GraphRAG)",
+
+  "categories": {
+    "meta": {
+      "description": "Rules about rules",
+      "path": "meta-rules",
+      "rule_count": 4,
+      "rules": [
+        {"id": "META-001", "file": "META-001-rule-format.yaml", "name": "rule-format"},
+        {"id": "META-002", "file": "META-002-versioning.yaml", "name": "versioning"},
+        {"id": "META-003", "file": "META-003-priority-system.yaml", "name": "priority-system"},
+        {"id": "META-004", "file": "META-004-rule-court-hierarchy.yaml", "name": "rule-court-hierarchy"}
+      ]
+    },
+    "rag": {
+      "description": "RAG (Retrieval-Augmented Generation) best practices",
+      "path": "domain-rules/rag",
+      "rule_count": 7,
+      "rules": [
+        {"id": "RAG-001", "file": "RAG-001-structure-chunking.yaml", "name": "structure-aware-chunking", "severity": "high"},
+        {"id": "RAG-002", "file": "RAG-002-hybrid-search.yaml", "name": "hybrid-vector-bm25", "severity": "critical"},
+        {"id": "RAG-003", "file": "RAG-003-rrf-fusion.yaml", "name": "reciprocal-rank-fusion", "severity": "high"},
+        {"id": "RAG-004", "file": "RAG-004-cross-encoder-rerank.yaml", "name": "cross-encoder-rerank", "severity": "high"},
+        {"id": "RAG-005", "file": "RAG-005-embedding-metadata.yaml", "name": "embedding-with-metadata", "severity": "high"},
+        {"id": "RAG-006", "file": "RAG-006-evaluation-metrics.yaml", "name": "rag-evaluation-metrics", "severity": "medium"},
+        {"id": "RAG-007", "file": "RAG-007-cost-optimization.yaml", "name": "rag-cost-optimization", "severity": "medium"}
+      ]
+    },
+    "graphrag": {
+      "description": "GraphRAG (Graph-based RAG) best practices",
+      "path": "domain-rules/graphrag",
+      "rule_count": 6,
+      "rules": [
+        {"id": "GRAG-001", "file": "GRAG-001-entity-extraction.yaml", "name": "efficient-entity-extraction", "severity": "critical"},
+        {"id": "GRAG-002", "file": "GRAG-002-relationship-mapping.yaml", "name": "relationship-mapping", "severity": "high"},
+        {"id": "GRAG-003", "file": "GRAG-003-one-hop-traversal.yaml", "name": "one-hop-traversal", "severity": "high"},
+        {"id": "GRAG-004", "file": "GRAG-004-community-detection.yaml", "name": "community-detection", "severity": "medium"},
+        {"id": "GRAG-005", "file": "GRAG-005-hybrid-retrieval.yaml", "name": "hybrid-graphrag-retrieval", "severity": "high"},
+        {"id": "GRAG-006", "file": "GRAG-006-incremental-indexing.yaml", "name": "incremental-graph-indexing", "severity": "medium"}
+      ]
+    },
+    "security": {
+      "description": "Security and access control rules",
+      "path": "domain-rules/security",
+      "rule_count": 3,
+      "rules": [
+        {"id": "SEC-001", "file": "SEC-001-credentials.yaml", "name": "no-hardcoded-credentials", "severity": "critical"},
+        {"id": "SEC-002", "file": "SEC-002-data-privacy.yaml", "name": "data-privacy", "severity": "critical"},
+        {"id": "SEC-003", "file": "SEC-003-access-control.yaml", "name": "access-control", "severity": "high"}
+      ]
+    },
+    "data": {
+      "description": "Data handling and validation rules",
+      "path": "domain-rules/data",
+      "rule_count": 4,
+      "rules": [
+        {"id": "DATA-001", "file": "DATA-001-validation.yaml", "name": "data-validation", "severity": "high"},
+        {"id": "DATA-002", "file": "DATA-002-no-leakage.yaml", "name": "no-data-leakage", "severity": "critical"},
+        {"id": "DATA-003", "file": "DATA-003-schema.yaml", "name": "schema-validation", "severity": "medium"},
+        {"id": "DATA-004", "file": "DATA-004-lineage.yaml", "name": "data-lineage", "severity": "medium"}
+      ]
+    },
+    "models": {
+      "description": "Model training and validation rules",
+      "path": "domain-rules/models",
+      "rule_count": 4,
+      "rules": [
+        {"id": "MODEL-001", "file": "MODEL-001-reproducibility.yaml", "name": "reproducibility", "severity": "critical"},
+        {"id": "MODEL-002", "file": "MODEL-002-validation.yaml", "name": "cross-validation", "severity": "high"},
+        {"id": "MODEL-003", "file": "MODEL-003-tracking.yaml", "name": "experiment-tracking", "severity": "high"},
+        {"id": "MODEL-004", "file": "MODEL-004-versioning.yaml", "name": "model-versioning", "severity": "medium"}
+      ]
+    },
+    "production": {
+      "description": "Production deployment rules",
+      "path": "domain-rules/production",
+      "rule_count": 4,
+      "rules": [
+        {"id": "PROD-001", "file": "PROD-001-input-validation.yaml", "name": "input-validation", "severity": "critical"},
+        {"id": "PROD-002", "file": "PROD-002-error-handling.yaml", "name": "error-handling", "severity": "high"},
+        {"id": "PROD-003", "file": "PROD-003-monitoring.yaml", "name": "monitoring", "severity": "medium"},
+        {"id": "PROD-004", "file": "PROD-004-rollback.yaml", "name": "rollback-plan", "severity": "medium"}
+      ]
+    },
+    "testing": {
+      "description": "Testing and quality assurance rules",
+      "path": "domain-rules/testing",
+      "rule_count": 3,
+      "rules": [
+        {"id": "TEST-001", "file": "TEST-001-unit-tests.yaml", "name": "unit-tests", "severity": "high"},
+        {"id": "TEST-002", "file": "TEST-002-integration.yaml", "name": "integration-tests", "severity": "high"},
+        {"id": "TEST-003", "file": "TEST-003-coverage.yaml", "name": "test-coverage", "severity": "medium"}
+      ]
+    },
+    "llm": {
+      "description": "LLM integration best practices",
+      "path": "domain-rules/llm",
+      "rule_count": 4,
+      "rules": [
+        {"id": "LLM-001", "file": "LLM-001-prompt-versioning.yaml", "name": "prompt-versioning", "severity": "high"},
+        {"id": "LLM-002", "file": "LLM-002-context-window.yaml", "name": "context-window-management", "severity": "high"},
+        {"id": "LLM-003", "file": "LLM-003-caching-strategy.yaml", "name": "caching-strategy", "severity": "medium"},
+        {"id": "LLM-004", "file": "LLM-004-fallback-handling.yaml", "name": "fallback-handling", "severity": "high"}
+      ]
+    },
+    "zones": {
+      "description": "Zone-based enforcement rules",
+      "path": "zone-rules",
+      "rule_count": 3,
+      "rules": [
+        {"id": "ZONE-001", "file": "ZONE-001-green-rules.yaml", "name": "green-zone-enforcement"},
+        {"id": "ZONE-002", "file": "ZONE-002-yellow-rules.yaml", "name": "yellow-zone-enforcement"},
+        {"id": "ZONE-003", "file": "ZONE-003-red-rules.yaml", "name": "red-zone-enforcement"}
+      ]
+    }
+  },
+
+  "severity_levels": {
+    "critical": {"description": "Must fix immediately, blocks deployment", "color": "#dc3545"},
+    "high": {"description": "Should fix before merge", "color": "#fd7e14"},
+    "medium": {"description": "Fix when convenient", "color": "#ffc107"},
+    "low": {"description": "Nice to have", "color": "#17a2b8"},
+    "info": {"description": "Informational only", "color": "#6c757d"}
+  },
+
+  "zones": {
+    "green": {"name": "Experimentation", "strictness": "low"},
+    "yellow": {"name": "Development", "strictness": "medium"},
+    "red": {"name": "Production", "strictness": "high"}
+  }
+}

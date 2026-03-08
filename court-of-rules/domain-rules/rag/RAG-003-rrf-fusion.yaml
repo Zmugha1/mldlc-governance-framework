@@ -1,0 +1,39 @@
+rule:
+  id: "RAG-003"
+  category: "rag"
+  subcategory: "fusion"
+  name: "reciprocal-rank-fusion"
+  version: "2.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "ENFORCE Reciprocal Rank Fusion (RRF) for combining search results"
+  severity: "high"
+  priority: 2
+  applies_to:
+    file_types: [".py"]
+    zones: ["green", "yellow", "red"]
+    always_check: true
+  requirement: |
+    NEVER use simple score averaging or weighted blending for hybrid search.
+    ALWAYS use Reciprocal Rank Fusion (RRF) to combine ranked lists.
+    RRF formula: score = Σ(1 / (k + rank)) where k = 60 (standard constant)
+    RRF advantages: No score normalization needed, Documents ranked high in multiple lists are rewarded
+  detection:
+    patterns:
+      - regex: 'final_score\s*=\s*.*\*\s*vector.*\+\s*.*\*\s*bm25'
+        message: "Simple weighted blending - use RRF instead"
+      - regex: 'scores\.mean\(|np\.average\([^)]*scores'
+        message: "Score averaging detected - use RRF for better results"
+  enforcement:
+    green:
+      action: "warn"
+      message: "RRF fusion recommended over score averaging"
+    yellow:
+      action: "suggest"
+      message: "RRF provides more stable relevance than weighted blending"
+    red:
+      action: "block"
+      message: "CRITICAL: RRF required for production hybrid search"
+  references:
+    - "https://plg.uwaterloo.ca/~gvcormac/cormacksigir08-rrf.pdf"

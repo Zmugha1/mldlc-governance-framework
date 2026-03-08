@@ -1,0 +1,42 @@
+rule:
+  id: "RAG-002"
+  category: "rag"
+  subcategory: "search"
+  name: "hybrid-vector-bm25"
+  version: "2.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "ENFORCE hybrid search combining vector and BM25 keyword search"
+  severity: "critical"
+  priority: 1
+  applies_to:
+    file_types: [".py"]
+    zones: ["green", "yellow", "red"]
+    always_check: true
+  requirement: |
+    NEVER rely solely on vector search for enterprise RAG.
+    ALWAYS implement hybrid search that combines:
+    1. Dense vector search (semantic similarity)
+    2. Sparse BM25 search (exact keyword matches)
+    Vector search excels at: Semantic similarity, Concept matching, Paraphrase understanding
+    BM25 excels at: Exact matches (IDs, SKUs, error codes), Rare tokens and jargon
+    Hybrid search improves recall by 15-25%.
+  detection:
+    patterns:
+      - regex: 'collection\.query\([^)]*query_embeddings[^)]*\)(?!.*bm25)'
+        message: "Pure vector search detected - implement hybrid search"
+      - regex: 'similarity_search\([^)]*\)(?!.*keyword)'
+        message: "Vector-only retrieval - add BM25 for better coverage"
+  enforcement:
+    green:
+      action: "warn"
+      message: "Hybrid search recommended for better recall"
+    yellow:
+      action: "suggest"
+      message: "Hybrid search (vector + BM25) improves recall by 15-25%"
+    red:
+      action: "block"
+      message: "CRITICAL: Hybrid search required for production RAG"
+  references:
+    - "https://weaviate.io/blog/hybrid-search-explained"

@@ -28,3 +28,7 @@ data/*
 
 # Logs
 *.log
+
+# Court of Rules - user custom rules (keep directory)
+court-of-rules/custom-rules/*
+!court-of-rules/custom-rules/.gitkeep

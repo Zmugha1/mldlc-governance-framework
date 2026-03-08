@@ -1,0 +1,7 @@
+rule:
+  id: "META-003"
+  category: "meta"
+  name: "priority-system"
+  version: "1.0.0"
+  description: "Rules have priority 1-3; critical/high/medium severity"
+  applies_to: ["all"]

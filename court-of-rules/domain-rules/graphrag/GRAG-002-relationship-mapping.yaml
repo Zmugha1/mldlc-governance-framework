@@ -1,0 +1,32 @@
+rule:
+  id: "GRAG-002"
+  category: "graphrag"
+  subcategory: "graph"
+  name: "relationship-mapping"
+  version: "2.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "ENFORCE proper relationship mapping in knowledge graphs"
+  severity: "high"
+  priority: 2
+  applies_to:
+    file_types: [".py"]
+    zones: ["green", "yellow", "red"]
+    always_check: true
+  requirement: |
+    ALWAYS define relationship schema before building the graph:
+    1. Entity types (nodes)
+    2. Relationship types (edges)
+    3. Directionality (subject -> object)
+    4. Cardinality (one-to-one, one-to-many)
+    Store in graph database with: Neo4j for complex queries, NetworkX for in-memory, RDF for semantic web
+    Document your schema for future maintainers.
+  enforcement:
+    green:
+      action: "warn"
+    yellow:
+      action: "suggest"
+    red:
+      action: "block"
+  references: []

@@ -1,0 +1,7 @@
+rule:
+  id: "ZONE-001"
+  category: "zone"
+  name: "green-zone-enforcement"
+  version: "1.0.0"
+  description: "Green zone: Experimentation, low strictness, warn on violations"
+  zones: ["green"]

@@ -1,0 +1,7 @@
+rule:
+  id: "META-002"
+  category: "meta"
+  name: "versioning"
+  version: "1.0.0"
+  description: "Rules use semantic versioning; track created/updated dates"
+  applies_to: ["all"]

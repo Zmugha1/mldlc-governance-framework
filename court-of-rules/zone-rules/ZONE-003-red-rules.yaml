@@ -1,0 +1,7 @@
+rule:
+  id: "ZONE-003"
+  category: "zone"
+  name: "red-zone-enforcement"
+  version: "1.0.0"
+  description: "Red zone: Production, high strictness, block on critical violations"
+  zones: ["red"]

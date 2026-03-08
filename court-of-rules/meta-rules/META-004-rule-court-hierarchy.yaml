@@ -1,0 +1,7 @@
+rule:
+  id: "META-004"
+  category: "meta"
+  name: "rule-court-hierarchy"
+  version: "1.0.0"
+  description: "Hierarchy: meta-rules > domain-rules > zone-rules > custom-rules"
+  applies_to: ["all"]

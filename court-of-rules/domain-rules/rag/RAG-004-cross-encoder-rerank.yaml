@@ -1,0 +1,41 @@
+rule:
+  id: "RAG-004"
+  category: "rag"
+  subcategory: "reranking"
+  name: "cross-encoder-rerank"
+  version: "2.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "ENFORCE cross-encoder reranking for precision improvement"
+  severity: "high"
+  priority: 2
+  applies_to:
+    file_types: [".py"]
+    zones: ["green", "yellow", "red"]
+    always_check: true
+  requirement: |
+    NEVER send raw vector search results directly to LLM without reranking.
+    ALWAYS implement two-stage retrieval:
+    Stage 1 (Bi-encoder): Retrieve 50-200 candidates cheaply, optimized for recall
+    Stage 2 (Cross-encoder): Rerank top-M fused candidates (M=100-150), keep top-K (K=5-12)
+    Expected improvement: 15-40% better precision, 35% fewer hallucinations.
+    Recommended rerankers: Cohere Rerank 4 Pro/Fast, ms-marco-MiniLM-L6-v2 (open-source)
+  detection:
+    patterns:
+      - regex: 'top_k\s*=\s*\d+[^\n]*\n[^#]*context\s*=\s*retrieved_docs'
+        message: "Direct context from retrieval - add reranking stage"
+      - regex: 'retrieved\s*=\s*collection\.query\([^)]*\)[^}]*context'
+        message: "No reranking detected - implement cross-encoder reranker"
+  enforcement:
+    green:
+      action: "warn"
+      message: "Cross-encoder reranking improves precision by 15-40%"
+    yellow:
+      action: "suggest"
+      message: "Two-stage retrieval (retrieve → rerank) recommended"
+    red:
+      action: "block"
+      message: "CRITICAL: Cross-encoder reranking required for production"
+  references:
+    - "https://www.zeroentropy.dev/articles/ultimate-guide-to-choosing-the-best-reranking-model"

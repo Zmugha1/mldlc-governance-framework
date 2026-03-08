@@ -9,7 +9,7 @@ st.set_page_config(page_title="Documentation", page_icon="📖", layout="wide")
 st.title("📖 MLDLC Documentation")
 st.markdown("Complete guide for the Machine Learning Development Lifecycle Governance Framework.")
 
-tabs = st.tabs(["Overview", "VTCO", "Risk Matrix", "MCP Tools", "Quick Start", "FAQ"])
+tabs = st.tabs(["Overview", "VTCO", "Risk Matrix", "Court of Rules", "MCP Tools", "Quick Start", "FAQ"])
 
 with tabs[0]:
     st.subheader("Framework Overview")
@@ -39,15 +39,40 @@ with tabs[2]:
     st.markdown("Use the **Risk Matrix** page for full classification criteria.")
 
 with tabs[3]:
+    st.subheader("Court of Rules (v2.0)")
+    st.markdown("""
+    Modular rule system with **RAG & GraphRAG** best practices (2025/2026).
+
+    **RAG Rules (RAG-001 to RAG-007):**
+    - Structure-aware chunking
+    - Hybrid search (vector + BM25)
+    - Reciprocal Rank Fusion (RRF)
+    - Cross-encoder reranking
+    - Embedding metadata
+    - Evaluation metrics
+    - Cost optimization
+
+    **GraphRAG Rules (GRAG-001 to GRAG-006):**
+    - spaCy entity extraction (not LLM)
+    - Relationship mapping
+    - One-hop traversal
+    - Community detection
+    - Hybrid retrieval
+    - Incremental indexing
+
+    Rules live in `court-of-rules/`. See `docs/COURT_OF_RULES_V2.md` for full guide.
+    """)
+
+with tabs[4]:
     st.subheader("MCP Tools")
     st.markdown("The MCP Server provides tools for Cursor and other AI assistants. Use the **MCP Server** page to explore available tools.")
 
-with tabs[4]:
+with tabs[5]:
     st.subheader("Quick Start")
     st.code("streamlit run app/app.py", language="bash")
     st.markdown("Or from project root: `streamlit run app/main.py`")
 
-with tabs[5]:
+with tabs[6]:
     st.subheader("FAQ")
     with st.expander("What is VTCO?"):
         st.markdown("Verb-Task-Constraint-Outcome: a structured way to define every MLDLC step.")

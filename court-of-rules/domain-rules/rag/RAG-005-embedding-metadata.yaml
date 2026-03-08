@@ -1,0 +1,33 @@
+rule:
+  id: "RAG-005"
+  category: "rag"
+  subcategory: "embeddings"
+  name: "embedding-with-metadata"
+  version: "2.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "ENFORCE embedding title + headings + body, not just body"
+  severity: "high"
+  priority: 2
+  applies_to:
+    file_types: [".py"]
+    zones: ["green", "yellow", "red"]
+    always_check: true
+  requirement: |
+    NEVER embed only the body text of documents.
+    ALWAYS embed: title + headings + body
+    This improves retrieval because queries often match the conceptual frame in headings better than body text alone.
+    Store as metadata: Document title, Section headers, Version, Product, Region, Permissions labels, Stable chunk IDs
+  detection:
+    patterns:
+      - regex: 'embeddings\.create\([^)]*input=doc\[.content.\]'
+        message: "Embedding only content - include title and headings"
+  enforcement:
+    green:
+      action: "warn"
+    yellow:
+      action: "suggest"
+    red:
+      action: "block"
+  references: []

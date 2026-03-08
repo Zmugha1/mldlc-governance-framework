@@ -1,0 +1,7 @@
+rule:
+  id: "ZONE-002"
+  category: "zone"
+  name: "yellow-zone-enforcement"
+  version: "1.0.0"
+  description: "Yellow zone: Development, medium strictness, suggest fixes"
+  zones: ["yellow"]

@@ -1,0 +1,7 @@
+rule:
+  id: "META-001"
+  category: "meta"
+  name: "rule-format"
+  version: "1.0.0"
+  description: "Standard YAML format for all rules with id, category, requirement, enforcement"
+  applies_to: ["all"]

@@ -1,0 +1,41 @@
+rule:
+  id: "GRAG-001"
+  category: "graphrag"
+  subcategory: "extraction"
+  name: "efficient-entity-extraction"
+  version: "2.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "USE spaCy dependency parsing instead of LLM for entity extraction"
+  severity: "critical"
+  priority: 1
+  applies_to:
+    file_types: [".py"]
+    zones: ["green", "yellow", "red"]
+    always_check: true
+  requirement: |
+    NEVER use LLM-based entity extraction for GraphRAG in production.
+    ALWAYS use spaCy dependency parsing for entity and relationship extraction.
+    Research shows: "94% of LLM quality at 1/100th the cost"
+    LLM extraction costs: $5-20 per 1MB of text
+    spaCy extraction costs: ~$0.05 per 1MB of text
+    Use LLM only for: Domain-specific entity types, Complex relationship patterns, Initial prompt tuning
+  detection:
+    patterns:
+      - regex: 'llm.*extract.*entity|extract.*entity.*llm|LLMGraphTransformer'
+        message: "LLM entity extraction - use spaCy for cost efficiency"
+      - regex: 'openai.*extract|extract.*gpt-|chat\.completions.*entity'
+        message: "API-based extraction detected - consider spaCy"
+  enforcement:
+    green:
+      action: "warn"
+      message: "spaCy extraction is 100x cheaper than LLM extraction"
+    yellow:
+      action: "suggest"
+      message: "Use spaCy for 94% quality at 1/100th cost"
+    red:
+      action: "block"
+      message: "CRITICAL: spaCy-based extraction required for cost-effective GraphRAG"
+  references:
+    - "https://spacy.io/usage/linguistic-features"

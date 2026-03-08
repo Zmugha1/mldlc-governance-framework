@@ -1,0 +1,29 @@
+rule:
+  id: "GRAG-004"
+  category: "graphrag"
+  subcategory: "graph"
+  name: "community-detection"
+  version: "2.0.0"
+  created: "2025-03-08"
+  updated: "2025-03-08"
+  author: "court-of-rules"
+  description: "USE Leiden algorithm for community detection in GraphRAG"
+  severity: "medium"
+  priority: 3
+  applies_to:
+    file_types: [".py"]
+    zones: ["yellow", "red"]
+    always_check: true
+  requirement: |
+    ALWAYS use community detection to organize large knowledge graphs:
+    1. Use Leiden algorithm (better than Louvain)
+    2. Generate community summaries for global search
+    3. Use communities for query routing
+    Community detection helps: Organize large graphs, Enable global thematic search, Improve query routing
+    Libraries: python-louvain (cdlib), igraph, networkx
+  enforcement:
+    yellow:
+      action: "suggest"
+    red:
+      action: "suggest"
+  references: []
