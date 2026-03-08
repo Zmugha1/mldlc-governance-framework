@@ -16,6 +16,9 @@ dist/
 # Data
 data/*
 !data/.gitkeep
+!data/vector_db/
+!data/vector_db/chroma/
+!data/vector_db/chroma/.gitkeep
 
 # ML artifacts
 *.pkl
