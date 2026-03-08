@@ -89,6 +89,19 @@ def main():
             st.switch_page("pages/14_Monitoring_Dashboard.py")
 
     st.markdown("---")
+    st.subheader("🏭 MLOps & Compliance")
+    mlops_cols = st.columns(3)
+    with mlops_cols[0]:
+        if st.button("Open AIBOM Generator", key="nav_aibom"):
+            st.switch_page("pages/15_AIBOM_Generator.py")
+    with mlops_cols[1]:
+        if st.button("Open Feature Store", key="nav_feature_store"):
+            st.switch_page("pages/16_Feature_Store.py")
+    with mlops_cols[2]:
+        if st.button("Open Model Registry", key="nav_model_registry"):
+            st.switch_page("pages/17_Model_Registry.py")
+
+    st.markdown("---")
     st.subheader("🏗️ Framework Components")
     components = [
         ("📋", "VTCO Process Mapping", "Every MLDLC step defined with Verb, Task, Constraint, and Outcome"),

@@ -1,0 +1,26 @@
+order_id,customer_id,order_date,product_category,product_value,quantity,status,payment_terms,days_to_payment,region,sales_rep
+ORD-2025-0001,CUST-1001,2025-01-15,Industrial Pump,125000,1,Completed,Net 30,28,Northeast,Mike
+ORD-2025-0002,CUST-1002,2025-01-18,Hydraulic System,85000,1,Completed,Net 30,45,Midwest,Sarah
+ORD-2025-0003,CUST-1003,2025-01-22,Spare Parts,15000,5,Completed,Net 15,12,Southwest,David
+ORD-2025-0004,CUST-1004,2025-01-25,Maintenance Contract,24000,1,Active,Monthly,0,Northeast,Mike
+ORD-2025-0005,CUST-1005,2025-01-28,Industrial Pump,175000,1,Cancelled,Net 30,,West,John
+ORD-2025-0006,CUST-1001,2025-02-01,Spare Parts,8500,3,Completed,Net 15,15,Northeast,Mike
+ORD-2025-0007,CUST-1006,2025-02-05,Hydraulic System,95000,1,Completed,Net 30,32,Midwest,Sarah
+ORD-2025-0008,CUST-1007,2025-02-10,Industrial Pump,145000,1,Completed,Net 30,60,South,David
+ORD-2025-0009,CUST-1002,2025-02-12,Maintenance Contract,18000,1,Active,Monthly,0,Midwest,Sarah
+ORD-2025-0010,CUST-1008,2025-02-15,Spare Parts,22000,8,Completed,Net 15,18,Northeast,Mike
+ORD-2025-0011,CUST-1009,2025-02-18,Industrial Pump,195000,1,Pending,Net 30,,West,John
+ORD-2025-0012,CUST-1010,2025-02-20,Hydraulic System,78000,1,Completed,Net 30,25,Southwest,David
+ORD-2025-0013,CUST-1003,2025-02-22,Spare Parts,12000,4,Completed,Net 15,14,Southwest,David
+ORD-2025-0014,CUST-1004,2025-02-25,Industrial Pump,135000,1,Completed,Net 30,35,Northeast,Mike
+ORD-2025-0015,CUST-1011,2025-02-28,Maintenance Contract,30000,1,Active,Monthly,0,Midwest,Sarah
+ORD-2025-0016,CUST-1005,2025-03-01,Spare Parts,18500,6,Cancelled,Net 15,,West,John
+ORD-2025-0017,CUST-1006,2025-03-05,Hydraulic System,110000,1,Completed,Net 30,28,Midwest,Sarah
+ORD-2025-0018,CUST-1007,2025-03-08,Industrial Pump,165000,1,Pending,Net 30,,South,David
+ORD-2025-0019,CUST-1001,2025-03-10,Maintenance Contract,22000,1,Active,Monthly,0,Northeast,Mike
+ORD-2025-0020,CUST-1012,2025-03-12,Spare Parts,9500,2,Completed,Net 15,10,South,David
+ORD-2025-0021,CUST-1002,2025-03-15,Industrial Pump,155000,1,Completed,Net 30,42,Midwest,Sarah
+ORD-2025-0022,CUST-1008,2025-03-18,Hydraulic System,88000,1,Completed,Net 30,22,Northeast,Mike
+ORD-2025-0023,CUST-1009,2025-03-20,Spare Parts,28000,10,Pending,Net 15,,West,John
+ORD-2025-0024,CUST-1010,2025-03-22,Industrial Pump,205000,1,Completed,Net 30,55,Southwest,David
+ORD-2025-0025,CUST-1013,2025-03-25,Maintenance Contract,26000,1,Active,Monthly,0,South,David

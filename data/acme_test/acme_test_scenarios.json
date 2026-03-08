@@ -1,0 +1,100 @@
+{
+  "test_scenarios": [
+    {
+      "id": "TS-001",
+      "name": "Revenue Forecasting",
+      "description": "Test predictive revenue forecasting using historical order data",
+      "input": {
+        "historical_orders": "acme_orders.csv",
+        "forecast_horizon": "90_days"
+      },
+      "expected_output": {
+        "forecast_accuracy": ">= 85%",
+        "confidence_interval": "provided",
+        "risk_factors": "identified"
+      },
+      "validation_criteria": [
+        "Forecast within 15% of actual",
+        "Identifies seasonal patterns",
+        "Flags high-risk periods"
+      ]
+    },
+    {
+      "id": "TS-002",
+      "name": "Churn Prediction",
+      "description": "Identify customers at risk of churning",
+      "input": {
+        "customer_data": "acme_customers.csv",
+        "order_history": "acme_orders.csv"
+      },
+      "expected_output": {
+        "at_risk_customers": "list with risk scores",
+        "risk_factors": "explanation per customer",
+        "recommended_actions": "retention strategies"
+      },
+      "validation_criteria": [
+        "CUST-1009 flagged as Critical risk",
+        "CUST-1005 flagged as High risk",
+        "Retention recommendations provided"
+      ]
+    },
+    {
+      "id": "TS-003",
+      "name": "Inventory Optimization",
+      "description": "Recommend optimal inventory levels",
+      "input": {
+        "order_history": "acme_orders.csv",
+        "current_inventory": "assumed_500k"
+      },
+      "expected_output": {
+        "excess_inventory": "items to reduce",
+        "stockout_risk": "items to increase",
+        "cash_savings": "estimated $150K"
+      },
+      "validation_criteria": [
+        "Identifies slow-moving parts",
+        "Recommends safety stock levels",
+        "Provides reorder points"
+      ]
+    },
+    {
+      "id": "TS-004",
+      "name": "Lead Scoring",
+      "description": "Score sales leads by conversion probability",
+      "input": {
+        "pending_deals": "ORD-2025-0011,ORD-2025-0018,ORD-2025-0023",
+        "historical_patterns": "from_orders_csv"
+      },
+      "expected_output": {
+        "lead_scores": "0-100 scale",
+        "priority_ranking": "sorted list",
+        "win_probability": "percentage"
+      },
+      "validation_criteria": [
+        "High-value deals scored appropriately",
+        "Historical patterns considered",
+        "Actionable recommendations"
+      ]
+    },
+    {
+      "id": "TS-005",
+      "name": "AIBOM Generation",
+      "description": "Generate AI Bill of Materials for compliance",
+      "input": {
+        "system_name": "Acme Churn Predictor",
+        "model_info": "from_registry",
+        "training_data": "acme_customers.csv"
+      },
+      "expected_output": {
+        "aibom_json": "complete_documentation",
+        "aibom_markdown": "client_ready_report",
+        "compliance_status": "EU AI Act assessment"
+      },
+      "validation_criteria": [
+        "All required sections present",
+        "Risk tier correctly assessed",
+        "Export formats work"
+      ]
+    }
+  ]
+}

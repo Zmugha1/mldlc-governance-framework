@@ -1,0 +1,16 @@
+customer_id,company_name,industry,annual_contract_value,contract_start,contract_end,last_contact,support_tickets,upsell_potential,churn_risk,region
+CUST-1001,Industrial Solutions LLC,Manufacturing,125000,2023-01-15,2026-01-15,2025-03-10,2,High,Low,Northeast
+CUST-1002,Midwest Manufacturing Co,Automotive,85000,2022-06-01,2025-06-01,2025-03-08,5,Medium,Medium,Midwest
+CUST-1003,Southwest Process Systems,Chemical,45000,2024-03-01,2027-03-01,2025-03-05,1,High,Low,Southwest
+CUST-1004,Northeast Industrial Group,Manufacturing,95000,2023-08-15,2026-08-15,2025-03-12,8,Low,High,Northeast
+CUST-1005,West Coast Hydraulics,Construction,0,2024-01-01,2025-01-01,2024-12-15,12,Low,High,West
+CUST-1006,Great Lakes Manufacturing,Automotive,78000,2022-09-01,2025-09-01,2025-03-01,3,Medium,Medium,Midwest
+CUST-1007,Southern Industrial Services,Oil & Gas,145000,2023-04-01,2026-04-01,2025-02-28,4,High,Medium,South
+CUST-1008,Atlantic Process Equipment,Food Processing,68000,2024-06-01,2027-06-01,2025-03-14,1,High,Low,Northeast
+CUST-1009,Mountain State Systems,Mining,0,2024-02-01,2025-02-01,2025-01-15,15,Low,Critical,West
+CUST-1010,Gulf Coast Industrial,Chemical,89000,2023-11-01,2026-11-01,2025-03-11,2,Medium,Low,Southwest
+CUST-1011,Central Manufacturing Inc,Manufacturing,52000,2024-07-01,2027-07-01,2025-03-09,0,High,Low,Midwest
+CUST-1012,Carolina Process Solutions,Textiles,35000,2024-09-01,2027-09-01,2025-03-13,6,Medium,Medium,South
+CUST-1013,Texas Industrial Partners,Energy,110000,2023-05-15,2026-05-15,2025-03-07,3,High,Medium,South
+CUST-1014,Pacific Northwest Systems,Timber,0,2024-04-01,2025-04-01,2025-02-01,9,Low,High,West
+CUST-1015,Florida Manufacturing Group,Aerospace,135000,2022-12-01,2025-12-01,2025-03-06,7,Medium,Medium,South
