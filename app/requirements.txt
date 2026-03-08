@@ -16,3 +16,6 @@ pypdf>=4.0.0
 docx2txt>=0.8
 beautifulsoup4>=4.12.0
 requests>=2.31.0
+
+# GraphRAG (entity extraction - optional, has regex fallback)
+spacy>=3.7.0

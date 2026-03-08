@@ -70,14 +70,17 @@ def main():
             st.switch_page("pages/03_ML_Metrics_Dashboard.py")
 
     st.markdown("---")
-    st.subheader("📖 Documentation & RAG")
-    doc_cols = st.columns(2)
+    st.subheader("📖 Documentation & Search")
+    doc_cols = st.columns(3)
     with doc_cols[0]:
         if st.button("Open Documentation", key="nav_docs"):
             st.switch_page("pages/10_Documentation.py")
     with doc_cols[1]:
         if st.button("Open RAG Knowledge Search", key="nav_rag"):
             st.switch_page("pages/11_RAG.py")
+    with doc_cols[2]:
+        if st.button("Open GraphRAG", key="nav_graphrag"):
+            st.switch_page("pages/12_GraphRAG.py")
 
     st.markdown("---")
     st.subheader("🏗️ Framework Components")
