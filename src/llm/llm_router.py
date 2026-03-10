@@ -150,6 +150,12 @@ class LLMRouter:
         self.system_vram = int(os.getenv("AVAILABLE_VRAM_GB", "8"))
         self.hardware_profile = hardware_profile or self._detect_hardware_profile()
 
+    def _is_embedding_model(self, name: str, config: ModelConfig) -> bool:
+        """Check if model is embedding-only (excluded from generation pull list)."""
+        if getattr(config, "embedding_only", False):
+            return True
+        return "embed" in name.lower()
+
     def _get_available_models(self) -> Dict[str, ModelConfig]:
         try:
             r = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
@@ -158,17 +164,23 @@ class LLMRouter:
                 out = {}
                 for n in names:
                     if n in AVAILABLE_MODELS:
-                        out[n] = AVAILABLE_MODELS[n]
+                        cfg = AVAILABLE_MODELS[n]
                     else:
                         base = n.split(":")[0]
+                        cfg = None
                         for k, v in AVAILABLE_MODELS.items():
                             if k.startswith(base):
-                                out[n] = v
+                                cfg = v
                                 break
+                        if cfg is None:
+                            continue
+                    if self._is_embedding_model(n, cfg):
+                        continue
+                    out[n] = cfg
                 return out
         except Exception:
             pass
-        return dict(AVAILABLE_MODELS)
+        return {k: v for k, v in AVAILABLE_MODELS.items() if not self._is_embedding_model(k, v)}
 
     def _detect_hardware_profile(self) -> str:
         v = self.system_vram
