@@ -16,6 +16,7 @@ dist/
 # Data
 data/*
 Sandi_Dashboard/data/*.db
+Sandi_Dashboard_Complete/data/*.db
 !data/.gitkeep
 !data/clients.json
 !data/vector_db/
