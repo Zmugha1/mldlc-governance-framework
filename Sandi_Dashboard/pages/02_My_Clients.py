@@ -15,7 +15,6 @@ log_activity("page_view", page="My Clients")
 from utils.styles import CUSTOM_CSS
 from components.client_card import render_client_card
 
-st.set_page_config(page_title="My Clients", layout="wide")
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("👥 My Clients")

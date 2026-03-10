@@ -17,7 +17,7 @@ from utils.database import get_all_clients
 from utils.styles import CUSTOM_CSS
 from components.client_card import render_client_card
 
-st.set_page_config(page_title="Dashboard", layout="wide")
+# set_page_config already called in app.py - do not call again
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("Good morning, Sandy! ☕")

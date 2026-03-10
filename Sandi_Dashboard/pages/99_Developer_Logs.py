@@ -17,8 +17,6 @@ from utils.logger import (
 
 DEV_PASSWORD = "sandydev2026"
 
-st.set_page_config(page_title="Developer Logs", layout="wide")
-
 # Password check
 if "dev_logs_authenticated" not in st.session_state:
     st.session_state.dev_logs_authenticated = False

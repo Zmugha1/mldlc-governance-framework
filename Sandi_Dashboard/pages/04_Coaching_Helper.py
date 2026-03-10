@@ -14,7 +14,6 @@ render_sidebar()
 log_activity("page_view", page="Coaching Helper")
 from utils.styles import CUSTOM_CSS
 
-st.set_page_config(page_title="Coaching Helper", layout="wide")
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("💡 Coaching Helper")

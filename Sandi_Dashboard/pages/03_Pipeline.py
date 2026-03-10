@@ -15,7 +15,6 @@ from utils.database import get_all_clients
 from utils.styles import CUSTOM_CSS
 from components.pipeline_funnel import render_pipeline_funnel
 
-st.set_page_config(page_title="Pipeline", layout="wide")
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 st.title("📈 Pipeline")

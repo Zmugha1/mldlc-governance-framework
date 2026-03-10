@@ -35,3 +35,6 @@ Sandi_Dashboard_Complete/data/*.db
 # Court of Rules - user custom rules (keep directory)
 court-of-rules/custom-rules/*
 !court-of-rules/custom-rules/.gitkeep
+
+# SandiStahl_Bot - separate repo (pushed to github.com/Zmugha1/SandiStahl_Bot)
+SandiStahl_Bot/
