@@ -183,7 +183,11 @@ class LLMRouter:
         if preferred_model and preferred_model in self.available_models and self.available_models[preferred_model].vram_gb <= self.system_vram:
             return preferred_model
         try:
-            task_type, complexity = self.analyzer.analyze(prompt, context)
+            result = self.analyzer.analyze(prompt, context)
+            if isinstance(result, tuple) and len(result) == 2:
+                task_type, complexity = result
+            else:
+                complexity = TaskComplexity.MEDIUM
         except Exception as e:
             print(f"[LLM Router] Analyzer error: {e}. Using defaults.")
             complexity = TaskComplexity.MEDIUM
