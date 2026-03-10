@@ -51,7 +51,8 @@ try:
         st.session_state.hardware_profile = "solo_practice"
 
     router = get_router()
-    router.set_hardware_profile(st.session_state.hardware_profile)
+    if hasattr(router, "set_hardware_profile"):
+        router.set_hardware_profile(st.session_state.hardware_profile)
     info = router.get_router_info()
 
     col1, col2, col3, col4 = st.columns(4)
@@ -64,7 +65,8 @@ try:
             key="hw_profile_select"
         )
         st.session_state.hardware_profile = profile
-        router.set_hardware_profile(profile)
+        if hasattr(router, "set_hardware_profile"):
+            router.set_hardware_profile(profile)
     with col2:
         st.metric("VRAM (GB)", info.get("system_vram_gb", 0))
     with col3:
