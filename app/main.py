@@ -1,18 +1,65 @@
 """
-SandyStahl Bot - Minimal Coaching Dashboard
-Single-file Streamlit app for Sandy the coach.
+SandyStahl Bot - Polished Coaching Dashboard
+Professional UX/UI for Sandy the coach.
 """
 import streamlit as st
 import json
 from pathlib import Path
+from datetime import datetime
 
-st.set_page_config(page_title="SandyStahl Bot", page_icon="🤖", layout="wide")
+st.set_page_config(
+    page_title="SandyStahl Bot",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# Sandy's brand colors & polished CSS
+st.markdown("""
+<style>
+    .metric-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border-left: 4px solid #6B46C1;
+    }
+    .client-card {
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border: 1px solid #E5E7EB;
+    }
+    .hot-prospect {
+        border-left: 4px solid #F59E0B;
+    }
+    .section-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #6B7280;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 16px;
+    }
+    .stMetric {
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border-left: 4px solid #6B46C1;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 st.sidebar.title("🤖 SandyStahl Bot")
+st.sidebar.markdown("*Your Coaching Companion*")
+st.sidebar.markdown("---")
 
-page = st.sidebar.radio("Go to:", [
+page = st.sidebar.radio("Navigate", [
     "📊 Dashboard", "👥 Clients", "📋 Client Profile",
-    "🎯 Pipeline", "💡 Coaching Helper", "📝 Log Call"
+    "🎯 Pipeline", "💡 Coaching Helper", "📝 Log Call",
 ])
 
 # Load sample data
@@ -24,37 +71,131 @@ else:
     data = {"clients": []}
 
 st.sidebar.metric("Active Clients", len(data["clients"]))
+st.sidebar.markdown("---")
 
 # === DASHBOARD ===
 if page == "📊 Dashboard":
     st.title("Good Morning, Sandy! ☀️")
-    st.caption("Wednesday, March 12, 2025")
+    st.caption(datetime.now().strftime("%A, %B %d, %Y"))
 
-    col1, col2 = st.columns(2)
-
+    # Top metrics row
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown("### 📅 Today's Calls")
-        st.markdown("**10:00 AM** - Andrea Kelleher (C4)")
-        st.markdown("**2:00 PM** - Jim Smith (C3)")
-
+        st.metric("Active Clients", str(len(data["clients"])), "+2 this week")
     with col2:
-        st.markdown("### 📊 Pipeline")
-        st.markdown("IC: 1 | C1: 0 | C2: 1 | C3: 1 | C4: 1 | C5: 0")
+        hot = sum(1 for c in data["clients"] if c.get("interest", 0) >= 4)
+        st.metric("Hot Prospects", str(hot), "🔥")
+    with col3:
+        st.metric("Calls Today", "2", "10:00 AM, 2:00 PM")
+    with col4:
+        st.metric("Pipeline Value", "$450K", "est. closes")
 
     st.markdown("---")
-    st.markdown("### 🔥 Hot Prospects")
-    st.markdown("⭐⭐⭐⭐⭐ Jim Smith - Ready to close")
-    st.markdown("⭐⭐⭐⭐ Lisa Wong - Spouse meeting")
+
+    col_left, col_right = st.columns([1, 1])
+
+    with col_left:
+        st.markdown('<p class="section-title">📅 Today\'s Schedule</p>', unsafe_allow_html=True)
+        calls = [
+            {"time": "10:00 AM", "client": "Andrea Kelleher", "compartment": "C4", "topic": "Health check-in", "interest": 4, "urgent": True},
+            {"time": "2:00 PM", "client": "Jim Smith", "compartment": "C3", "topic": "Franchisor intro", "interest": 5, "urgent": False},
+        ]
+        for call in calls:
+            urgent_class = "hot-prospect" if call["urgent"] else ""
+            st.markdown(f'''
+            <div class="client-card {urgent_class}">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>{call['time']}</strong> — {call['client']}<br>
+                        <span style="color: #6B7280; font-size: 13px;">{call['compartment']} • {call['topic']}</span>
+                    </div>
+                    <div style="text-align: right;">{'⭐' * call['interest']}</div>
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+
+        st.markdown('<p class="section-title">⚠️ Action Needed</p>', unsafe_allow_html=True)
+        st.warning("3 clients haven't been contacted in 7+ days")
+        st.info("Andrea Kelleher - Health follow-up overdue")
+
+    with col_right:
+        st.markdown('<p class="section-title">📊 Pipeline Overview</p>', unsafe_allow_html=True)
+        import plotly.graph_objects as go
+        fig = go.Figure(
+            go.Funnel(
+                y=["IC", "C1", "C2", "C3", "C4", "C5"],
+                x=[1, 0, 1, 1, 1, 0],
+                textinfo="value",
+                marker={"color": ["#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#6B7280"]},
+            )
+        )
+        fig.update_layout(height=250, margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown('<p class="section-title">🔥 Hot Prospects</p>', unsafe_allow_html=True)
+        prospects = [
+            {"name": "Jim Smith", "stage": "C3", "interest": 5, "note": "Ready to close"},
+            {"name": "Lisa Wong", "stage": "C2", "interest": 4, "note": "Spouse meeting scheduled"},
+        ]
+        for p in prospects:
+            st.markdown(f'''
+            <div class="client-card hot-prospect">
+                <div style="display: flex; justify-content: space-between;">
+                    <div><strong>{p['name']}</strong> <span style="color: #6B7280;">({p['stage']})</span></div>
+                    <div>{'⭐' * p['interest']}</div>
+                </div>
+                <div style="color: #6B7280; font-size: 13px; margin-top: 4px;">{p['note']}</div>
+            </div>
+            ''', unsafe_allow_html=True)
 
 # === CLIENTS LIST ===
 elif page == "👥 Clients":
-    st.title("👥 All Clients")
+    st.title("👥 Clients")
 
-    for client in data["clients"]:
-        with st.expander(f"{client['name']} - {client['compartment']}"):
-            st.markdown(f"**Interest:** {'⭐' * client['interest']}")
-            st.markdown(f"**Last Contact:** {client['last_contact']}")
-            st.markdown(f"**Next:** {client['next_action']}")
+    filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 2])
+    with filter_col1:
+        compartment_filter = st.selectbox("Compartment", ["All", "IC", "C1", "C2", "C3", "C4", "C5", "CLOSED"])
+    with filter_col2:
+        interest_filter = st.selectbox("Interest", ["All", "5", "4", "3", "2", "1"])
+    with filter_col3:
+        search = st.text_input("🔍 Search clients", placeholder="Type name...")
+
+    st.markdown("---")
+
+    for client in data.get("clients", []):
+        if compartment_filter != "All" and client["compartment"] != compartment_filter:
+            continue
+        if interest_filter != "All" and str(client.get("interest", 0)) != interest_filter:
+            continue
+        if search and search.lower() not in client["name"].lower():
+            continue
+
+        border_color = "#10B981" if not client.get("red_flags") else "#EF4444"
+        red_tags = "".join([f'<span style="background: #FEE2E2; color: #991B1B; padding: 4px 10px; border-radius: 6px; font-size: 12px; margin-right: 4px;">🚩 {flag}</span>' for flag in client.get("red_flags", [])[:1]])
+        green_tags = "".join([f'<span style="background: #D1FAE5; color: #065F46; padding: 4px 10px; border-radius: 6px; font-size: 12px; margin-right: 4px;">✅ {flag}</span>' for flag in client.get("green_flags", [])[:1]])
+
+        st.markdown(f'''
+        <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid {border_color};">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <h3 style="margin: 0;">{client['name']}</h3>
+                        <span style="background: #F3F4F6; padding: 4px 12px; border-radius: 20px; font-size: 12px;">{client['compartment']}</span>
+                        <span style="font-size: 18px;">{'⭐' * client.get('interest', 0)}</span>
+                    </div>
+                    <div style="color: #6B7280; margin-top: 8px; font-size: 14px;">
+                        Last contact: {client.get('last_contact', '-')} • Next: {client.get('next_action', '-')}
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+                <span style="background: #DBEAFE; color: #1E40AF; padding: 4px 10px; border-radius: 6px; font-size: 12px;">DISC: {client.get('disc_style', '-')}</span>
+                {red_tags}
+                {green_tags}
+            </div>
+        </div>
+        ''', unsafe_allow_html=True)
 
 # === CLIENT PROFILE ===
 elif page == "📋 Client Profile":
@@ -66,46 +207,88 @@ elif page == "📋 Client Profile":
         selected = st.selectbox("Select Client", [c["name"] for c in data["clients"]])
         client = next(c for c in data["clients"] if c["name"] == selected)
 
-        col1, col2, col3 = st.columns([2, 1, 1])
-        col1.header(client["name"])
-        col2.metric("Compartment", client["compartment"])
-        col3.metric("Interest", "⭐" * client["interest"])
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+        with col1:
+            st.markdown(f"### {client['disc_style']}-Style • {client['compartment']} • {'⭐' * client['interest']}")
+            st.markdown(f"Last contact: {client['last_contact']} • Next: {client['next_action']}")
+        with col2:
+            st.metric("Conversion", "40%", "Health blocker" if client.get("red_flags") else "")
+        with col3:
+            st.metric("Interest", f"{client['interest']}/5", "")
+        with col4:
+            st.button("📞 Log Call", type="primary")
 
-        tab1, tab2, tab3 = st.tabs(["Overview", "DISC", "I.L.W.E."])
+        tab_overview, tab_disc, tab_ilwe, tab_history = st.tabs(["Overview", "DISC Profile", "I.L.W.E. Goals", "Call History"])
 
-        with tab1:
-            st.markdown(f"**Last Contact:** {client['last_contact']}")
-            st.markdown(f"**Next Action:** {client['next_action']}")
-            st.markdown(f"**Notes:** {client['notes']}")
+        with tab_overview:
+            col_left, col_right = st.columns([1, 1])
+            with col_left:
+                if client.get("red_flags"):
+                    st.markdown("### 🚩 Red Flags")
+                    for flag in client["red_flags"]:
+                        st.error(flag)
+                if client.get("green_flags"):
+                    st.markdown("### ✅ Green Flags")
+                    for flag in client["green_flags"]:
+                        st.success(flag)
+            with col_right:
+                st.markdown("### 📝 Notes")
+                st.info(client.get("notes", ""))
+                st.markdown("### 🎯 Recommended Actions")
+                st.markdown("1. Check on health status first")
+                st.markdown("2. Do NOT mention business unless she brings it up")
+                st.markdown("3. Keep KitchenWise warm for when ready")
 
-            if client.get("red_flags"):
-                st.markdown("### 🚩 Red Flags")
-                for flag in client["red_flags"]:
-                    st.error(flag)
+        with tab_disc:
+            col_chart, col_tips = st.columns([1, 1])
+            with col_chart:
+                import plotly.graph_objects as go
+                scores = client.get("disc_scores", {"D": 0, "I": 0, "S": 0, "C": 0})
+                fig = go.Figure(
+                    data=go.Scatterpolar(
+                        r=[scores.get("D", 0), scores.get("I", 0), scores.get("S", 0), scores.get("C", 0)],
+                        theta=["D (Dominance)", "I (Influence)", "S (Steadiness)", "C (Compliance)"],
+                        fill="toself",
+                        marker_color="#6B46C1",
+                    )
+                )
+                fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), showlegend=False, height=300)
+                st.plotly_chart(fig, use_container_width=True)
+            with col_tips:
+                st.markdown(f"### 💡 Coaching Tips for {client['disc_style']}-Style")
+                tips = {
+                    "I": {"do": ["Be warm and friendly", "Use enthusiasm and stories", "Allow time for socializing", "Recognize and praise ideas"], "dont": ["Overwhelm with details", "Be critical or negative", "Rush the conversation"]},
+                    "D": {"do": ["Get to the point quickly", "Focus on results", "Be confident"], "dont": ["Waste time on small talk", "Be vague", "Over-explain"]},
+                    "S": {"do": ["Build rapport slowly", "Provide stability", "Give time to process"], "dont": ["Rush decisions", "Be pushy", "Change plans suddenly"]},
+                    "C": {"do": ["Provide data and facts", "Be thorough", "Answer precisely"], "dont": ["Be casual with details", "Skip steps", "Make assumptions"]},
+                }
+                t = tips.get(client["disc_style"], tips["I"])
+                st.markdown("**✅ DO:**")
+                for item in t["do"]:
+                    st.markdown(f"- {item}")
+                st.markdown("**❌ DON'T:**")
+                for item in t["dont"]:
+                    st.markdown(f"- {item}")
 
-            if client.get("green_flags"):
-                st.markdown("### ✅ Green Flags")
-                for flag in client["green_flags"]:
-                    st.success(flag)
-
-        with tab2:
-            st.markdown(f"### DISC: {client['disc_style']}-Style")
-            scores = client["disc_scores"]
-            st.markdown(f"D:{scores['D']} I:{scores['I']} S:{scores['S']} C:{scores['C']}")
-
-            tips = {
-                "I": ["Be warm", "Use enthusiasm", "Ask 'How do you feel?'"],
-                "D": ["Get to point", "Focus on results", "Ask 'Timeline?'"],
-                "S": ["Build rapport", "Provide stability", "Ask 'Concerns?'"],
-                "C": ["Provide data", "Be thorough", "Ask 'Research?'"],
-            }
-            for tip in tips.get(client["disc_style"], []):
-                st.markdown(f"✅ {tip}")
-
-        with tab3:
-            for key, value in client["ilwe"].items():
-                with st.expander(key.upper()):
+        with tab_ilwe:
+            for key, value in client.get("ilwe", {}).items():
+                with st.expander(f"**{key.upper()}**", expanded=True):
                     st.markdown(value)
+
+        with tab_history:
+            calls = [
+                {"date": "Jan 10, 2025", "compartment": "C4", "topic": "Health crisis", "notes": "Possible cancer, business on hold"},
+                {"date": "Dec 20, 2024", "compartment": "C3/C4", "topic": "KitchenWise deep dive", "notes": "Spoke with Rochelle, $100K in 6-7 months"},
+                {"date": "Dec 5, 2024", "compartment": "C4", "topic": "Follow-up", "notes": "Husband support growing"},
+            ]
+            for call in calls:
+                st.markdown(f'''
+                <div style="border-left: 3px solid #6B46C1; padding-left: 16px; margin-bottom: 16px;">
+                    <strong>{call['date']}</strong> <span style="color: #6B7280;">({call['compartment']})</span><br>
+                    {call['topic']}<br>
+                    <span style="color: #6B7280; font-size: 13px;">{call['notes']}</span>
+                </div>
+                ''', unsafe_allow_html=True)
 
 # === PIPELINE ===
 elif page == "🎯 Pipeline":
@@ -117,9 +300,10 @@ elif page == "🎯 Pipeline":
         go.Funnel(
             y=["IC", "C1", "C2", "C3", "C4", "C5"],
             x=[1, 0, 1, 1, 1, 0],
-            marker={"color": ["#3498db", "#9b59b6", "#2ecc71", "#f39c12", "#e67e22", "#e74c3c"]},
+            marker={"color": ["#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#6B7280"]},
         )
     )
+    fig.update_layout(title="Client Pipeline")
     st.plotly_chart(fig, use_container_width=True)
 
 # === COACHING HELPER ===
