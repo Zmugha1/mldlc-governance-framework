@@ -1,0 +1,114 @@
+{
+  "clients": [
+    {
+      "id": "andrea",
+      "name": "Andrea Kelleher",
+      "compartment": "C4",
+      "interest": 4,
+      "disc_style": "I",
+      "best_match": "KitchenWise",
+      "blocker": "Health crisis",
+      "last_contact": "2025-01-10",
+      "next_action": "Health check-in",
+      "disc_scores": {"D": 63, "I": 75, "S": 25, "C": 45},
+      "ilwe": {
+        "income": "$150K/year - fund golf trips",
+        "lifestyle": "Work from home",
+        "wealth": "Build legacy",
+        "equity": "Own meaningful business"
+      },
+      "red_flags": ["Health crisis - cancer concern"],
+      "green_flags": ["Engaged", "Husband supportive"],
+      "notes": "KitchenWise best match. Health blocker.",
+      "coaching_tip": "Be warm, acknowledge health - do not push business"
+    },
+    {
+      "id": "john",
+      "name": "John Martinez",
+      "compartment": "C3",
+      "interest": 5,
+      "disc_style": "D",
+      "best_match": "Lawn Doctor",
+      "blocker": "",
+      "last_contact": "2025-01-08",
+      "next_action": "Franchisor intro",
+      "disc_scores": {"D": 78, "I": 45, "S": 35, "C": 52},
+      "ilwe": {
+        "income": "$200K/year",
+        "lifestyle": "Control schedule",
+        "wealth": "Multi-location business",
+        "equity": "Sellable asset"
+      },
+      "red_flags": [],
+      "green_flags": ["Ready to close", "Spouse supportive", "Has funding"],
+      "notes": "Hot prospect! Ready to go.",
+      "coaching_tip": "Get to the point, focus on results and timeline"
+    },
+    {
+      "id": "sarah",
+      "name": "Sarah Chen",
+      "compartment": "C2",
+      "interest": 4,
+      "disc_style": "C",
+      "best_match": "PetWell Clinic",
+      "blocker": "Needs more data",
+      "last_contact": "2025-01-05",
+      "next_action": "Send research packet",
+      "disc_scores": {"D": 42, "I": 35, "S": 48, "C": 75},
+      "ilwe": {
+        "income": "$180K/year",
+        "lifestyle": "Remote work",
+        "wealth": "Maximize retirement",
+        "equity": "Proven system"
+      },
+      "red_flags": ["May over-analyze"],
+      "green_flags": ["Financially ready", "Thorough researcher"],
+      "notes": "C-style, needs data. Researching.",
+      "coaching_tip": "Provide data, be thorough, answer precisely"
+    },
+    {
+      "id": "mike",
+      "name": "Mike Thompson",
+      "compartment": "C1",
+      "interest": 3,
+      "disc_style": "S",
+      "best_match": "Lawn Doctor",
+      "blocker": "Needs trust",
+      "last_contact": "2025-01-03",
+      "next_action": "Follow-up call",
+      "disc_scores": {"D": 35, "I": 50, "S": 72, "C": 48},
+      "ilwe": {
+        "income": "$120K/year",
+        "lifestyle": "Work-life balance",
+        "wealth": "Secure retirement",
+        "equity": "Something stable"
+      },
+      "red_flags": ["Slow decision maker"],
+      "green_flags": ["Loyal", "Follows through"],
+      "notes": "S-style, slow decision. Needs trust.",
+      "coaching_tip": "Build rapport slowly, provide stability, give time"
+    },
+    {
+      "id": "lisa",
+      "name": "Lisa Wong",
+      "compartment": "IC",
+      "interest": 5,
+      "disc_style": "I",
+      "best_match": "KitchenWise",
+      "blocker": "",
+      "last_contact": "2025-01-06",
+      "next_action": "Intro call",
+      "disc_scores": {"D": 35, "I": 68, "S": 55, "C": 42},
+      "ilwe": {
+        "income": "$130K/year",
+        "lifestyle": "Family first",
+        "wealth": "College fund",
+        "equity": "Something stable"
+      },
+      "red_flags": [],
+      "green_flags": ["High enthusiasm", "Asks great questions"],
+      "notes": "Just started. High enthusiasm.",
+      "coaching_tip": "Be warm, use stories, recognize her ideas"
+    }
+  ]
+}

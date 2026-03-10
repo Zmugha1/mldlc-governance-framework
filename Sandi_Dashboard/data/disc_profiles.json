@@ -1,0 +1,90 @@
+{
+  "D": {
+    "name": "Dominance",
+    "traits": "Direct, results-focused, decisive, competitive",
+    "color": "#C53030",
+    "do": [
+      "Get to the point quickly",
+      "Focus on results and outcomes",
+      "Be confident and assertive",
+      "Provide options, let them choose"
+    ],
+    "dont": [
+      "Waste time on small talk",
+      "Be vague or indecisive",
+      "Over-explain or repeat"
+    ],
+    "questions": [
+      "What results are you looking for?",
+      "What is your timeline?",
+      "What challenges excite you?"
+    ],
+    "approach": "Get to point quickly. Focus on results. Be confident."
+  },
+  "I": {
+    "name": "Influence",
+    "traits": "Enthusiastic, social, optimistic, persuasive",
+    "color": "#DD6B20",
+    "do": [
+      "Be warm and friendly",
+      "Use stories and examples",
+      "Allow time for socializing",
+      "Recognize and praise their ideas"
+    ],
+    "dont": [
+      "Overwhelm with details",
+      "Be critical or negative",
+      "Rush the conversation"
+    ],
+    "questions": [
+      "How do you feel about this?",
+      "What excites you most?",
+      "Who else is involved in this decision?"
+    ],
+    "approach": "Be warm and friendly. Use enthusiasm. Recognize ideas."
+  },
+  "S": {
+    "name": "Steadiness",
+    "traits": "Patient, loyal, supportive, team-oriented",
+    "color": "#38A169",
+    "do": [
+      "Build rapport slowly",
+      "Provide stability and security",
+      "Give them time to process",
+      "Show genuine interest"
+    ],
+    "dont": [
+      "Rush decisions",
+      "Be pushy or aggressive",
+      "Change plans suddenly"
+    ],
+    "questions": [
+      "What concerns you about this change?",
+      "How will this affect your family?",
+      "What support do you need?"
+    ],
+    "approach": "Build rapport slowly. Provide stability. Give time."
+  },
+  "C": {
+    "name": "Conscientiousness",
+    "traits": "Analytical, precise, systematic, cautious",
+    "color": "#3182CE",
+    "do": [
+      "Provide data and facts",
+      "Be thorough and detailed",
+      "Answer questions precisely",
+      "Give time for analysis"
+    ],
+    "dont": [
+      "Be casual with details",
+      "Skip steps or rush",
+      "Make assumptions"
+    ],
+    "questions": [
+      "What data do you need to make this decision?",
+      "What are your concerns?",
+      "What research have you done?"
+    ],
+    "approach": "Provide data. Be thorough. Answer precisely."
+  }
+}
