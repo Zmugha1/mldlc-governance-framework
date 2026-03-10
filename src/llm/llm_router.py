@@ -227,7 +227,9 @@ class LLMRouter:
         if fallback:
             # Prefer phi3:mini if available
             phi = next((n for n, c in fallback if "phi3" in n.lower()), None)
-            return phi or fallback[0][0]
+            chosen = phi or fallback[0][0]
+            if "embed" not in chosen.lower():
+                return chosen
         return "phi3:mini"
 
     def chat(self, messages: List[Dict[str, str]], preferred_model: Optional[str] = None, **kwargs) -> str:
@@ -241,7 +243,8 @@ class LLMRouter:
 
     def get_router_info(self) -> Dict:
         p = HARDWARE_PROFILES.get(self.hardware_profile, {})
-        return {"ollama_url": self.ollama_url, "available_models": list(self.available_models.keys()),
+        models = [n for n in self.available_models if not self._is_embedding_model(n, self.available_models[n])]
+        return {"ollama_url": self.ollama_url, "available_models": models,
             "system_vram_gb": self.system_vram, "hardware_profile": self.hardware_profile,
             "hardware_profile_info": p, "routing_enabled": True, "moe_enabled": True}
 

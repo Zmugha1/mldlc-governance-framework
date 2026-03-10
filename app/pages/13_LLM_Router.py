@@ -83,9 +83,11 @@ try:
             st.divider()
 
     st.subheader("Model Configurations")
-    # Use router.available_models (excludes embedding-only models)
-    display_models = info.get("available_models", [])
-    moe_models = [n for n in display_models if router.available_models.get(n) and getattr(router.available_models[n], "is_moe", False)]
+    # Use router.available_models, exclude embedding models from display
+    def _is_embed(name: str) -> bool:
+        return "embed" in name.lower()
+    display_models = [n for n in info.get("available_models", []) if not _is_embed(n)]
+    moe_models = [n for n in display_models if router.available_models.get(n) and getattr(router.available_models.get(n), "is_moe", False)]
     st.markdown(f"**MoE models:** {', '.join(moe_models) if moe_models else 'None'}")
 
     with st.expander("All models"):
