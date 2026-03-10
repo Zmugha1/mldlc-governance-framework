@@ -4,10 +4,16 @@ Enhanced LLM Service with Audit and Cost Tracking
 from typing import Optional, Dict, Any
 import os
 
-# Import our new components
-from ..governance.audit_logger import get_audit_logger
-from ..monitoring.cost_tracker import get_cost_tracker
-from ..governance.hitl_framework import get_hitl_framework, EscalationReason
+# Import our governance components (optional)
+try:
+    from ..governance.audit_logger import get_audit_logger
+    from ..monitoring.cost_tracker import get_cost_tracker
+    from ..governance.hitl_framework import get_hitl_framework, EscalationReason
+    AUDIT_AVAILABLE = True
+except ImportError:
+    AUDIT_AVAILABLE = False
+    get_audit_logger = get_cost_tracker = get_hitl_framework = None
+    EscalationReason = None
 
 
 class LLMService:
@@ -26,12 +32,25 @@ class LLMService:
             try:
                 from openai import OpenAI
                 self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            except ImportError:
-                pass
+                print("✅ OpenAI client initialized")
+            except Exception as e:
+                print(f"⚠️ OpenAI init failed: {e}")
 
-        self.audit = get_audit_logger()
-        self.cost_tracker = get_cost_tracker()
-        self.hitl = get_hitl_framework()
+        self.kimi_client = None
+        if os.getenv("KIMI_API_KEY"):
+            try:
+                from openai import OpenAI
+                self.kimi_client = OpenAI(
+                    api_key=os.getenv("KIMI_API_KEY"),
+                    base_url="https://api.moonshot.cn/v1"
+                )
+                print("✅ Kimi client initialized")
+            except Exception as e:
+                print(f"⚠️ Kimi init failed: {e}")
+
+        self.audit = get_audit_logger() if AUDIT_AVAILABLE else None
+        self.cost_tracker = get_cost_tracker() if AUDIT_AVAILABLE else None
+        self.hitl = get_hitl_framework() if AUDIT_AVAILABLE else None
 
     def generate(self, prompt: str, model: Optional[str] = None,
                  user_id: str = "anonymous", session_id: str = "default",

@@ -93,23 +93,28 @@ HARDWARE_PROFILES = {
 
 
 class TaskAnalyzer:
+    """Analyzes prompts to determine task type and complexity."""
     TASK_KEYWORDS = {
         TaskType.GREETING: ["hello", "hi", "hey", "good morning", "good afternoon"],
         TaskType.CODE_EXPLANATION: ["explain this code", "what does this do", "how does this work", "code review"],
-        TaskType.CODE_GENERATION: ["write code", "generate", "create a function", "implement", "build"],
-        TaskType.SUMMARIZATION: ["summarize", "summary", "tl;dr", "brief", "condense"],
-        TaskType.DATA_ANALYSIS: ["analyze", "statistics", "trend", "pattern", "correlation"],
+        TaskType.CODE_GENERATION: ["write code", "generate", "create a function", "implement", "build", "program", "script", "python", "sql", "api"],
+        TaskType.SUMMARIZATION: ["summarize", "summary", "tl;dr", "brief", "condense", "compose"],
+        TaskType.DATA_ANALYSIS: ["analyze", "statistics", "trend", "pattern", "correlation", "predict", "forecast", "churn", "calculate", "compare", "evaluate"],
         TaskType.ARCHITECTURE_DESIGN: ["architecture", "design pattern", "system design", "microservice"],
-        TaskType.COMPLEX_REASONING: ["why", "compare", "contrast", "evaluate", "assess", "optimize"],
+        TaskType.COMPLEX_REASONING: ["why", "compare", "contrast", "evaluate", "assess", "optimize", "complex", "detailed", "comprehensive"],
         TaskType.RAG_RETRIEVAL: ["search", "find", "retrieve", "lookup", "query"],
         TaskType.GRAPHRAG_QUERY: ["relationship", "connection", "graph", "entity", "network"],
         TaskType.IMAGE_ANALYSIS: ["image", "picture", "photo", "diagram", "screenshot"],
         TaskType.LEGAL_COMPLIANCE: ["compliance", "regulation", "hipaa", "gdpr", "legal", "contract",
             "policy", "audit", "risk", "document review", "regulatory"],
     }
+    COMPLEXITY_HIGH = ["complex", "detailed", "comprehensive", "advanced", "sophisticated", "multi-step"]
+    COMPLEXITY_LOW = ["simple", "basic", "quick", "brief", "short"]
 
     def analyze(self, prompt: str, context: Optional[str] = None) -> Tuple[TaskType, TaskComplexity]:
         try:
+            if not prompt or not isinstance(prompt, str):
+                return TaskType.UNKNOWN, TaskComplexity.MEDIUM
             prompt_lower = (prompt or "").lower()
             task_type = self._detect_task_type(prompt_lower)
             complexity = self._detect_complexity(prompt or "", context)
@@ -128,8 +133,16 @@ class TaskAnalyzer:
         return max(scores, key=scores.get) if max(scores.values()) > 0 else TaskType.UNKNOWN
 
     def _detect_complexity(self, prompt: str, context: Optional[str] = None) -> TaskComplexity:
-        plen, has_code = len(prompt), "```" in prompt or bool(re.search(r"def\s+\w+|class\s+\w+", prompt))
-        qcount = prompt.count("?") + prompt.count("1.") + prompt.count("2.")
+        prompt_lower = (prompt or "").lower()
+        word_count = len((prompt or "").split())
+        if any(ind in prompt_lower for ind in self.COMPLEXITY_HIGH):
+            return TaskComplexity.COMPLEX
+        if any(ind in prompt_lower for ind in self.COMPLEXITY_LOW):
+            return TaskComplexity.SIMPLE
+        plen, has_code = len(prompt or ""), "```" in (prompt or "") or bool(re.search(r"def\s+\w+|class\s+\w+", prompt or ""))
+        qcount = (prompt or "").count("?") + (prompt or "").count("1.") + (prompt or "").count("2.")
+        if word_count > 100:
+            return TaskComplexity.COMPLEX
         if plen < 100 and not has_code and qcount <= 1:
             return TaskComplexity.SIMPLE
         return TaskComplexity.COMPLEX if plen >= 500 or qcount > 3 else TaskComplexity.MEDIUM
@@ -149,6 +162,7 @@ class LLMRouter:
         self.available_models = self._get_available_models()
         self.system_vram = int(os.getenv("AVAILABLE_VRAM_GB", "8"))
         self.hardware_profile = hardware_profile or self._detect_hardware_profile()
+        self.last_analysis: Dict = {}
 
     def _is_embedding_model(self, name: str, config: ModelConfig) -> bool:
         """Check if model is embedding-only (excluded from generation pull list)."""
@@ -204,10 +218,16 @@ class LLMRouter:
             if isinstance(result, tuple) and len(result) == 2:
                 task_type, complexity = result
             else:
-                complexity = TaskComplexity.MEDIUM
+                task_type, complexity = TaskType.UNKNOWN, TaskComplexity.MEDIUM
+            self.last_analysis = {
+                "task_type": task_type.value if hasattr(task_type, "value") else str(task_type),
+                "complexity": complexity.name if hasattr(complexity, "name") else str(complexity),
+                "prompt_length": len(prompt or ""),
+            }
         except Exception as e:
             print(f"[LLM Router] Analyzer error: {e}. Using defaults.")
-            complexity = TaskComplexity.MEDIUM
+            task_type, complexity = TaskType.UNKNOWN, TaskComplexity.MEDIUM
+            self.last_analysis = {"task_type": "general", "complexity": "medium", "prompt_length": len(prompt or "")}
         if prefer_moe and complexity == TaskComplexity.COMPLEX:
             moe = self.get_moe_recommendation(complexity)
             if moe and "embed" not in moe.lower():
@@ -230,13 +250,17 @@ class LLMRouter:
                  if c.complexity == complexity and c.vram_gb <= self.system_vram and is_generation_model(n, c)]
         cands.sort(key=lambda x: x[1].avg_tokens_per_sec, reverse=True)
         if cands:
-            return _safe_return(cands[0][0])
+            selected = _safe_return(cands[0][0])
+            print(f"[LLM Router] Selected: {selected} (task: {self.last_analysis.get('task_type')}, complexity: {self.last_analysis.get('complexity')})")
+            return selected
         # Fallback: prefer phi3:mini, then any generation model that fits VRAM
         fallback = [(n, c) for n, c in self.available_models.items() if c.vram_gb <= self.system_vram and is_generation_model(n, c)]
         if fallback:
             phi = next((n for n, c in fallback if "phi3" in n.lower()), None)
             chosen = phi or fallback[0][0]
-            return _safe_return(chosen)
+            selected = _safe_return(chosen)
+            print(f"[LLM Router] Selected: {selected} (task: {self.last_analysis.get('task_type')}, complexity: {self.last_analysis.get('complexity')})")
+            return selected
         return "phi3:mini"
 
     def chat(self, messages: List[Dict[str, str]], preferred_model: Optional[str] = None, **kwargs) -> str:
@@ -291,3 +315,7 @@ class LLMRouter:
 
 def get_router(hardware_profile: str = None) -> LLMRouter:
     return LLMRouter(hardware_profile=hardware_profile)
+
+
+# Alias for compatibility with CURSOR_PROMPT_FIX_LLM_COMPLETE
+get_llm_router = get_router
