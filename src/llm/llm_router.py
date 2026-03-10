@@ -108,10 +108,15 @@ class TaskAnalyzer:
     }
 
     def analyze(self, prompt: str, context: Optional[str] = None) -> Tuple[TaskType, TaskComplexity]:
-        prompt_lower = prompt.lower()
-        task_type = self._detect_task_type(prompt_lower)
-        complexity = self._detect_complexity(prompt, context)
-        return self._apply_task_type_complexity(task_type, complexity)
+        try:
+            prompt_lower = (prompt or "").lower()
+            task_type = self._detect_task_type(prompt_lower)
+            complexity = self._detect_complexity(prompt or "", context)
+            complexity = self._apply_task_type_complexity(task_type, complexity)
+            return task_type, complexity
+        except Exception as e:
+            print(f"[TaskAnalyzer] Error: {e}. Returning defaults.")
+            return TaskType.UNKNOWN, TaskComplexity.MEDIUM
 
     def _detect_task_type(self, prompt: str) -> TaskType:
         scores = {task: 0 for task in TaskType}
@@ -177,7 +182,11 @@ class LLMRouter:
     def select_model(self, prompt: str, context: Optional[str] = None, preferred_model: Optional[str] = None, prefer_moe: bool = True) -> str:
         if preferred_model and preferred_model in self.available_models and self.available_models[preferred_model].vram_gb <= self.system_vram:
             return preferred_model
-        task_type, complexity = self.analyzer.analyze(prompt, context)
+        try:
+            task_type, complexity = self.analyzer.analyze(prompt, context)
+        except Exception as e:
+            print(f"[LLM Router] Analyzer error: {e}. Using defaults.")
+            complexity = TaskComplexity.MEDIUM
         if prefer_moe and complexity == TaskComplexity.COMPLEX:
             moe = self.get_moe_recommendation(complexity)
             if moe:
@@ -208,6 +217,31 @@ class LLMRouter:
         return {"current_profile": self.hardware_profile, "current_vram": self.system_vram,
             "recommended_models": p.get("recommended_models", []),
             "next_upgrade": profs[idx + 1] if idx < len(profs) - 1 else None}
+
+    def set_hardware_profile(self, profile: str) -> None:
+        """Set hardware profile for model selection."""
+        if profile in HARDWARE_PROFILES:
+            self.hardware_profile = profile
+
+    def _get_best_local_model(self) -> str:
+        """Get the best available local model from Ollama."""
+        try:
+            r = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            if r.status_code == 200:
+                models = r.json().get("models", [])
+                available = [m["name"] for m in models]
+                priority = ["llama3.1:8b", "phi3:mini", "qwen2.5:4b", "qwen2.5:0.8b", "qwen3.5:4b", "qwen3.5:0.8b"]
+                for model in priority:
+                    if model in available:
+                        return model
+                return available[0] if available else "phi3:mini"
+        except Exception:
+            pass
+        return "phi3:mini"
+
+    def _check_api_key(self) -> bool:
+        """Check if OpenAI API key is available."""
+        return bool(os.getenv("OPENAI_API_KEY"))
 
 
 def get_router(hardware_profile: str = None) -> LLMRouter:
