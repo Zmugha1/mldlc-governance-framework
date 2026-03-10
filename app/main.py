@@ -1,6 +1,6 @@
 """
-MLDLC Governance Framework - Streamlit Application
-Main entry point for the interactive governance dashboard
+SandyStahl Bot - Two-Dashboard System
+Sandy's Coaching Dashboard + MLDLC Governance Framework
 """
 
 import streamlit as st
@@ -8,10 +8,10 @@ import json
 from pathlib import Path
 
 st.set_page_config(
-    page_title="MLDLC Governance Framework",
-    page_icon="🛡️",
+    page_title="SandyStahl Bot",
+    page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -24,15 +24,50 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 @st.cache_data
 def load_vtco_process_map():
     process_path = Path(__file__).parent.parent / "process" / "vtco_process_map.json"
-    with open(process_path, 'r') as f:
+    with open(process_path, "r") as f:
         return json.load(f)
 
-def main():
-    st.markdown('<div class="main-header">🛡️ MLDLC Governance Framework</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Machine Learning Development Lifecycle Governance</div>', unsafe_allow_html=True)
+
+# Sidebar - Dashboard selector
+st.sidebar.title("SandyStahl Bot")
+
+user_type = st.sidebar.radio(
+    "Select Dashboard:",
+    ["Sandy's Dashboard", "MLDLC Dashboard"],
+)
+
+if user_type == "Sandy's Dashboard":
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Sandy's Tools**")
+    st.sidebar.page_link("pages/01_Executive_Dashboard.py", label="📊 Executive Dashboard")
+    st.sidebar.page_link("pages/18_Client_Profiles.py", label="👤 Client Profiles")
+    st.sidebar.page_link("pages/19_Pipeline_Visualizer.py", label="📈 Pipeline")
+    st.sidebar.page_link("pages/20_Coaching_Assistant.py", label="💬 Coaching Assistant")
+
+    # Sandy's home content
+    st.title("Welcome to SandyStahl Bot!")
+    st.markdown("This is your AI-powered coaching companion.")
+    st.markdown("**What you can do:**")
+    st.markdown("- **Executive Dashboard** - See your day at a glance")
+    st.markdown("- **Client Profiles** - Full client information in one place")
+    st.markdown("- **Pipeline Visualizer** - Track where clients are")
+    st.markdown("- **Coaching Assistant** - Get AI-powered coaching guidance")
+
+else:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**MLDLC Tools**")
+    st.sidebar.page_link("pages/01_VTCO_Process_Map.py", label="📋 VTCO Process")
+    st.sidebar.page_link("pages/04_Leadership_Dashboard.py", label="📈 MLDLC Metrics")
+    st.sidebar.page_link("pages/14_Monitoring_Dashboard.py", label="📊 Monitoring")
+    st.sidebar.page_link("pages/15_AIBOM_Generator.py", label="📋 AIBOM")
+
+    # MLDLC home content
+    st.markdown('<div class="main-header">🛡️ MLDLC Governance Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Developer/consultant dashboard for tracking POC progress</div>', unsafe_allow_html=True)
     st.markdown("""
     <div style="text-align: center; color: #7a7a8a; margin-bottom: 2rem;">
         Transparent | Explainable | Auditable | Traceable
@@ -117,9 +152,6 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #7a7a8a; font-size: 0.8rem;">
-        MLDLC Governance Framework v1.0 | Built with Streamlit
+        MLDLC Governance Framework v1.0 | SandyStahl Bot POC | Built with Streamlit
     </div>
     """, unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
