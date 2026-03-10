@@ -7,9 +7,11 @@ if str(_root) not in sys.path:
 
 import streamlit as st
 from components.sidebar import render_sidebar
+from utils.logger import log_activity
+from utils.database import get_all_clients
 
 render_sidebar()
-from utils.database import get_all_clients
+log_activity("page_view", page="My Clients")
 from utils.styles import CUSTOM_CSS
 from components.client_card import render_client_card
 
@@ -36,7 +38,14 @@ if disc_filter != "All":
 if search:
     filtered = [c for c in filtered if search.lower() in c.get("name", "").lower()]
 
+if comp_filter != "All" or disc_filter != "All" or search:
+    log_activity(
+        "filter_applied",
+        details={"compartment": comp_filter, "disc": disc_filter, "search": search or None},
+        page="My Clients",
+    )
+
 st.markdown("---")
 
 for c in filtered:
-    render_client_card(c)
+    render_client_card(c, page="My Clients")

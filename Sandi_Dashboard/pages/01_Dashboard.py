@@ -7,8 +7,11 @@ if str(_root) not in sys.path:
 
 import streamlit as st
 from components.sidebar import render_sidebar
+from utils.logger import log_activity
 
 render_sidebar()
+log_activity("page_view", page="Dashboard")
+
 from datetime import datetime
 from utils.database import get_all_clients
 from utils.styles import CUSTOM_CSS
@@ -42,7 +45,7 @@ with col_left:
     st.markdown("### 📅 Today's Priority Clients")
     priority = [c for c in clients if c.get("next_action")][:3]
     for c in priority:
-        render_client_card(c)
+        render_client_card(c, page="Dashboard")
 
 with col_right:
     st.markdown("### 📋 Recent Activity")

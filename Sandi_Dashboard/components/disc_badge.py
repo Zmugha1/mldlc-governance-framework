@@ -10,7 +10,7 @@ def get_disc_colors():
         with open(path) as f:
             profiles = json.load(f)
         return {k: v.get("color", "#6B7280") for k, v in profiles.items()}
-    return {"D": "#C53030", "I": "#DD6B20", "S": "#38A169", "C": "#3182CE"}
+    return {"D": "#E74C3C", "I": "#F39C12", "S": "#27AE60", "C": "#3498DB"}
 
 
 def render_disc_badge(style: str):

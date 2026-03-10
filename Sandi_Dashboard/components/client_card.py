@@ -2,9 +2,10 @@
 import streamlit as st
 from components.disc_badge import get_disc_colors
 from utils.styles import CUSTOM_CSS
+from utils.logger import log_activity
 
 
-def render_client_card(client: dict):
+def render_client_card(client: dict, page: str = None):
     """Render a client card with avatar, badges, flags, actions."""
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
@@ -55,9 +56,13 @@ def render_client_card(client: dict):
     )
 
     col1, col2, col3 = st.columns(3)
+    cid = client.get("id", "")
     with col1:
-        st.button("📞 Call", key=f"call-{client.get('id', '')}")
+        if st.button("📞 Call", key=f"call-{cid}"):
+            log_activity("client_call_initiated", client_id=cid, page=page)
     with col2:
-        st.button("📝 Note", key=f"note-{client.get('id', '')}")
+        if st.button("📝 Note", key=f"note-{cid}"):
+            log_activity("client_note_initiated", client_id=cid, page=page)
     with col3:
-        st.button("➡️ Move", key=f"move-{client.get('id', '')}")
+        if st.button("➡️ Move", key=f"move-{cid}"):
+            log_activity("client_move_initiated", client_id=cid, page=page)

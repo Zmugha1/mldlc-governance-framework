@@ -7,8 +7,10 @@ if str(_root) not in sys.path:
 
 import streamlit as st
 from components.sidebar import render_sidebar
+from utils.logger import log_activity
 
 render_sidebar()
+log_activity("page_view", page="Pipeline")
 from utils.database import get_all_clients
 from utils.styles import CUSTOM_CSS
 from components.pipeline_funnel import render_pipeline_funnel

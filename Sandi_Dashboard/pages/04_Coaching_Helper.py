@@ -8,8 +8,10 @@ if str(_root) not in sys.path:
 
 import streamlit as st
 from components.sidebar import render_sidebar
+from utils.logger import log_activity
 
 render_sidebar()
+log_activity("page_view", page="Coaching Helper")
 from utils.styles import CUSTOM_CSS
 
 st.set_page_config(page_title="Coaching Helper", layout="wide")

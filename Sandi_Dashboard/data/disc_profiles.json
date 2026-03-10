@@ -2,7 +2,7 @@
   "D": {
     "name": "Dominance",
     "traits": "Direct, results-focused, decisive, competitive",
-    "color": "#C53030",
+    "color": "#E74C3C",
     "do": [
       "Get to the point quickly",
       "Focus on results and outcomes",
@@ -24,7 +24,7 @@
   "I": {
     "name": "Influence",
     "traits": "Enthusiastic, social, optimistic, persuasive",
-    "color": "#DD6B20",
+    "color": "#F39C12",
     "do": [
       "Be warm and friendly",
       "Use stories and examples",
@@ -46,7 +46,7 @@
   "S": {
     "name": "Steadiness",
     "traits": "Patient, loyal, supportive, team-oriented",
-    "color": "#38A169",
+    "color": "#27AE60",
     "do": [
       "Build rapport slowly",
       "Provide stability and security",
@@ -68,7 +68,7 @@
   "C": {
     "name": "Conscientiousness",
     "traits": "Analytical, precise, systematic, cautious",
-    "color": "#3182CE",
+    "color": "#3498DB",
     "do": [
       "Provide data and facts",
       "Be thorough and detailed",
