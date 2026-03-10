@@ -16,6 +16,7 @@ dist/
 # Data
 data/*
 !data/.gitkeep
+!data/clients.json
 !data/vector_db/
 !data/vector_db/chroma/
 !data/vector_db/chroma/.gitkeep

@@ -1,0 +1,80 @@
+{
+  "clients": [
+    {
+      "id": "andrea",
+      "name": "Andrea Kelleher",
+      "compartment": "C4",
+      "interest": 4,
+      "last_contact": "2025-01-10",
+      "next_action": "Health check-in",
+      "disc_style": "I",
+      "disc_scores": {"D": 63, "I": 75, "S": 25, "C": 45},
+      "ilwe": {
+        "income": "$150K/year - fund golf trips",
+        "lifestyle": "Work from home",
+        "wealth": "Build legacy",
+        "equity": "Own meaningful business"
+      },
+      "red_flags": ["Health crisis - cancer concern"],
+      "green_flags": ["Engaged", "Husband supportive"],
+      "notes": "KitchenWise best match. Health blocker."
+    },
+    {
+      "id": "jim",
+      "name": "Jim Smith",
+      "compartment": "C3",
+      "interest": 5,
+      "last_contact": "2025-01-08",
+      "next_action": "Franchisor intro",
+      "disc_style": "D",
+      "disc_scores": {"D": 78, "I": 45, "S": 35, "C": 52},
+      "ilwe": {
+        "income": "$200K/year",
+        "lifestyle": "Control schedule",
+        "wealth": "Multi-location business",
+        "equity": "Sellable asset"
+      },
+      "red_flags": [],
+      "green_flags": ["Ready to close", "Spouse supportive", "Has funding"],
+      "notes": "Hot prospect!"
+    },
+    {
+      "id": "lisa",
+      "name": "Lisa Wong",
+      "compartment": "C2",
+      "interest": 4,
+      "last_contact": "2025-01-05",
+      "next_action": "Spouse meeting",
+      "disc_style": "S",
+      "disc_scores": {"D": 35, "I": 55, "S": 72, "C": 48},
+      "ilwe": {
+        "income": "$120K/year",
+        "lifestyle": "Work-life balance",
+        "wealth": "Secure retirement",
+        "equity": "Something stable"
+      },
+      "red_flags": ["Needs spouse buy-in"],
+      "green_flags": ["Follows through", "Thorough research"],
+      "notes": "S-style, needs stability."
+    },
+    {
+      "id": "tom",
+      "name": "Tom Brown",
+      "compartment": "IC",
+      "interest": 3,
+      "last_contact": "2025-01-05",
+      "next_action": "Follow up intro",
+      "disc_style": "C",
+      "disc_scores": {"D": 42, "I": 35, "S": 48, "C": 75},
+      "ilwe": {
+        "income": "$180K/year",
+        "lifestyle": "Remote work",
+        "wealth": "Maximize retirement",
+        "equity": "Proven system"
+      },
+      "red_flags": ["May over-analyze"],
+      "green_flags": ["Financially ready"],
+      "notes": "C-style, needs data. Early stage."
+    }
+  ]
+}
