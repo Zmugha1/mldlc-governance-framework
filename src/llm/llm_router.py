@@ -44,6 +44,7 @@ class ModelConfig:
     weaknesses: List[str] = field(default_factory=list)
     avg_tokens_per_sec: int = 20
     context_window: int = 32768
+    embedding_only: bool = False  # True = use /api/embed only, not /api/generate
 
 
 AVAILABLE_MODELS = {
@@ -72,7 +73,7 @@ AVAILABLE_MODELS = {
     "llava:13b": ModelConfig("llava:13b", "13B", "13B", 16, TaskComplexity.COMPLEX, False,
         ["vision", "image_analysis", "multimodal", "document_ocr"], ["text_only_tasks"], 15, 8192),
     "nomic-embed-text": ModelConfig("nomic-embed-text", "N/A", "N/A", 2, TaskComplexity.SIMPLE, False,
-        ["embeddings", "semantic_search", "rag", "fast"], ["not_for_generation"], 100, 8192),
+        ["embeddings", "semantic_search", "rag", "fast"], ["not_for_generation"], 100, 8192, embedding_only=True),
 }
 
 HARDWARE_PROFILES = {
@@ -180,8 +181,12 @@ class LLMRouter:
         return moe[0][0] if moe else None
 
     def select_model(self, prompt: str, context: Optional[str] = None, preferred_model: Optional[str] = None, prefer_moe: bool = True) -> str:
-        if preferred_model and preferred_model in self.available_models and self.available_models[preferred_model].vram_gb <= self.system_vram:
-            return preferred_model
+        # Only accept preferred_model if it's a generation model (not embedding-only)
+        if preferred_model and preferred_model in self.available_models:
+            cfg = self.available_models[preferred_model]
+            if not getattr(cfg, "embedding_only", False) and "embed" not in preferred_model.lower():
+                if cfg.vram_gb <= self.system_vram:
+                    return preferred_model
         try:
             result = self.analyzer.analyze(prompt, context)
             if isinstance(result, tuple) and len(result) == 2:
@@ -195,9 +200,23 @@ class LLMRouter:
             moe = self.get_moe_recommendation(complexity)
             if moe:
                 return moe
-        cands = [(n, c) for n, c in self.available_models.items() if c.complexity == complexity and c.vram_gb <= self.system_vram]
+        # Exclude embedding-only models - they use /api/embed, not /api/generate
+        def is_generation_model(name: str, config: ModelConfig) -> bool:
+            if getattr(config, "embedding_only", False):
+                return False
+            return "embed" not in name.lower()
+        cands = [(n, c) for n, c in self.available_models.items()
+                 if c.complexity == complexity and c.vram_gb <= self.system_vram and is_generation_model(n, c)]
         cands.sort(key=lambda x: x[1].avg_tokens_per_sec, reverse=True)
-        return cands[0][0] if cands else next(iter(self.available_models.keys()), "phi3:mini")
+        if cands:
+            return cands[0][0]
+        # Fallback: prefer phi3:mini, then any generation model that fits VRAM
+        fallback = [(n, c) for n, c in self.available_models.items() if c.vram_gb <= self.system_vram and is_generation_model(n, c)]
+        if fallback:
+            # Prefer phi3:mini if available
+            phi = next((n for n, c in fallback if "phi3" in n.lower()), None)
+            return phi or fallback[0][0]
+        return "phi3:mini"
 
     def chat(self, messages: List[Dict[str, str]], preferred_model: Optional[str] = None, **kwargs) -> str:
         last = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
