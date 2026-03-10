@@ -210,26 +210,33 @@ class LLMRouter:
             complexity = TaskComplexity.MEDIUM
         if prefer_moe and complexity == TaskComplexity.COMPLEX:
             moe = self.get_moe_recommendation(complexity)
-            if moe:
+            if moe and "embed" not in moe.lower():
                 return moe
         # Exclude embedding-only models - they use /api/embed, not /api/generate
         def is_generation_model(name: str, config: ModelConfig) -> bool:
             if getattr(config, "embedding_only", False):
                 return False
             return "embed" not in name.lower()
+
+        def _safe_return(model: str) -> str:
+            """Never return embedding models."""
+            if model and "embed" not in model.lower():
+                return model
+            # Fallback to first available generation model or phi3:mini
+            gen = [n for n in self.available_models if "embed" not in n.lower()]
+            return gen[0] if gen else "phi3:mini"
+
         cands = [(n, c) for n, c in self.available_models.items()
                  if c.complexity == complexity and c.vram_gb <= self.system_vram and is_generation_model(n, c)]
         cands.sort(key=lambda x: x[1].avg_tokens_per_sec, reverse=True)
         if cands:
-            return cands[0][0]
+            return _safe_return(cands[0][0])
         # Fallback: prefer phi3:mini, then any generation model that fits VRAM
         fallback = [(n, c) for n, c in self.available_models.items() if c.vram_gb <= self.system_vram and is_generation_model(n, c)]
         if fallback:
-            # Prefer phi3:mini if available
             phi = next((n for n, c in fallback if "phi3" in n.lower()), None)
             chosen = phi or fallback[0][0]
-            if "embed" not in chosen.lower():
-                return chosen
+            return _safe_return(chosen)
         return "phi3:mini"
 
     def chat(self, messages: List[Dict[str, str]], preferred_model: Optional[str] = None, **kwargs) -> str:
