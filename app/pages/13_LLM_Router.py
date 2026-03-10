@@ -83,13 +83,17 @@ try:
             st.divider()
 
     st.subheader("Model Configurations")
-    moe_models = [n for n, c in AVAILABLE_MODELS.items() if c.is_moe]
+    # Use router.available_models (excludes embedding-only models)
+    display_models = info.get("available_models", [])
+    moe_models = [n for n in display_models if router.available_models.get(n) and getattr(router.available_models[n], "is_moe", False)]
     st.markdown(f"**MoE models:** {', '.join(moe_models) if moe_models else 'None'}")
 
     with st.expander("All models"):
-        for name, config in list(AVAILABLE_MODELS.items())[:12]:
-            moe_tag = " (MoE)" if config.is_moe else ""
-            st.write(f"- **{name}**{moe_tag}: {config.total_params} total, {config.active_params} active, {config.vram_gb}GB VRAM")
+        for name in display_models[:12]:
+            config = router.available_models.get(name)
+            if config:
+                moe_tag = " (MoE)" if config.is_moe else ""
+                st.write(f"- **{name}**{moe_tag}: {config.total_params} total, {config.active_params} active, {config.vram_gb}GB VRAM")
 
     st.subheader("Test Router")
     test_prompt = st.text_input("Enter prompt:", placeholder="e.g. Predict if Acme customer CUST-1001 will churn")
