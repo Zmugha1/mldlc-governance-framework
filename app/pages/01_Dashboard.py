@@ -1,9 +1,16 @@
-"""Sandy's Executive Dashboard - Morning briefing and pipeline health."""
-import streamlit as st
-import pandas as pd
-from datetime import datetime, timedelta
+"""Sandy's Dashboard - Morning briefing."""
+import sys
+from pathlib import Path
+_root = Path(__file__).resolve().parent.parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
 
-st.set_page_config(page_title="Sandy Bot - Executive Dashboard", layout="wide")
+import streamlit as st
+from datetime import datetime
+from app.components.sidebar import render_sidebar
+
+st.set_page_config(page_title="Sandy Bot - Dashboard", layout="wide")
+render_sidebar()
 
 st.title("Good Morning, Sandy!")
 st.subheader(f"{datetime.now().strftime('%A, %B %d, %Y')}")
@@ -33,7 +40,6 @@ with col2:
         "C4": {"count": 2, "target": 1},
         "C5": {"count": 5, "target": None},
     }
-
     for stage, data in pipeline.items():
         target_str = f"/{data['target']}" if data["target"] else ""
         status = "OK" if data["target"] and data["count"] >= data["target"] else "!"
@@ -45,13 +51,12 @@ hot_prospects = [
     {"name": "Mike Chen", "compartment": "C3", "interest": 5, "notes": "Ready to move forward"},
     {"name": "Lisa Wong", "compartment": "C2", "interest": 4, "notes": "Spouse meeting scheduled"},
 ]
-
 for prospect in hot_prospects:
     with st.container():
         cols = st.columns([2, 1, 1, 3])
         cols[0].markdown(f"**{prospect['name']}**")
         cols[1].markdown(f"{prospect['compartment']}")
-        cols[2].markdown(f"{'*' * prospect['interest']}")
+        cols[2].markdown(f"{'★' * prospect['interest']}")
         cols[3].markdown(f"_{prospect['notes']}_")
 
 # Alerts

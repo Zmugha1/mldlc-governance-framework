@@ -1,1 +1,1 @@
-"""MLDLC Streamlit components"""
+"""App components."""
