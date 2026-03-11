@@ -19,15 +19,43 @@ DISC_COLORS = {
 }
 
 COMPARTMENT_COLORS = {
-    "IC": "#5DADE2",
-    "C1": "#F8C471",
-    "C1.1": "#EB984E",
-    "C2": "#48C9B0",
-    "C3": "#AF7AC5",
-    "C4": "#EC7063",
-    "C5": "#52BE80",
-    "CLOSED": "#85929E",
+    "IC": {"bar": "#5DADE2", "bg": "#EBF5FB", "border": "#5DADE2"},
+    "C1": {"bar": "#F8C471", "bg": "#FEF9E7", "border": "#F8C471"},
+    "C1.1": {"bar": "#EB984E", "bg": "#FEF5E7", "border": "#EB984E"},
+    "C2": {"bar": "#48C9B0", "bg": "#E8F8F5", "border": "#48C9B0"},
+    "C3": {"bar": "#AF7AC5", "bg": "#F5EEF8", "border": "#AF7AC5"},
+    "C4": {"bar": "#EC7063", "bg": "#FDEDEC", "border": "#EC7063"},
+    "C5": {"bar": "#52BE80", "bg": "#E8F8F5", "border": "#52BE80"},
+    "CLOSED": {"bar": "#85929E", "bg": "#F4F6F6", "border": "#85929E"},
 }
+
+COMPARTMENT_NAMES = {
+    "IC": {"short": "Discovery", "full": "Discovery - First Meeting", "desc": "Getting to know each other"},
+    "C1": {"short": "Learning", "full": "Learning - Education Phase", "desc": "Learning about franchises"},
+    "C1.1": {"short": "Exploring", "full": "Exploring - Narrowing Options", "desc": "Exploring specific options"},
+    "C2": {"short": "Researching", "full": "Researching - Brand Validation", "desc": "Researching brands"},
+    "C3": {"short": "Deciding", "full": "Deciding - Serious Consideration", "desc": "Close to decision"},
+    "C4": {"short": "Committing", "full": "Committing - Ready to Sign", "desc": "Ready to commit"},
+    "C5": {"short": "Launching", "full": "Launching - In Training", "desc": "Signed, starting up"},
+    "CLOSED": {"short": "Complete", "full": "Complete - Deal Done", "desc": "Finished or disqualified"},
+}
+
+
+def get_compartment_name(code, full=False):
+    """Get friendly name for compartment code."""
+    key = "full" if full else "short"
+    return COMPARTMENT_NAMES.get(code, {}).get(key, code or "Unknown")
+
+
+def get_compartment_desc(code):
+    """Get description for compartment code."""
+    return COMPARTMENT_NAMES.get(code, {}).get("desc", "")
+
+
+def apply_custom_styles():
+    """Apply custom CSS to the app."""
+    import streamlit as st
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 CUSTOM_CSS = """
 <style>
