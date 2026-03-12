@@ -1,56 +1,59 @@
-import { Component, type ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
-  moduleName?: string;
+  moduleName: string;
 }
 
 interface State {
   hasError: boolean;
-  error?: Error;
+  error: Error | null;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error(`[ErrorBoundary] Module: ${this.props.moduleName}`, error, info);
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error(`[${this.props.moduleName}] Error:`, error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
-          <div className="max-w-md w-full bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-            <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-              <span className="text-red-600 text-xl font-bold">!</span>
-            </div>
-            <h3 className="text-lg font-semibold text-red-900 mb-2">
-              {this.props.moduleName
-                ? `${this.props.moduleName} encountered an error`
-                : 'Something went wrong'}
-            </h3>
-            <p className="text-sm text-red-700 mb-4">
-              {this.state.error?.message || 'An unexpected error occurred.'}
+        <div className="flex flex-col items-center justify-center h-full p-8">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-red-800 font-semibold text-lg mb-2">
+              {this.props.moduleName} encountered an error
+            </h2>
+            <p className="text-red-600 text-sm mb-4">
+              This module crashed but the rest of the app is working.
             </p>
+            <details className="text-xs text-red-400">
+              <summary className="cursor-pointer">Error details</summary>
+              <pre className="mt-2 whitespace-pre-wrap">
+                {this.state.error?.message}
+              </pre>
+            </details>
             <button
-              onClick={() => this.setState({ hasError: false, error: undefined })}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+              className="mt-4 px-4 py-2 bg-red-600 text-white rounded 
+                         text-sm hover:bg-red-700"
+              onClick={() => this.setState({ hasError: false, error: null })}
             >
-              Try Again
+              Try again
             </button>
           </div>
         </div>
       );
     }
-
     return this.props.children;
   }
 }
+
+export default ErrorBoundary;

@@ -20,7 +20,14 @@ pub fn parse_pdf(path: String) -> Result<String, String> {
             let content_str = String::from_utf8_lossy(&content);
             for cap in re.captures_iter(&content_str) {
                 if let Some(m) = cap.get(1) {
-                    extracted.push(m.as_str().to_string());
+                    let token = m.as_str().trim();
+                    // Filter out PDF operators: single chars, start with /, or non-printable
+                    if token.len() > 1
+                        && !token.starts_with('/')
+                        && token.chars().all(|c| c.is_ascii_graphic() || c == ' ')
+                    {
+                        extracted.push(token.to_string());
+                    }
                 }
             }
         }

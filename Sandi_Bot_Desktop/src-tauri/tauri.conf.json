@@ -48,18 +48,10 @@
                },
     "plugins":  {
                     "shell":  {
-                                  "open":  true,
-                                  "scope":  [
-
-                                            ]
+                                  "open":  true
                               },
                     "fs":  {
-                               "scope":  [
-                                             "$APPDATA/*",
-                                             "$DOCUMENT/*",
-                                             "$DOWNLOAD/*",
-                                             "$HOME/*"
-                                         ]
+                               "requireLiteralLeadingDot":  false
                            },
                     "sql":  {
                                "preload":  ["sqlite:sandi_bot.db"]
