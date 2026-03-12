@@ -28,7 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { sampleClients, coachingScripts, recommendationConfig, knowledgeGraph } from '@/data/sampleClients';
 import { auditLog, generateSourceCitations, generateResponseExplanation, type SourceCitation } from '@/data/auditLog';
-import type { Client } from '@/types';
+import type { ClientProfile } from '@/types';
 import { cn } from '@/lib/utils';
 
 // Chat Message Component with Source Citations
@@ -208,7 +208,7 @@ function ExplanationDialog({
   query: string;
   response: string;
   sources: SourceCitation[];
-  client?: Client;
+  client?: ClientProfile;
   isOpen: boolean; 
   onClose: () => void;
 }) {
@@ -238,7 +238,7 @@ function ExplanationDialog({
 }
 
 // Recommendation Card
-function RecommendationCard({ client }: { client: Client }) {
+function RecommendationCard({ client }: { client: ClientProfile }) {
   const config = recommendationConfig[client.recommendation];
   const Icon = config.icon === 'ArrowUp' ? ArrowUp : config.icon === 'Heart' ? Heart : Pause;
   
@@ -467,7 +467,7 @@ const quickActions = [
 ];
 
 export default function LiveCoachingAssistant() {
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
   const [messages, setMessages] = useState<Array<{
     type: 'user' | 'bot';
     content: string;

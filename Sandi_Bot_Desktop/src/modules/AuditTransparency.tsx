@@ -8,11 +8,8 @@ import {
   Eye,
   CheckCircle2,
   BarChart3,
-  User,
   MessageSquare,
   BookOpen,
-  TrendingUp,
-  Trash2,
   RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -21,127 +18,64 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { auditLog, type AuditLogEntry, type SourceCitation } from '@/data/auditLog';
+import { getAuditLog } from '@/services/auditService';
+import type { AuditEntry } from '@/types';
 import { cn } from '@/lib/utils';
 
-// Source Badge Component
-function SourceBadge({ source }: { source: SourceCitation }) {
-  const colors: Record<string, string> = {
-    clear_framework: 'bg-blue-100 text-blue-800 border-blue-200',
-    client_profile: 'bg-green-100 text-green-800 border-green-200',
-    disc_profile: 'bg-purple-100 text-purple-800 border-purple-200',
-    knowledge_graph: 'bg-orange-100 text-orange-800 border-orange-200',
-    coaching_script: 'bg-pink-100 text-pink-800 border-pink-200',
-    pipeline_data: 'bg-cyan-100 text-cyan-800 border-cyan-200',
-    session_outline: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  };
-  
+// Audit entry card for DB audit_log
+function AuditEntryCard({
+  entry,
+  onClick,
+}: {
+  entry: AuditEntry;
+  onClick: () => void;
+}) {
   return (
-    <div className={cn(
-      "inline-flex items-center gap-2 px-2 py-1 rounded text-xs border",
-      colors[source.sourceType] || 'bg-slate-100 text-slate-800 border-slate-200'
-    )}>
-      <BookOpen className="h-3 w-3" />
-      <span className="font-medium">{source.sourceName}</span>
-      {source.sourceSection && <span className="opacity-75">• {source.sourceSection}</span>}
-      <span className="ml-1 px-1.5 py-0.5 bg-white/50 rounded-full">
-        {source.relevanceScore}%
-      </span>
-    </div>
-  );
-}
-
-// Log Entry Card
-function LogEntryCard({ entry, onClick }: { entry: AuditLogEntry; onClick: () => void }) {
-  const typeColors: Record<string, string> = {
-    chat_query: 'bg-blue-50 border-blue-200',
-    chat_response: 'bg-green-50 border-green-200',
-    source_citation: 'bg-purple-50 border-purple-200',
-    recommendation_generated: 'bg-orange-50 border-orange-200',
-    client_data_accessed: 'bg-cyan-50 border-cyan-200',
-    script_copied: 'bg-pink-50 border-pink-200',
-    score_submitted: 'bg-yellow-50 border-yellow-200',
-    setting_changed: 'bg-slate-50 border-slate-200',
-    export_initiated: 'bg-red-50 border-red-200',
-  };
-  
-  const typeIcons: Record<string, React.ElementType> = {
-    chat_query: MessageSquare,
-    chat_response: MessageSquare,
-    source_citation: BookOpen,
-    recommendation_generated: TrendingUp,
-    client_data_accessed: User,
-    script_copied: FileText,
-    score_submitted: CheckCircle2,
-    setting_changed: Shield,
-    export_initiated: Download,
-  };
-  
-  const Icon = typeIcons[entry.type] || FileText;
-  
-  return (
-    <div 
-      className={cn(
-        "p-4 rounded-xl border cursor-pointer hover:shadow-md transition-all",
-        typeColors[entry.type] || 'bg-slate-50 border-slate-200'
-      )}
+    <div
+      className="p-4 rounded-xl border cursor-pointer hover:shadow-md transition-all bg-slate-50 border-slate-200"
       onClick={onClick}
     >
       <div className="flex items-start gap-3">
-        <div className="h-10 w-10 rounded-lg bg-white/50 flex items-center justify-center shrink-0">
-          <Icon className="h-5 w-5 text-slate-600" />
+        <div className="h-10 w-10 rounded-lg bg-white flex items-center justify-center shrink-0">
+          <Shield className="h-5 w-5 text-slate-600" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className="text-xs capitalize">
-              {entry.type.replace(/_/g, ' ')}
+              {entry.action_type.replace(/_/g, ' ')}
+            </Badge>
+            <Badge variant="secondary" className="text-xs">
+              {entry.model_used || 'deterministic'}
             </Badge>
             <span className="text-xs text-slate-500">
               {new Date(entry.timestamp).toLocaleString()}
             </span>
           </div>
-          
-          {entry.query && (
-            <p className="text-sm font-medium text-slate-900 mt-2 truncate">
-              Q: {entry.query}
-            </p>
+          {entry.client_id && (
+            <p className="text-xs text-slate-500 mt-2">Client ID: {entry.client_id}</p>
           )}
-          
-          {entry.response && (
+          {entry.output_data && (
             <p className="text-sm text-slate-600 mt-1 line-clamp-2">
-              A: {entry.response.substring(0, 100)}...
+              Output: {String(entry.output_data).substring(0, 100)}
+              {String(entry.output_data).length > 100 ? '...' : ''}
             </p>
           )}
-          
-          {entry.clientName && (
-            <p className="text-xs text-slate-500 mt-2">
-              Client: {entry.clientName}
+          {entry.reasoning && (
+            <p className="text-sm text-slate-600 mt-1 line-clamp-2">
+              {entry.reasoning.substring(0, 150)}
+              {entry.reasoning.length > 150 ? '...' : ''}
             </p>
-          )}
-          
-          {entry.sourcesCited && entry.sourcesCited.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {entry.sourcesCited.slice(0, 3).map((source, i) => (
-                <SourceBadge key={i} source={source} />
-              ))}
-              {entry.sourcesCited.length > 3 && (
-                <Badge variant="outline" className="text-xs">
-                  +{entry.sourcesCited.length - 3} more
-                </Badge>
-              )}
-            </div>
           )}
         </div>
-        
         <Eye className="h-4 w-4 text-slate-400 shrink-0" />
       </div>
     </div>
   );
 }
 
-// Log Detail Modal
-function LogDetailModal({ entry, isOpen, onClose }: { 
-  entry: AuditLogEntry | null; 
+// Audit Entry Detail Modal
+function AuditEntryDetailModal({ entry, isOpen, onClose }: { 
+  entry: AuditEntry | null; 
   isOpen: boolean; 
   onClose: () => void;
 }) {
@@ -156,7 +90,7 @@ function LogDetailModal({ entry, isOpen, onClose }: {
             Audit Log Entry
           </DialogTitle>
           <DialogDescription>
-            Entry ID: {entry.id} • Session: {entry.sessionId}
+            Entry ID: {entry.id} • Action: {entry.action_type}
           </DialogDescription>
         </DialogHeader>
         
@@ -169,133 +103,80 @@ function LogDetailModal({ entry, isOpen, onClose }: {
             <CardContent className="space-y-2">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-slate-500">Type</p>
-                  <p className="font-medium capitalize">{entry.type.replace(/_/g, ' ')}</p>
+                  <p className="text-xs text-slate-500">Action Type</p>
+                  <p className="font-medium capitalize">{entry.action_type.replace(/_/g, ' ')}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Timestamp</p>
                   <p className="font-medium">{new Date(entry.timestamp).toLocaleString()}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">User</p>
-                  <p className="font-medium">{entry.userName}</p>
+                  <p className="text-xs text-slate-500">Model Used</p>
+                  <p className="font-medium">{entry.model_used || 'deterministic'}</p>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500">Module</p>
-                  <p className="font-medium">{entry.module}</p>
-                </div>
+                {entry.client_id && (
+                  <div>
+                    <p className="text-xs text-slate-500">Client ID</p>
+                    <p className="font-medium font-mono text-sm">{entry.client_id}</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
           
-          {/* Query & Response */}
-          {entry.query && (
+          {/* Input Data */}
+          {entry.input_data && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm text-slate-500">Query</CardTitle>
+                <CardTitle className="text-sm text-slate-500">Input Data</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-slate-700">{entry.query}</p>
+                <p className="text-slate-700 whitespace-pre-wrap font-mono text-sm">{entry.input_data}</p>
               </CardContent>
             </Card>
           )}
           
-          {entry.response && (
+          {/* Output Data */}
+          {entry.output_data && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm text-slate-500">Response</CardTitle>
+                <CardTitle className="text-sm text-slate-500">Output</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-slate-700 whitespace-pre-wrap">{entry.response}</p>
+                <p className="text-slate-700 whitespace-pre-wrap">{entry.output_data}</p>
               </CardContent>
             </Card>
           )}
           
-          {/* Sources Cited */}
-          {entry.sourcesCited && entry.sourcesCited.length > 0 && (
+          {/* Reasoning */}
+          {entry.reasoning && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm text-slate-500 flex items-center gap-2">
-                  <BookOpen className="h-4 w-4" />
-                  Sources Cited ({entry.sourcesCited.length})
-                </CardTitle>
+                <CardTitle className="text-sm text-slate-500">Reasoning</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {entry.sourcesCited.map((source, i) => (
-                  <div key={i} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                    <div className="flex items-center gap-2 mb-2">
-                      <SourceBadge source={source} />
-                    </div>
-                    {source.excerpt && (
-                      <p className="text-sm text-slate-600 italic">"{source.excerpt}"</p>
-                    )}
-                  </div>
-                ))}
+              <CardContent>
+                <p className="text-slate-700 whitespace-pre-wrap">{entry.reasoning}</p>
               </CardContent>
             </Card>
           )}
-          
-          {/* Recommendation Details */}
-          {entry.recommendation && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm text-slate-500">AI Recommendation</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Badge className={cn(
-                    entry.recommendation === 'PUSH' ? 'bg-green-500' :
-                    entry.recommendation === 'NURTURE' ? 'bg-yellow-500' :
-                    'bg-slate-500'
-                  )}>
-                    {entry.recommendation}
-                  </Badge>
-                  <span className="text-sm text-slate-600">
-                    Confidence: {entry.confidenceScore}%
-                  </span>
-                </div>
-                {entry.reasoningFactors && (
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Reasoning Factors:</p>
-                    <ul className="space-y-1">
-                      {entry.reasoningFactors.map((factor, i) => (
-                        <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
-                          {factor}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-          
-          {/* Technical Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm text-slate-500">Technical Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p><span className="text-slate-500">Entry ID:</span> {entry.id}</p>
-              <p><span className="text-slate-500">Session ID:</span> {entry.sessionId}</p>
-              {entry.ipAddress && <p><span className="text-slate-500">IP Address:</span> {entry.ipAddress}</p>}
-              {entry.userAgent && <p><span className="text-slate-500">User Agent:</span> {entry.userAgent}</p>}
-            </CardContent>
-          </Card>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-// Transparency Metrics Component
-function TransparencyMetrics() {
-  const [report, setReport] = useState(auditLog.getTransparencyReport());
-  
-  useEffect(() => {
-    setReport(auditLog.getTransparencyReport());
-  }, []);
+// Transparency Metrics Component (computed from audit entries)
+function TransparencyMetrics({ entries }: { entries: AuditEntry[] }) {
+  const totalEntries = entries.length;
+  const byActionType = entries.reduce<Record<string, number>>((acc, e) => {
+    acc[e.action_type] = (acc[e.action_type] || 0) + 1;
+    return acc;
+  }, {});
+  const byModel = entries.reduce<Record<string, number>>((acc, e) => {
+    const m = e.model_used || 'deterministic';
+    acc[m] = (acc[m] || 0) + 1;
+    return acc;
+  }, {});
   
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -306,8 +187,8 @@ function TransparencyMetrics() {
               <MessageSquare className="h-5 w-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{report.totalQueries}</p>
-              <p className="text-xs text-slate-500">Total Queries</p>
+              <p className="text-2xl font-bold">{totalEntries}</p>
+              <p className="text-xs text-slate-500">Total Entries</p>
             </div>
           </div>
         </CardContent>
@@ -320,8 +201,8 @@ function TransparencyMetrics() {
               <CheckCircle2 className="h-5 w-5 text-green-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{report.totalResponses}</p>
-              <p className="text-xs text-slate-500">Responses Generated</p>
+              <p className="text-2xl font-bold">{byActionType['RECOMMENDATION'] ?? 0}</p>
+              <p className="text-xs text-slate-500">Recommendations</p>
             </div>
           </div>
         </CardContent>
@@ -334,8 +215,8 @@ function TransparencyMetrics() {
               <BookOpen className="h-5 w-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{report.averageSourcesPerResponse.toFixed(1)}</p>
-              <p className="text-xs text-slate-500">Avg Sources/Response</p>
+              <p className="text-2xl font-bold">{Object.keys(byModel).length}</p>
+              <p className="text-xs text-slate-500">Models Used</p>
             </div>
           </div>
         </CardContent>
@@ -359,32 +240,43 @@ function TransparencyMetrics() {
 }
 
 export default function AuditTransparency() {
-  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null);
+  const [logs, setLogs] = useState<AuditEntry[]>([]);
+  const [selectedLog, setSelectedLog] = useState<AuditEntry | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterType, setFilterType] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [report, setReport] = useState(auditLog.getTransparencyReport());
+  const [loading, setLoading] = useState(true);
+  
+  const refreshLogs = async () => {
+    setLoading(true);
+    try {
+      const entries = await getAuditLog(200);
+      setLogs(entries);
+    } catch (err) {
+      console.error('Failed to load audit log:', err);
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   useEffect(() => {
     refreshLogs();
-  }, [filterType, searchTerm]);
-  
-  const refreshLogs = () => {
-    const filtered = auditLog.getLogs({
-      type: filterType === 'all' ? undefined : filterType as any,
-    }).filter(log => 
-      searchTerm === '' || 
-      log.query?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.response?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.clientName?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setLogs(filtered);
-    setReport(auditLog.getTransparencyReport());
-  };
+  }, []);
   
   const handleExport = () => {
-    const csv = auditLog.exportToCSV();
+    const headers = ['ID', 'Timestamp', 'Action Type', 'Client ID', 'Input Data', 'Output Data', 'Reasoning', 'Model Used'];
+    const rows = logs.map(e => [
+      e.id,
+      e.timestamp,
+      e.action_type,
+      e.client_id ?? '',
+      (e.input_data ?? '').replace(/"/g, '""'),
+      (e.output_data ?? '').replace(/"/g, '""'),
+      (e.reasoning ?? '').replace(/"/g, '""'),
+      e.model_used ?? 'deterministic',
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -392,28 +284,26 @@ export default function AuditTransparency() {
     a.download = `sandi_bot_audit_log_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    
-    auditLog.log({
-      userId: 'sandy',
-      userName: 'Sandy Stahl',
-      type: 'export_initiated',
-      module: 'Audit Transparency',
-      query: 'Export audit log to CSV',
-      response: 'Audit log exported successfully',
-    });
   };
   
-  const handleClear = () => {
-    if (confirm('Are you sure you want to clear all audit logs? This cannot be undone.')) {
-      auditLog.clear();
-      refreshLogs();
-    }
-  };
-  
-  const handleLogClick = (log: AuditLogEntry) => {
+  const handleLogClick = (log: AuditEntry) => {
     setSelectedLog(log);
     setIsModalOpen(true);
   };
+  
+  const filteredLogs = logs.filter(log => {
+    if (filterType !== 'all' && log.action_type !== filterType) return false;
+    if (searchTerm === '') return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      log.action_type?.toLowerCase().includes(term) ||
+      log.client_id?.toLowerCase().includes(term) ||
+      String(log.input_data ?? '').toLowerCase().includes(term) ||
+      String(log.output_data ?? '').toLowerCase().includes(term) ||
+      String(log.reasoning ?? '').toLowerCase().includes(term) ||
+      String(log.model_used ?? '').toLowerCase().includes(term)
+    );
+  });
   
   return (
     <div className="space-y-6">
@@ -456,27 +346,17 @@ export default function AuditTransparency() {
                     className="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="all">All Types</option>
-                    <option value="chat_query">Chat Queries</option>
-                    <option value="chat_response">Chat Responses</option>
-                    <option value="source_citation">Source Citations</option>
-                    <option value="recommendation_generated">Recommendations</option>
-                    <option value="client_data_accessed">Client Data</option>
-                    <option value="script_copied">Script Copies</option>
-                    <option value="score_submitted">Scores</option>
+                    <option value="RECOMMENDATION">Recommendations</option>
                   </select>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={refreshLogs}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                  <Button variant="outline" onClick={refreshLogs} disabled={loading}>
+                    <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
                     Refresh
                   </Button>
-                  <Button variant="outline" onClick={handleExport}>
+                  <Button variant="outline" onClick={handleExport} disabled={logs.length === 0}>
                     <Download className="h-4 w-4 mr-2" />
                     Export
-                  </Button>
-                  <Button variant="outline" className="text-red-600" onClick={handleClear}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Clear
                   </Button>
                 </div>
               </div>
@@ -486,7 +366,7 @@ export default function AuditTransparency() {
           {/* Log Count */}
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">
-              Showing {logs.length} log entries
+              Showing {filteredLogs.length} log entries
             </p>
             <Badge variant="outline">
               <Shield className="h-3 w-3 mr-1" />
@@ -496,80 +376,100 @@ export default function AuditTransparency() {
           
           {/* Log List */}
           <div className="space-y-3">
-            {logs.map((log) => (
-              <LogEntryCard 
-                key={log.id} 
-                entry={log} 
-                onClick={() => handleLogClick(log)} 
-              />
-            ))}
-            {logs.length === 0 && (
+            {loading ? (
               <div className="text-center py-12 text-slate-500">
-                <Shield className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>No audit logs found.</p>
-                <p className="text-sm">Logs will appear as you use the coaching assistant.</p>
+                <RefreshCw className="h-12 w-12 mx-auto mb-3 animate-spin opacity-50" />
+                <p>Loading audit log...</p>
               </div>
+            ) : (
+              <>
+                {filteredLogs.map((log) => (
+                  <AuditEntryCard 
+                    key={log.id} 
+                    entry={log} 
+                    onClick={() => handleLogClick(log)} 
+                  />
+                ))}
+                {filteredLogs.length === 0 && (
+                  <div className="text-center py-12 text-slate-500">
+                    <Shield className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p>No audit entries yet.</p>
+                    <p className="text-sm">Actions will appear here as you use the system.</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </TabsContent>
         
         {/* Metrics Tab */}
         <TabsContent value="metrics" className="space-y-6">
-          <TransparencyMetrics />
+          <TransparencyMetrics entries={logs} />
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Query Categories */}
+            {/* Action Type Distribution */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Query Categories</CardTitle>
+                <CardTitle className="text-lg">Action Types</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {report.queryCategories.map((cat, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <span className="text-sm w-32">{cat.category}</span>
+                  {Object.entries(
+                    logs.reduce<Record<string, number>>((acc, e) => {
+                      acc[e.action_type] = (acc[e.action_type] || 0) + 1;
+                      return acc;
+                    }, {})
+                  ).map(([action, count]) => (
+                    <div key={action} className="flex items-center gap-4">
+                      <span className="text-sm w-32 capitalize">{action.replace(/_/g, ' ')}</span>
                       <div className="flex-1">
                         <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
                           <div 
                             className="h-full bg-blue-500 rounded-full"
-                            style={{ width: `${(cat.count / Math.max(...report.queryCategories.map(c => c.count))) * 100}%` }}
+                            style={{ width: `${logs.length > 0 ? (count / logs.length) * 100 : 0}%` }}
                           />
                         </div>
                       </div>
-                      <span className="text-sm font-medium">{cat.count}</span>
+                      <span className="text-sm font-medium">{count}</span>
                     </div>
                   ))}
+                  {logs.length === 0 && (
+                    <p className="text-sm text-slate-500">No entries yet.</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
             
-            {/* Confidence Distribution */}
+            {/* Model Distribution */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Recommendation Confidence</CardTitle>
+                <CardTitle className="text-lg">Model Usage</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {report.confidenceDistribution.map((dist, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <span className="text-sm w-24">{dist.range}%</span>
+                  {Object.entries(
+                    logs.reduce<Record<string, number>>((acc, e) => {
+                      const m = e.model_used || 'deterministic';
+                      acc[m] = (acc[m] || 0) + 1;
+                      return acc;
+                    }, {})
+                  ).map(([model, count]) => (
+                    <div key={model} className="flex items-center gap-4">
+                      <span className="text-sm w-32">{model}</span>
                       <div className="flex-1">
                         <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
                           <div 
-                            className={cn(
-                              "h-full rounded-full",
-                              dist.range === '90-100' ? 'bg-green-500' :
-                              dist.range === '70-89' ? 'bg-blue-500' :
-                              dist.range === '50-69' ? 'bg-yellow-500' :
-                              'bg-red-500'
-                            )}
-                            style={{ width: `${(dist.count / Math.max(...report.confidenceDistribution.map(d => d.count), 1)) * 100}%` }}
+                            className="h-full bg-purple-500 rounded-full"
+                            style={{ width: `${logs.length > 0 ? (count / logs.length) * 100 : 0}%` }}
                           />
                         </div>
                       </div>
-                      <span className="text-sm font-medium">{dist.count}</span>
+                      <span className="text-sm font-medium">{count}</span>
                     </div>
                   ))}
+                  {logs.length === 0 && (
+                    <p className="text-sm text-slate-500">No entries yet.</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -578,32 +478,6 @@ export default function AuditTransparency() {
         
         {/* Sources Tab */}
         <TabsContent value="sources" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Most Cited Sources</CardTitle>
-              <CardDescription>Sources referenced in AI responses</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {report.mostCitedSources.map((source, i) => (
-                  <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-slate-50">
-                    <span className="text-lg font-bold text-slate-400 w-8">#{i + 1}</span>
-                    <BookOpen className="h-5 w-5 text-blue-500" />
-                    <div className="flex-1">
-                      <p className="font-medium">{source.sourceName}</p>
-                    </div>
-                    <Badge>{source.count} citations</Badge>
-                  </div>
-                ))}
-                {report.mostCitedSources.length === 0 && (
-                  <p className="text-center text-slate-500 py-8">
-                    No sources have been cited yet. Start using the coaching assistant to generate citations.
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Available Knowledge Sources</CardTitle>
@@ -635,8 +509,8 @@ export default function AuditTransparency() {
         </TabsContent>
       </Tabs>
       
-      {/* Log Detail Modal */}
-      <LogDetailModal 
+      {/* Audit Entry Detail Modal */}
+      <AuditEntryDetailModal 
         entry={selectedLog}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

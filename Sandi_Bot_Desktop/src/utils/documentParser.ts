@@ -1,4 +1,5 @@
-import type { Client, DISCProfile, You2Profile, TUMAYProfile, VisionStatement, FathomNote } from '@/types';
+import type { Client } from '@/types';
+import type { DISCProfile, You2Profile, TUMAYProfile, VisionStatement, FathomNote } from '@/types';
 
 export interface ParsedDocument {
   type: 'DISC' | 'You2.0' | 'TUMAY' | 'Vision' | 'Fathom' | 'Unknown';
@@ -433,7 +434,7 @@ export function parseDocument(content: string, filename: string): ParsedDocument
   };
 }
 
-// Generate a client profile from parsed documents
+// Generate flat client data from parsed documents (for SQLite createClient)
 export function generateClientFromDocuments(documents: ParsedDocument[]): Partial<Client> {
   const client: Partial<Client> = {};
 
@@ -443,20 +444,31 @@ export function generateClientFromDocuments(documents: ParsedDocument[]): Partia
     }
 
     switch (doc.type) {
-      case 'DISC':
-        client.disc = doc.data;
+      case 'DISC': {
+        const disc = doc.data as DISCProfile | undefined;
+        client.disc_style = disc?.style;
+        client.disc_scores = disc?.scores ? JSON.stringify(disc.scores) : undefined;
         break;
-      case 'You2.0':
-        client.you2 = doc.data;
+      }
+      case 'You2.0': {
+        const you2 = doc.data as You2Profile | undefined;
+        client.you2_statement = you2?.statement;
+        client.you2_dangers = you2?.dangers?.join('\n');
+        client.you2_opportunities = you2?.opportunities?.join('\n');
         break;
-      case 'TUMAY':
-        client.tumay = doc.data;
+      }
+      case 'TUMAY': {
+        const tumay = doc.data as TUMAYProfile | undefined;
+        client.tumay_data = tumay ? JSON.stringify(tumay) : undefined;
         break;
-      case 'Vision':
-        client.visionStatement = doc.data;
+      }
+      case 'Vision': {
+        const vision = doc.data as VisionStatement | undefined;
+        client.vision_statement = vision?.paragraph;
         break;
+      }
       case 'Fathom':
-        client.fathomNotes = [doc.data];
+        client.notes = Array.isArray(doc.data) ? (doc.data as FathomNote[]).map((n) => n.notes).join('\n') : String(doc.data);
         break;
     }
   }

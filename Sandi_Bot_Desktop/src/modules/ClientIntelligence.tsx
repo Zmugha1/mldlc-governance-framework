@@ -1,13 +1,12 @@
-import { useState, useMemo } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Briefcase, 
-  Mail, 
-  Phone, 
+import { useState, useMemo, useEffect } from 'react';
+import {
+  Search,
+  Filter,
+  Briefcase,
+  Mail,
+  Phone,
   TrendingUp,
   ChevronRight,
-  Star,
   AlertCircle,
   Upload,
   FolderOpen,
@@ -23,17 +22,19 @@ import { Button } from '@/components/ui/button';
 import { FileUploadZone, type UploadedFile } from '@/components/FileUploadZone';
 import { LocalFileWatcher } from '@/components/LocalFileWatcher';
 import { parseDocument, generateClientFromDocuments } from '@/utils/documentParser';
-import { sampleClients, stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
+import { stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
+import { getAllClients, createClient, updateClient, deleteClient } from '@/services/clientService';
+import { clientToDisplay } from '@/services/clientAdapter';
 import { cn } from '@/lib/utils';
 
-// DISC Badge Component
+type DisplayClient = ReturnType<typeof clientToDisplay>;
+
 function DISCBadge({ style }: { style: 'D' | 'I' | 'S' | 'C' }) {
   const color = discColors[style];
   const labels = { D: 'Dominance', I: 'Influence', S: 'Steadiness', C: 'Conscientiousness' };
-  
   return (
-    <div 
+    <div
       className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-white font-bold text-sm"
       style={{ backgroundColor: color }}
     >
@@ -43,12 +44,16 @@ function DISCBadge({ style }: { style: 'D' | 'I' | 'S' | 'C' }) {
   );
 }
 
-// Recommendation Badge
-function RecommendationBadge({ action, confidence }: { action: 'PUSH' | 'NURTURE' | 'PAUSE'; confidence: number }) {
+function RecommendationBadge({
+  action,
+  confidence,
+}: {
+  action: 'PUSH' | 'NURTURE' | 'PAUSE';
+  confidence: number;
+}) {
   const config = recommendationConfig[action];
-  
   return (
-    <div 
+    <div
       className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-semibold text-sm"
       style={{ backgroundColor: config.bgColor, color: config.color }}
     >
@@ -58,15 +63,17 @@ function RecommendationBadge({ action, confidence }: { action: 'PUSH' | 'NURTURE
   );
 }
 
-// Readiness Radar Component
-function ReadinessRadar({ scores }: { scores: { identity: number; commitment: number; financial: number; execution: number } }) {
+function ReadinessRadar({
+  scores,
+}: {
+  scores: { identity: number; commitment: number; financial: number; execution: number };
+}) {
   const dimensions = [
     { key: 'identity', label: 'Identity', score: scores.identity },
     { key: 'commitment', label: 'Commitment', score: scores.commitment },
     { key: 'financial', label: 'Financial', score: scores.financial },
     { key: 'execution', label: 'Execution', score: scores.execution },
   ];
-
   return (
     <div className="space-y-3">
       {dimensions.map((dim) => (
@@ -76,10 +83,10 @@ function ReadinessRadar({ scores }: { scores: { identity: number; commitment: nu
             <span className="text-sm font-bold text-slate-900">{dim.score}/5</span>
           </div>
           <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div 
+            <div
               className={cn(
-                "h-full rounded-full transition-all",
-                dim.score >= 4 ? "bg-green-500" : dim.score >= 3 ? "bg-yellow-500" : "bg-red-500"
+                'h-full rounded-full transition-all',
+                dim.score >= 4 ? 'bg-green-500' : dim.score >= 3 ? 'bg-yellow-500' : 'bg-red-500'
               )}
               style={{ width: `${(dim.score / 5) * 100}%` }}
             />
@@ -90,31 +97,53 @@ function ReadinessRadar({ scores }: { scores: { identity: number; commitment: nu
   );
 }
 
-// Client Detail Modal
-function ClientDetailModal({ client, isOpen, onClose }: { 
-  client: Client | null; 
-  isOpen: boolean; 
+function ClientDetailModal({
+  client,
+  isOpen,
+  onClose,
+  onDelete,
+}: {
+  client: DisplayClient | null;
+  isOpen: boolean;
   onClose: () => void;
+  onDelete?: (id: string) => void;
 }) {
   if (!client) return null;
 
-  const stage = stageConfig[client.stage];
+  const stage = stageConfig[client.stage as keyof typeof stageConfig];
+  if (!stage) return null;
+
+  const handleDelete = () => {
+    if (onDelete && confirm(`Delete ${client.name}?`)) {
+      onDelete(client.id);
+      onClose();
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-4">
-            <div 
-              className="h-12 w-12 rounded-full flex items-center justify-center text-white font-bold"
-              style={{ backgroundColor: discColors[client.disc.style] }}
-            >
-              {client.avatar}
+          <DialogTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div
+                className="h-12 w-12 rounded-full flex items-center justify-center text-white font-bold"
+                style={{ backgroundColor: discColors[client.disc.style] }}
+              >
+                {client.avatar}
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold">{client.name}</h2>
+                <p className="text-sm text-slate-500 font-normal">
+                  {client.company || '—'} • {client.industry}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-2xl font-bold">{client.name}</h2>
-              <p className="text-sm text-slate-500 font-normal">{client.company} • {client.industry}</p>
-            </div>
+            {onDelete && (
+              <Button variant="destructive" size="sm" onClick={handleDelete}>
+                Delete
+              </Button>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -128,7 +157,6 @@ function ClientDetailModal({ client, isOpen, onClose }: {
             <TabsTrigger value="fathom">Fathom</TabsTrigger>
           </TabsList>
 
-          {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
@@ -136,10 +164,7 @@ function ClientDetailModal({ client, isOpen, onClose }: {
                   <CardTitle className="text-sm text-slate-500">Stage</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Badge 
-                    className="text-white"
-                    style={{ backgroundColor: stage.color }}
-                  >
+                  <Badge className="text-white" style={{ backgroundColor: stage.color }}>
                     {stage.label}
                   </Badge>
                   <p className="text-xs text-slate-500 mt-2">{stage.compartment}</p>
@@ -171,11 +196,11 @@ function ClientDetailModal({ client, isOpen, onClose }: {
               <CardContent className="space-y-2">
                 <div className="flex items-center gap-3">
                   <Mail className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{client.email}</span>
+                  <span className="text-sm">{client.email || '—'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Phone className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{client.phone}</span>
+                  <span className="text-sm">{client.phone || '—'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Briefcase className="h-4 w-4 text-slate-400" />
@@ -190,18 +215,24 @@ function ClientDetailModal({ client, isOpen, onClose }: {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {client.notes.map((note, i) => (
-                    <li key={i} className="text-sm text-slate-600 flex items-start gap-2 p-2 rounded bg-slate-50">
-                      <span className="text-blue-500 mt-0.5">•</span>
-                      {note}
-                    </li>
-                  ))}
+                  {client.notes.length === 0 ? (
+                    <li className="text-sm text-slate-500">No notes yet.</li>
+                  ) : (
+                    client.notes.map((note, i) => (
+                      <li
+                        key={i}
+                        className="text-sm text-slate-600 flex items-start gap-2 p-2 rounded bg-slate-50"
+                      >
+                        <span className="text-blue-500 mt-0.5">•</span>
+                        {note}
+                      </li>
+                    ))
+                  )}
                 </ul>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* DISC Tab */}
           <TabsContent value="disc" className="space-y-4">
             <Card>
               <CardHeader>
@@ -211,46 +242,22 @@ function ClientDetailModal({ client, isOpen, onClose }: {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-slate-600">{client.disc.description}</p>
-                
-                <div>
-                  <p className="text-sm font-semibold text-slate-900 mb-2">Key Traits:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {client.disc.traits.map((trait, i) => (
-                      <Badge key={i} variant="secondary">{trait}</Badge>
-                    ))}
-                  </div>
-                </div>
-
-                {client.disc.scores && (
+                {client.disc.traits.length > 0 && (
                   <div>
-                    <p className="text-sm font-semibold text-slate-900 mb-2">Scores:</p>
-                    <div className="grid grid-cols-4 gap-2">
-                      {Object.entries(client.disc.scores).map(([key, score]) => (
-                        <div key={key} className="text-center p-2 rounded-lg bg-slate-50">
-                          <p className="text-lg font-bold" style={{ color: discColors[key as keyof typeof discColors] }}>{score}</p>
-                          <p className="text-xs text-slate-500">{key}</p>
-                        </div>
+                    <p className="text-sm font-semibold text-slate-900 mb-2">Key Traits:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {client.disc.traits.map((trait, i) => (
+                        <Badge key={i} variant="secondary">
+                          {trait}
+                        </Badge>
                       ))}
                     </div>
                   </div>
                 )}
-
-                <div>
-                  <p className="text-sm font-semibold text-slate-900 mb-2">Coaching Tips:</p>
-                  <ul className="space-y-1">
-                    {client.disc.coachingTips.map((tip, i) => (
-                      <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                        <span className="text-blue-500 mt-0.5">•</span>
-                        {tip}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* You 2.0 Tab */}
           <TabsContent value="you2" className="space-y-4">
             <Card>
               <CardHeader>
@@ -258,299 +265,93 @@ function ClientDetailModal({ client, isOpen, onClose }: {
               </CardHeader>
               <CardContent>
                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <p className="text-slate-700 italic">"{client.you2.statement}"</p>
+                  <p className="text-slate-700 italic">
+                    &quot;{client.you2.statement || 'No statement yet.'}&quot;
+                  </p>
                 </div>
               </CardContent>
             </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2 text-red-600">
-                    <AlertCircle className="h-5 w-5" />
-                    Dangers
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {client.you2.dangers.map((danger, i) => (
-                      <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                        <span className="text-red-500 mt-0.5">•</span>
-                        {danger}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2 text-green-600">
+            {(client.you2.dangers.length > 0 || client.you2.opportunities.length > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2 text-red-600">
+                      <AlertCircle className="h-5 w-5" />
+                      Dangers
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {client.you2.dangers.map((danger, i) => (
+                        <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                          <span className="text-red-500 mt-0.5">•</span>
+                          {danger}
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2 text-green-600">
                     <TrendingUp className="h-5 w-5" />
                     Opportunities
                   </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {client.you2.opportunities.map((opp, i) => (
-                      <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                        <span className="text-green-500 mt-0.5">•</span>
-                        {opp}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Skills Profile</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm font-semibold text-green-700 mb-2">Favorite Skills:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {client.you2.skills.favorites.map((skill, i) => (
-                      <Badge key={i} className="bg-green-100 text-green-800">{skill}</Badge>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-orange-700 mb-2">Skills to Delegate:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {client.you2.skills.delegate.map((skill, i) => (
-                      <Badge key={i} className="bg-orange-100 text-orange-800">{skill}</Badge>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-blue-700 mb-2">Interested In:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {client.you2.skills.interested.map((skill, i) => (
-                      <Badge key={i} className="bg-blue-100 text-blue-800">{skill}</Badge>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">ILWE Priorities</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {client.you2.priorities.map((priority, i) => (
-                    <Badge key={i} variant="outline" className="text-sm">
-                      {i + 1}. {priority}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {client.you2.opportunities.map((opp, i) => (
+                        <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                          <span className="text-green-500 mt-0.5">•</span>
+                          {opp}
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </TabsContent>
 
-          {/* TUMAY Tab */}
           <TabsContent value="tumay" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Personal Info</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Age</span>
-                    <span className="font-medium">{client.tumay.age}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Location</span>
-                    <span className="font-medium">{client.tumay.location}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Work Preference</span>
-                    <span className="font-medium">{client.tumay.workPreference}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Timeline</span>
-                    <span className="font-medium">{client.tumay.timeline}</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Financial Profile</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Credit Score</span>
-                    <span className="font-medium">{client.tumay.creditScore}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Net Worth</span>
-                    <span className="font-medium">{client.tumay.netWorth}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Liquid Capital</span>
-                    <span className="font-medium">{client.tumay.liquidCapital}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Spouse/Partner</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-500">Name</span>
-                  <span className="font-medium">{client.tumay.spouse.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-500">Occupation</span>
-                  <span className="font-medium">{client.tumay.spouse.occupation}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-500">Supportive</span>
-                  <Badge className={client.tumay.spouse.supportive ? "bg-green-500" : "bg-red-500"}>
-                    {client.tumay.spouse.supportive ? "Yes" : "No"}
-                  </Badge>
-                </div>
-                <div>
-                  <span className="text-sm text-slate-500">Involvement</span>
-                  <p className="text-sm mt-1">{client.tumay.spouse.involvement}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Industries of Interest</CardTitle>
+                <CardTitle className="text-lg">TUMAY Data</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {client.tumay.industriesOfInterest.map((industry, i) => (
-                    <Badge key={i} variant="secondary">{industry}</Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Why Now?</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600">{client.tumay.whyNow}</p>
+                <p className="text-slate-600">
+                  {client.tumay.industriesOfInterest[0] !== '—'
+                    ? client.tumay.industriesOfInterest.join(', ')
+                    : 'No TUMAY data yet.'}
+                </p>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Vision Statement Tab */}
           <TabsContent value="vision" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Vision Paragraph</CardTitle>
+                <CardTitle className="text-lg">Vision Statement</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-100">
-                  <p className="text-slate-700 italic">"{client.visionStatement.paragraph}"</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Journey Mindset</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600">{client.visionStatement.journeyMindset}</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Success Definition</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600">{client.visionStatement.successDefinition}</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Key Motivators</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="p-3 bg-green-50 rounded-lg">
-                  <p className="text-sm font-semibold text-green-800">Income Goal</p>
-                  <p className="text-green-700">{client.visionStatement.motivators.income}</p>
-                </div>
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <p className="text-sm font-semibold text-blue-800">Financial Freedom</p>
-                  <p className="text-blue-700">{client.visionStatement.motivators.financialFreedom}</p>
-                </div>
-                <div className="p-3 bg-orange-50 rounded-lg">
-                  <p className="text-sm font-semibold text-orange-800">Work/Life Balance</p>
-                  <p className="text-orange-700">{client.visionStatement.motivators.workLife}</p>
-                </div>
+                <p className="text-slate-600">
+                  {client.visionStatement.paragraph || 'No vision statement yet.'}
+                </p>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Fathom Tab */}
           <TabsContent value="fathom" className="space-y-4">
-            {client.fathomNotes.map((note, i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">Call Notes - {note.date}</CardTitle>
-                    <Badge variant="outline">{note.stage}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700 mb-2">Notes:</p>
-                    <p className="text-slate-600">{note.notes}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700 mb-2">Next Steps:</p>
-                    <p className="text-slate-600">{note.nextSteps}</p>
-                  </div>
-
-                  {note.blockers.length > 0 && (
-                    <div>
-                      <p className="text-sm font-semibold text-red-600 mb-2">Blockers:</p>
-                      <ul className="space-y-1">
-                        {note.blockers.map((blocker, j) => (
-                          <li key={j} className="text-sm text-slate-600 flex items-start gap-2">
-                            <AlertCircle className="h-4 w-4 text-red-500 mt-0.5" />
-                            {blocker}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {note.wins.length > 0 && (
-                    <div>
-                      <p className="text-sm font-semibold text-green-600 mb-2">Wins:</p>
-                      <ul className="space-y-1">
-                        {note.wins.map((win, j) => (
-                          <li key={j} className="text-sm text-slate-600 flex items-start gap-2">
-                            <Star className="h-4 w-4 text-green-500 mt-0.5" />
-                            {win}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Fathom Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-600">
+                  {client.fathomNotes.length === 0 ? 'No Fathom notes yet.' : 'See notes in Overview.'}
+                </p>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -564,107 +365,102 @@ export default function ClientIntelligence() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const [clients, setClients] = useState<Client[]>(sampleClients);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [createName, setCreateName] = useState('');
 
-  const handleFilesUploaded = (files: UploadedFile[]) => {
+  const loadClients = () => {
+    getAllClients()
+      .then(setClients)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadClients();
+  }, []);
+
+  const handleFilesUploaded = async (files: UploadedFile[]) => {
     const parsedDocs = files
-      .filter(f => f.status === 'complete' && f.content)
-      .map(f => parseDocument(f.content!, f.name));
-    
+      .filter((f) => f.status === 'complete' && f.content)
+      .map((f) => parseDocument(f.content!, f.name));
+
     if (parsedDocs.length > 0) {
       const newClientData = generateClientFromDocuments(parsedDocs);
-      
-      // Create a new client from the parsed documents
-      const newClient: Client = {
-        id: newClientData.id || Math.random().toString(36).substring(7),
-        name: newClientData.name || 'New Client',
-        company: 'Unknown Company',
-        email: '',
-        phone: '',
-        industry: 'Unknown',
-        stage: 'Initial Contact',
-        avatar: (newClientData.name?.charAt(0) || 'N').toUpperCase(),
-        persona: 'Strategic',
-        confidence: 50,
-        recommendation: 'NURTURE',
-        disc: newClientData.disc || {
-          style: 'I',
-          description: 'DISC profile pending',
-          traits: ['Profile uploaded'],
-          coachingTips: ['Review DISC assessment']
-        },
-        you2: newClientData.you2 || {
-          statement: 'You 2.0 statement pending',
-          dangers: [],
-          opportunities: [],
-          skills: { favorites: [], delegate: [], interested: [] },
-          priorities: ['Income', 'Lifestyle', 'Wealth', 'Equity']
-        },
-        tumay: newClientData.tumay || {
-          age: 0,
-          location: '',
-          workPreference: '',
-          timeline: '',
-          creditScore: 0,
-          netWorth: '',
-          liquidCapital: '',
-          spouse: { name: '', occupation: '', supportive: false, involvement: '' },
-          industriesOfInterest: [],
-          skills: [],
-          notInterestedIn: [],
-          whyNow: ''
-        },
-        visionStatement: newClientData.visionStatement || {
-          paragraph: 'Vision statement pending',
-          journeyMindset: '',
-          successDefinition: '',
-          motivators: { income: '', financialFreedom: '', workLife: '' }
-        },
-        fathomNotes: newClientData.fathomNotes || [],
-        readiness: { identity: 3, commitment: 3, financial: 3, execution: 3 },
-        notes: ['Client created from uploaded documents'],
-        lastContact: new Date().toISOString(),
-        nextAction: 'Review uploaded documents',
-        createdAt: new Date().toISOString(),
-        ilwe: {
-          income: { current: '', target: '', timeline: '' },
-          lifestyle: { desired: '', current: '', gap: '' },
-          wealth: { strategy: '', target: '' },
-          equity: { goal: '', timeline: '' }
-        }
-      };
-
-      setClients(prev => [...prev, newClient]);
-      setUploadMessage(`Successfully imported ${parsedDocs.length} document(s) for ${newClient.name}`);
+      try {
+        await createClient({
+          name: newClientData.name || 'Imported Client',
+          stage: 'Initial Contact',
+          ...newClientData,
+        });
+        setUploadMessage(
+          `Successfully imported ${parsedDocs.length} document(s) for ${newClientData.name || 'Imported Client'}`
+        );
+        loadClients();
+      } catch (err) {
+        setUploadMessage(`Import failed: ${String(err)}`);
+      }
       setTimeout(() => setUploadMessage(null), 5000);
     }
-    
     setShowUploadDialog(false);
   };
 
-  // Filter clients
+  const handleCreateClient = async () => {
+    if (!createName.trim()) return;
+    try {
+      await createClient({ name: createName.trim(), stage: 'Initial Contact' });
+      setCreateName('');
+      setShowCreateDialog(false);
+      loadClients();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteClient = async (id: string) => {
+    try {
+      await deleteClient(id);
+      setSelectedClient(null);
+      setIsModalOpen(false);
+      loadClients();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const filteredClients = useMemo(() => {
-    return clients.filter(client => {
-      const matchesSearch = 
+    return clients.filter((client) => {
+      const matchesSearch =
         client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.industry.toLowerCase().includes(searchTerm.toLowerCase());
-      
+        (client.company?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
       const matchesStage = selectedStage === 'all' || client.stage === selectedStage;
-      
       return matchesSearch && matchesStage;
     });
-  }, [searchTerm, selectedStage]);
+  }, [clients, searchTerm, selectedStage]);
 
   const handleClientClick = (client: Client) => {
     setSelectedClient(client);
     setIsModalOpen(true);
   };
 
+  const displayClients = useMemo(
+    () => filteredClients.map(clientToDisplay),
+    [filteredClients]
+  );
+  const selectedDisplay = selectedClient ? clientToDisplay(selectedClient) : null;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-slate-500">Loading clients...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Upload Message */}
       {uploadMessage && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
           <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
@@ -674,12 +470,11 @@ export default function ClientIntelligence() {
         </div>
       )}
 
-      {/* Filters & Actions */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
-            placeholder="Search clients by name, company, or industry..."
+            placeholder="Search clients by name or company..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
@@ -694,10 +489,19 @@ export default function ClientIntelligence() {
           >
             <option value="all">All Stages</option>
             {Object.keys(stageConfig).map((key) => (
-              <option key={key} value={key}>{stageConfig[key as keyof typeof stageConfig].label}</option>
+              <option key={key} value={key}>
+                {stageConfig[key as keyof typeof stageConfig].label}
+              </option>
             ))}
           </select>
-          <Button 
+          <Button
+            onClick={() => setShowCreateDialog(true)}
+            className="ml-2 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Create Client
+          </Button>
+          <Button
             onClick={() => setShowUploadDialog(true)}
             className="ml-2 bg-[#C4B7D9] hover:bg-[#C4B7D9]/90 text-white"
           >
@@ -707,116 +511,148 @@ export default function ClientIntelligence() {
         </div>
       </div>
 
-      {/* Local File Watcher (Airgapped Mode) */}
-      <LocalFileWatcher 
+      <LocalFileWatcher
         watchPath="./client-files"
         onFilesImported={(files) => {
-          // Convert watched files to uploaded files format
-          const mockUploadedFiles: UploadedFile[] = files.map(f => ({
+          const mockUploadedFiles: UploadedFile[] = files.map((f) => ({
             id: f.id,
             name: f.name,
             type: 'text/plain',
             size: 0,
             content: `[${f.type} Document]`,
             status: 'complete',
-            progress: 100
+            progress: 100,
           }));
           handleFilesUploaded(mockUploadedFiles);
         }}
       />
 
-      {/* Client Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filteredClients.map((client) => (
-          <Card 
-            key={client.id} 
-            className="cursor-pointer hover:shadow-lg transition-shadow group"
-            onClick={() => handleClientClick(client)}
-          >
-            <CardContent className="p-5">
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="h-12 w-12 rounded-full flex items-center justify-center text-white font-bold"
-                    style={{ backgroundColor: discColors[client.disc.style] }}
+        {displayClients.length === 0 ? (
+          <div className="col-span-full p-12 text-center border-2 border-dashed border-slate-200 rounded-xl">
+            <p className="text-slate-500 mb-4">No clients yet.</p>
+            <Button onClick={() => setShowCreateDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="h-4 w-4 mr-2" />
+              Create your first client
+            </Button>
+          </div>
+        ) : (
+          displayClients.map((client) => (
+            <Card
+              key={client.id}
+              className="cursor-pointer hover:shadow-lg transition-shadow group"
+              onClick={() => handleClientClick(filteredClients.find((c) => c.id === client.id)!)}
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="h-12 w-12 rounded-full flex items-center justify-center text-white font-bold"
+                      style={{ backgroundColor: discColors[client.disc.style] }}
+                    >
+                      {client.avatar}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
+                        {client.name}
+                      </h3>
+                      <p className="text-sm text-slate-500">{client.company || '—'}</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <Badge
+                    style={{ backgroundColor: stageConfig[client.stage as keyof typeof stageConfig]?.color }}
+                    className="text-slate-700 text-xs"
                   >
-                    {client.avatar}
+                    {stageConfig[client.stage as keyof typeof stageConfig]?.label ?? client.stage}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    {client.persona}
+                  </Badge>
+                  <DISCBadge style={client.disc.style} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">Readiness</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 rounded-full"
+                          style={{
+                            width: `${(Object.values(client.readiness).reduce((a, b) => a + b, 0) / 20) * 100}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium">
+                        {Math.round(
+                          (Object.values(client.readiness).reduce((a, b) => a + b, 0) / 20) * 100
+                        )}
+                        %
+                      </span>
+                    </div>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
-                      {client.name}
-                    </h3>
-                    <p className="text-sm text-slate-500">{client.company}</p>
-                  </div>
-                </div>
-                <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-blue-500 transition-colors" />
-              </div>
-
-              {/* Tags */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                <Badge 
-                  style={{ backgroundColor: stageConfig[client.stage].color }}
-                  className="text-slate-700 text-xs"
-                >
-                  {stageConfig[client.stage].label}
-                </Badge>
-                <Badge variant="outline" className="text-xs">
-                  {client.persona}
-                </Badge>
-                <DISCBadge style={client.disc.style} />
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Readiness</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-blue-500 rounded-full"
-                        style={{ width: `${(Object.values(client.readiness).reduce((a, b) => a + b, 0) / 20) * 100}%` }}
-                      />
+                    <p className="text-xs text-slate-500 mb-1">Confidence</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={cn(
+                            'h-full rounded-full',
+                            client.confidence >= 80
+                              ? 'bg-green-500'
+                              : client.confidence >= 60
+                                ? 'bg-yellow-500'
+                                : 'bg-red-500'
+                          )}
+                          style={{ width: `${client.confidence}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium">{client.confidence}%</span>
                     </div>
-                    <span className="text-xs font-medium">
-                      {Math.round((Object.values(client.readiness).reduce((a, b) => a + b, 0) / 20) * 100)}%
-                    </span>
                   </div>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Confidence</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className={cn(
-                          "h-full rounded-full",
-                          client.confidence >= 80 ? "bg-green-500" : client.confidence >= 60 ? "bg-yellow-500" : "bg-red-500"
-                        )}
-                        style={{ width: `${client.confidence}%` }}
-                      />
-                    </div>
-                    <span className="text-xs font-medium">{client.confidence}%</span>
-                  </div>
-                </div>
-              </div>
 
-              {/* Recommendation */}
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <RecommendationBadge action={client.recommendation} confidence={client.confidence} />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <RecommendationBadge action={client.recommendation} confidence={client.confidence} />
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
-      {/* Client Detail Modal */}
-      <ClientDetailModal 
-        client={selectedClient}
+      <ClientDetailModal
+        client={selectedDisplay}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        onDelete={handleDeleteClient}
       />
 
-      {/* Upload Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Client</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium block mb-2">Name</label>
+              <Input
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                placeholder="Client name"
+              />
+            </div>
+            <Button onClick={handleCreateClient} disabled={!createName.trim()}>
+              Create
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -825,7 +661,6 @@ export default function ClientIntelligence() {
               Import Client Documents
             </DialogTitle>
           </DialogHeader>
-          
           <div className="space-y-6">
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
               <h4 className="font-medium text-blue-900 mb-2">Supported Document Types</h4>
@@ -852,21 +687,20 @@ export default function ClientIntelligence() {
                 </div>
               </div>
             </div>
-
-            <FileUploadZone 
+            <FileUploadZone
               onFilesUploaded={handleFilesUploaded}
               acceptedTypes={['.pdf', '.txt', '.json']}
               maxFileSize={10}
             />
-
             <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
               <div className="flex items-start gap-3">
                 <FolderOpen className="h-5 w-5 text-amber-600 mt-0.5" />
                 <div>
                   <h4 className="font-medium text-amber-900">Airgapped Mode</h4>
                   <p className="text-sm text-amber-800 mt-1">
-                    For offline deployment, drop files in the <code className="bg-amber-100 px-1 rounded">./client-files</code> folder 
-                    next to the app. The Local File Watcher above will detect and import them automatically.
+                    For offline deployment, drop files in the{' '}
+                    <code className="bg-amber-100 px-1 rounded">./client-files</code> folder next to
+                    the app. The Local File Watcher above will detect and import them automatically.
                   </p>
                 </div>
               </div>

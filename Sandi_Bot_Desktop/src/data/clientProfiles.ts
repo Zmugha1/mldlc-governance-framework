@@ -1,13 +1,13 @@
 // Sandy Stahl Coaching Intelligence - Complete Client Profiles
 // Each client has: DISC, You 2.0, Two May (TUMAY), Vision Statement, Fathom Notes
 
-import type { Client } from '@/types';
+import type { ClientProfile } from '@/types';
 
 // ============================================
 // CLIENT 1: ANDREA KELLEHER (Original Profile)
 // ============================================
 
-export const andreaKelleher: Client = {
+export const andreaKelleher: ClientProfile = {
   id: "C001",
   name: "Andrea Kelleher",
   email: "andrea.kelleher@email.com",
@@ -160,7 +160,7 @@ export const andreaKelleher: Client = {
 // CLIENT 2: ALEX RAIYN (Original Profile)
 // ============================================
 
-export const alexRaiyn: Client = {
+export const alexRaiyn: ClientProfile = {
   id: "C002",
   name: "Alex Raiyn",
   email: "alex.raiyn@email.com",
@@ -303,7 +303,7 @@ export const alexRaiyn: Client = {
 // CLIENT 3: MARCUS CHEN (New Profile)
 // ============================================
 
-export const marcusChen: Client = {
+export const marcusChen: ClientProfile = {
   id: "C003",
   name: "Marcus Chen",
   email: "marcus.chen@email.com",
@@ -446,7 +446,7 @@ export const marcusChen: Client = {
 // CLIENT 4: SARAH WILLIAMS (New Profile)
 // ============================================
 
-export const sarahWilliams: Client = {
+export const sarahWilliams: ClientProfile = {
   id: "C004",
   name: "Sarah Williams",
   email: "sarah.williams@email.com",
@@ -589,7 +589,7 @@ export const sarahWilliams: Client = {
 // CLIENT 5: DAVID PARK (New Profile)
 // ============================================
 
-export const davidPark: Client = {
+export const davidPark: ClientProfile = {
   id: "C005",
   name: "David Park",
   email: "david.park@email.com",
@@ -732,7 +732,7 @@ export const davidPark: Client = {
 // ALL CLIENTS EXPORT
 // ============================================
 
-export const allClients: Client[] = [
+export const allClients: ClientProfile[] = [
   andreaKelleher,
   alexRaiyn,
   marcusChen,

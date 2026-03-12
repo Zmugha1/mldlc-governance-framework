@@ -1,7 +1,7 @@
 // Sandy Stahl Coaching Intelligence - Audit & Logging System
 // Tracks all chat interactions with source citations for transparency
 
-import type { Client } from '@/types';
+import type { ClientProfile } from '@/types';
 
 // ============================================
 // AUDIT LOG ENTRY TYPES
@@ -263,7 +263,7 @@ export const auditLog = new AuditLogStore();
 
 export function generateSourceCitations(
   query: string,
-  client?: Client
+  client?: ClientProfile
 ): SourceCitation[] {
   const citations: SourceCitation[] = [];
   const lowerQuery = query.toLowerCase();
@@ -398,7 +398,7 @@ export function generateResponseExplanation(
   query: string,
   _response: string,
   sources: SourceCitation[],
-  client?: Client
+  client?: ClientProfile
 ): string {
   const parts: string[] = [];
   

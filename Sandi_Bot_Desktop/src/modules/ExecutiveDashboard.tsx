@@ -1,22 +1,22 @@
-import { useMemo } from 'react';
-import { 
-  Users, 
-  TrendingUp, 
-  Target, 
-  Phone, 
-  Clock, 
+import { useState, useEffect, useMemo } from 'react';
+import {
+  Users,
+  TrendingUp,
+  Target,
+  Phone,
+  Clock,
   ArrowUpRight,
   Zap
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -24,10 +24,21 @@ import {
   LineChart,
   Line
 } from 'recharts';
-import { sampleClients, dashboardKPIs, pipelineStats, stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
+import { stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
+import { getDashboardStats, getAllClients } from '@/services/clientService';
+import type { DashboardStats } from '@/types';
+import { clientToDisplay } from '@/services/clientAdapter';
 import { cn } from '@/lib/utils';
 
-// KPI Card Component
+const STAGES = [
+  'Initial Contact',
+  'Seeker Connection',
+  'Seeker Clarification',
+  'Possibilities',
+  'Client Career 2.0',
+  'Business Purchase',
+];
+
 interface KPICardProps {
   title: string;
   value: string | number;
@@ -38,7 +49,15 @@ interface KPICardProps {
   color: string;
 }
 
-function KPICard({ title, value, change, changeType = 'neutral', icon: Icon, description, color }: KPICardProps) {
+function KPICard({
+  title,
+  value,
+  change,
+  changeType = 'neutral',
+  icon: Icon,
+  description,
+  color,
+}: KPICardProps) {
   return (
     <Card className="hover:shadow-lg transition-shadow">
       <CardContent className="p-6">
@@ -47,19 +66,21 @@ function KPICard({ title, value, change, changeType = 'neutral', icon: Icon, des
             <p className="text-sm font-medium text-slate-500">{title}</p>
             <h3 className="text-3xl font-bold text-slate-900 mt-2">{value}</h3>
             {change && (
-              <div className={cn(
-                "flex items-center gap-1 mt-2 text-sm",
-                changeType === 'positive' && "text-green-600",
-                changeType === 'negative' && "text-red-600",
-                changeType === 'neutral' && "text-slate-500"
-              )}>
+              <div
+                className={cn(
+                  'flex items-center gap-1 mt-2 text-sm',
+                  changeType === 'positive' && 'text-green-600',
+                  changeType === 'negative' && 'text-red-600',
+                  changeType === 'neutral' && 'text-slate-500'
+                )}
+              >
                 <ArrowUpRight className="h-4 w-4" />
                 <span>{change}</span>
               </div>
             )}
             <p className="text-xs text-slate-400 mt-2">{description}</p>
           </div>
-          <div 
+          <div
             className="h-12 w-12 rounded-xl flex items-center justify-center"
             style={{ backgroundColor: `${color}20` }}
           >
@@ -71,17 +92,22 @@ function KPICard({ title, value, change, changeType = 'neutral', icon: Icon, des
   );
 }
 
-// Pipeline Stage Card
-function PipelineStageCard({ stage, count, avgDays, conversion }: { 
-  stage: string; 
-  count: number; 
+function PipelineStageCard({
+  stage,
+  count,
+  avgDays,
+  conversion,
+}: {
+  stage: string;
+  count: number;
   avgDays: number;
   conversion: number;
 }) {
   const config = stageConfig[stage as keyof typeof stageConfig];
+  if (!config) return null;
   return (
     <div className="flex items-center gap-4 p-4 rounded-xl bg-white border border-slate-200 hover:shadow-md transition-shadow">
-      <div 
+      <div
         className="h-12 w-12 rounded-xl flex items-center justify-center text-slate-700 font-bold text-sm shrink-0"
         style={{ backgroundColor: config.color }}
       >
@@ -104,29 +130,41 @@ function PipelineStageCard({ stage, count, avgDays, conversion }: {
 }
 
 export default function ExecutiveDashboard() {
-  // Calculate recommendation distribution
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [clients, setClients] = useState<Awaited<ReturnType<typeof getAllClients>>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getDashboardStats(), getAllClients()])
+      .then(([s, c]) => {
+        setStats(s);
+        setClients(c);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
   const recommendationData = useMemo(() => {
-    const counts = { PUSH: 0, NURTURE: 0, PAUSE: 0 };
-    sampleClients.forEach(client => {
-      counts[client.recommendation]++;
-    });
+    if (!stats) return [];
     return [
-      { name: 'PUSH', value: counts.PUSH, color: recommendationConfig.PUSH.color },
-      { name: 'NURTURE', value: counts.NURTURE, color: recommendationConfig.NURTURE.color },
-      { name: 'PAUSE', value: counts.PAUSE, color: recommendationConfig.PAUSE.color },
+      { name: 'PUSH', value: stats.pushCount, color: recommendationConfig.PUSH.color },
+      { name: 'NURTURE', value: stats.nurtureCount, color: recommendationConfig.NURTURE.color },
+      { name: 'PAUSE', value: stats.pauseCount, color: recommendationConfig.PAUSE.color },
     ];
-  }, []);
+  }, [stats]);
 
-  // Pipeline data for chart
   const pipelineChartData = useMemo(() => {
-    return pipelineStats.map(stat => ({
-      stage: stat.stage,
-      count: stat.count,
-      conversion: stat.conversionRate
-    }));
-  }, []);
+    return STAGES.map((stage) => {
+      const count = clients.filter((c) => c.stage === stage).length;
+      const config = stageConfig[stage as keyof typeof stageConfig];
+      return {
+        stage: config?.label ?? stage,
+        count,
+        conversion: count > 0 ? 20 : 0,
+      };
+    });
+  }, [clients]);
 
-  // Weekly activity data (simulated)
   const weeklyData = [
     { day: 'Mon', calls: 2, emails: 4 },
     { day: 'Tue', calls: 3, emails: 3 },
@@ -135,19 +173,19 @@ export default function ExecutiveDashboard() {
     { day: 'Fri', calls: 2, emails: 4 },
   ];
 
-  // Recent high-priority clients
   const priorityClients = useMemo(() => {
-    return sampleClients
-      .filter(c => c.recommendation === 'PUSH')
+    return clients
+      .filter((c) => c.recommendation === 'PUSH')
       .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, 3);
-  }, []);
+      .slice(0, 3)
+      .map(clientToDisplay);
+  }, [clients]);
 
-  // DISC distribution
   const discDistribution = useMemo(() => {
     const counts = { D: 0, I: 0, S: 0, C: 0 };
-    sampleClients.forEach(client => {
-      counts[client.disc.style]++;
+    clients.forEach((client) => {
+      const style = client.disc_style || 'I';
+      if (style in counts) counts[style as keyof typeof counts]++;
     });
     return [
       { name: 'D', value: counts.D, color: discColors.D },
@@ -155,7 +193,30 @@ export default function ExecutiveDashboard() {
       { name: 'S', value: counts.S, color: discColors.S },
       { name: 'C', value: counts.C, color: discColors.C },
     ];
-  }, []);
+  }, [clients]);
+
+  const pipelineStageCards = useMemo(() => {
+    return STAGES.map((stage) => {
+      const count = clients.filter((c) => c.stage === stage).length;
+      return { stage, count, avgDays: 21, conversion: 20 };
+    });
+  }, [clients]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-slate-500">Loading dashboard...</p>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-red-500">Failed to load dashboard</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -163,7 +224,7 @@ export default function ExecutiveDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <KPICard
           title="Total Clients"
-          value={dashboardKPIs.totalClients}
+          value={stats.totalClients}
           change="Active pipeline"
           changeType="positive"
           icon={Users}
@@ -172,7 +233,7 @@ export default function ExecutiveDashboard() {
         />
         <KPICard
           title="Active Conversations"
-          value={dashboardKPIs.activeConversations}
+          value={stats.activeConversations}
           change="100% engagement"
           changeType="positive"
           icon={Phone}
@@ -181,7 +242,7 @@ export default function ExecutiveDashboard() {
         />
         <KPICard
           title="Avg. Readiness Score"
-          value={dashboardKPIs.avgReadiness}
+          value={stats.avgReadinessScore}
           change="Across 4 dimensions"
           changeType="positive"
           icon={Target}
@@ -190,7 +251,7 @@ export default function ExecutiveDashboard() {
         />
         <KPICard
           title="Conversion Rate"
-          value={`${dashboardKPIs.conversionRate}%`}
+          value={`${stats.conversionRate}%`}
           change="IC to Closed"
           changeType="positive"
           icon={TrendingUp}
@@ -199,7 +260,7 @@ export default function ExecutiveDashboard() {
         />
         <KPICard
           title="Calls This Week"
-          value={dashboardKPIs.callsThisWeek}
+          value={stats.callsThisWeek}
           change="On track"
           changeType="positive"
           icon={Phone}
@@ -208,7 +269,7 @@ export default function ExecutiveDashboard() {
         />
         <KPICard
           title="Time Saved"
-          value={`${dashboardKPIs.timeSaved} hrs`}
+          value={`${stats.timeSavedHours} hrs`}
           change="AI-assisted coaching"
           changeType="positive"
           icon={Clock}
@@ -219,7 +280,6 @@ export default function ExecutiveDashboard() {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pipeline Distribution */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Pipeline Distribution</CardTitle>
@@ -228,19 +288,19 @@ export default function ExecutiveDashboard() {
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={pipelineChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                <XAxis 
-                  dataKey="stage" 
+                <XAxis
+                  dataKey="stage"
                   tick={{ fontSize: 10 }}
                   angle={-30}
                   textAnchor="end"
                   height={80}
                 />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'white',
                     border: '1px solid #E2E8F0',
-                    borderRadius: '8px'
+                    borderRadius: '8px',
                   }}
                 />
                 <Bar dataKey="count" fill="#3B82F6" radius={[4, 4, 0, 0]} />
@@ -249,7 +309,6 @@ export default function ExecutiveDashboard() {
           </CardContent>
         </Card>
 
-        {/* Recommendation Distribution */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">AI Recommendations</CardTitle>
@@ -277,7 +336,7 @@ export default function ExecutiveDashboard() {
               <div className="space-y-3 shrink-0">
                 {recommendationData.map((item) => (
                   <div key={item.name} className="flex items-center gap-2">
-                    <div 
+                    <div
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: item.color }}
                     />
@@ -293,7 +352,6 @@ export default function ExecutiveDashboard() {
 
       {/* Weekly Activity & DISC Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Weekly Activity */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Weekly Activity</CardTitle>
@@ -304,24 +362,24 @@ export default function ExecutiveDashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'white',
                     border: '1px solid #E2E8F0',
-                    borderRadius: '8px'
+                    borderRadius: '8px',
                   }}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="calls" 
-                  stroke="#3B82F6" 
+                <Line
+                  type="monotone"
+                  dataKey="calls"
+                  stroke="#3B82F6"
                   strokeWidth={2}
                   dot={{ fill: '#3B82F6', strokeWidth: 2 }}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="emails" 
-                  stroke="#22C55E" 
+                <Line
+                  type="monotone"
+                  dataKey="emails"
+                  stroke="#22C55E"
                   strokeWidth={2}
                   dot={{ fill: '#22C55E', strokeWidth: 2 }}
                 />
@@ -340,7 +398,6 @@ export default function ExecutiveDashboard() {
           </CardContent>
         </Card>
 
-        {/* DISC Distribution */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">DISC Distribution</CardTitle>
@@ -368,7 +425,7 @@ export default function ExecutiveDashboard() {
               <div className="space-y-2 shrink-0">
                 {discDistribution.map((item) => (
                   <div key={item.name} className="flex items-center gap-2">
-                    <div 
+                    <div
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: item.color }}
                     />
@@ -389,39 +446,45 @@ export default function ExecutiveDashboard() {
           <Zap className="h-5 w-5 text-yellow-500" />
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {priorityClients.map((client) => (
-              <div 
-                key={client.id} 
-                className="flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100"
-              >
-                <div 
-                  className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                  style={{ backgroundColor: discColors[client.disc.style] }}
+          {priorityClients.length === 0 ? (
+            <p className="text-slate-500 text-sm">No PUSH clients yet. Create clients and recommendations will appear here.</p>
+          ) : (
+            <div className="space-y-3">
+              {priorityClients.map((client) => (
+                <div
+                  key={client.id}
+                  className="flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100"
                 >
-                  {client.avatar}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-900">{client.name}</p>
-                  <p className="text-sm text-slate-500">{client.tumay.industriesOfInterest[0]} • {client.stage}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <Badge 
-                    style={{ 
-                      backgroundColor: recommendationConfig[client.recommendation].bgColor,
-                      color: recommendationConfig[client.recommendation].color
-                    }}
+                  <div
+                    className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                    style={{ backgroundColor: discColors[client.disc.style] }}
                   >
-                    {client.recommendation}
-                  </Badge>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-green-600">{client.confidence}%</p>
-                    <p className="text-xs text-slate-500">confidence</p>
+                    {client.avatar}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900">{client.name}</p>
+                    <p className="text-sm text-slate-500">
+                      {client.tumay.industriesOfInterest[0]} • {client.stage}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Badge
+                      style={{
+                        backgroundColor: recommendationConfig[client.recommendation].bgColor,
+                        color: recommendationConfig[client.recommendation].color,
+                      }}
+                    >
+                      {client.recommendation}
+                    </Badge>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-green-600">{client.confidence}%</p>
+                      <p className="text-xs text-slate-500">confidence</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -432,13 +495,13 @@ export default function ExecutiveDashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pipelineStats.map((stat) => (
+            {pipelineStageCards.map(({ stage, count, avgDays, conversion }) => (
               <PipelineStageCard
-                key={stat.stage}
-                stage={stat.stage}
-                count={stat.count}
-                avgDays={stat.avgDaysInStage}
-                conversion={stat.conversionRate}
+                key={stage}
+                stage={stage}
+                count={count}
+                avgDays={avgDays}
+                conversion={conversion}
               />
             ))}
           </div>

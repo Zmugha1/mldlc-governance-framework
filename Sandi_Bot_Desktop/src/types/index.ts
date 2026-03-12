@@ -158,10 +158,10 @@ export type PersonaType =
 export type RecommendationAction = 'PUSH' | 'NURTURE' | 'PAUSE';
 
 // ============================================
-// COMPLETE CLIENT PROFILE
+// COMPLETE CLIENT PROFILE (Rich POC/sample data)
 // ============================================
 
-export interface Client {
+export interface ClientProfile {
   id: string;
   name: string;
   email: string;
@@ -357,4 +357,103 @@ export interface SessionOutline {
   before?: string[];
   during: string[];
   after: string[];
+}
+
+// ============================================
+// DATABASE SCHEMA TYPES (Phase 2 - SQLite)
+// ============================================
+
+export interface Client {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  stage: string;
+  disc_style?: string;
+  disc_scores?: string;
+  you2_statement?: string;
+  you2_dangers?: string;
+  you2_opportunities?: string;
+  tumay_data?: string;
+  vision_statement?: string;
+  readiness_identity: number;
+  readiness_commitment: number;
+  readiness_financial: number;
+  readiness_execution: number;
+  confidence: number;
+  recommendation: 'PUSH' | 'NURTURE' | 'PAUSE';
+  outcome?: 'ACTIVE' | 'CONVERTED' | 'STALLED' | 'CLOSED';
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Document {
+  id: string;
+  client_id: string;
+  filename: string;
+  document_type: 'DISC' | 'You2' | 'Fathom' | 'Vision';
+  file_path: string;
+  raw_text?: string;
+  extracted_data?: string;
+  validation_passed: boolean;
+  uploaded_at: string;
+}
+
+export interface Session {
+  id: string;
+  client_id: string;
+  session_date: string;
+  stage_before?: string;
+  stage_after?: string;
+  summary?: string;
+  objections_raised?: string;
+  scripts_used?: string;
+  outcome_signal?: 'PROGRESS' | 'STALL' | 'CONCERN';
+  next_action?: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  timestamp: string;
+  client_id?: string;
+  action_type: string;
+  input_data?: string;
+  output_data?: string;
+  reasoning?: string;
+  model_used?: string;
+}
+
+export interface BackupLog {
+  id: number;
+  timestamp: string;
+  backup_path?: string;
+  success: boolean;
+  error_message?: string;
+}
+
+export interface SearchResult {
+  content: string;
+  content_type: string;
+  stage?: string;
+  client_id?: string;
+}
+
+export interface PipelineData {
+  stage: string;
+  count: number;
+  clients: Client[];
+}
+
+export interface DashboardStats {
+  totalClients: number;
+  activeConversations: number;
+  avgReadinessScore: number;
+  conversionRate: number;
+  callsThisWeek: number;
+  timeSavedHours: number;
+  pushCount: number;
+  nurtureCount: number;
+  pauseCount: number;
 }

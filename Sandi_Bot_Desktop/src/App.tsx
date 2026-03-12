@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -26,6 +26,7 @@ import PostCallAnalysis from '@/modules/PostCallAnalysis';
 import AdminStreamliner from '@/modules/AdminStreamliner';
 import AuditTransparency from '@/modules/AuditTransparency';
 import HowToUse from '@/modules/HowToUse';
+import { seedKnowledgeBase } from '@/services/knowledgeSeed';
 
 type ModuleType = 'dashboard' | 'clients' | 'pipeline' | 'coaching' | 'analysis' | 'admin' | 'audit' | 'help';
 
@@ -214,6 +215,10 @@ function ModuleHeader({
 
 function App() {
   const [activeModule, setActiveModule] = useState<ModuleType>('dashboard');
+
+  useEffect(() => {
+    seedKnowledgeBase().catch(console.error);
+  }, []);
 
   const renderModule = () => {
     switch (activeModule) {

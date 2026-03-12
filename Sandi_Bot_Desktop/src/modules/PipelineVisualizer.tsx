@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
   Clock, 
@@ -17,7 +17,9 @@ import {
   Tooltip, 
   ResponsiveContainer
 } from 'recharts';
-import { sampleClients, pipelineStats, stageConfig, discColors, knowledgeGraph } from '@/data/sampleClients';
+import { stageConfig, discColors, knowledgeGraph } from '@/data/sampleClients';
+import { getAllClients } from '@/services/clientService';
+import { clientToDisplay } from '@/services/clientAdapter';
 import type { Client } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -43,20 +45,23 @@ function PinkFlagAlert({ flags }: { flags: string[] }) {
   );
 }
 
+type DisplayClient = ReturnType<typeof clientToDisplay>;
+
 // Stage Column Component
 function StageColumn({ 
   stage, 
   clients, 
   isActive,
-  onClick
+  onClick,
+  stats
 }: { 
   stage: string; 
-  clients: Client[];
+  clients: DisplayClient[];
   isActive: boolean;
   onClick: () => void;
+  stats?: { avgDaysInStage: number; conversionRate: number };
 }) {
   const config = stageConfig[stage as keyof typeof stageConfig];
-  const stats = pipelineStats.find(s => s.stage === stage);
   const pinkFlags = knowledgeGraph.clientExperience.stages.find(s => s.name === stage)?.pinkFlags || [];
 
   return (
@@ -124,8 +129,8 @@ function StageColumn({
       {/* Stage Stats */}
       <div className="p-3 border-t border-slate-100 rounded-b-xl bg-slate-50/50">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">Avg: {stats?.avgDaysInStage} days</span>
-          <span className="text-slate-500">Convert: {stats?.conversionRate}%</span>
+          <span className="text-slate-500">Avg: {stats?.avgDaysInStage ?? 0} days</span>
+          <span className="text-slate-500">Convert: {stats?.conversionRate ?? 0}%</span>
         </div>
         <PinkFlagAlert flags={pinkFlags} />
       </div>
@@ -133,20 +138,21 @@ function StageColumn({
   );
 }
 
+const STAGES = ['Initial Contact', 'Seeker Connection', 'Seeker Clarification', 'Possibilities', 'Client Career 2.0', 'Business Purchase'];
+
 // Conversion Funnel Component
-function ConversionFunnel() {
+function ConversionFunnel({ clients }: { clients: Client[] }) {
   const funnelData = useMemo(() => {
-    const stages = ['Initial Contact', 'Seeker Connection', 'Seeker Clarification', 'Possibilities', 'Client Career 2.0', 'Business Purchase'];
-    return stages.map(stage => {
-      const count = sampleClients.filter(c => c.stage === stage).length;
+    return STAGES.map(stage => {
+      const count = clients.filter(c => c.stage === stage).length;
       const config = stageConfig[stage as keyof typeof stageConfig];
       return {
-        stage: config.label,
+        stage: config?.label ?? stage,
         count,
-        color: config.color
+        color: config?.color ?? '#94A3B8'
       };
     });
-  }, []);
+  }, [clients]);
 
   return (
     <div className="space-y-3">
@@ -178,24 +184,51 @@ function ConversionFunnel() {
 
 export default function PipelineVisualizer() {
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Group clients by stage
+  useEffect(() => {
+    getAllClients()
+      .then(setClients)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Group clients by stage (display format for StageColumn)
   const clientsByStage = useMemo(() => {
-    const stages = ['Initial Contact', 'Seeker Connection', 'Seeker Clarification', 'Possibilities', 'Client Career 2.0', 'Business Purchase'];
-    return stages.map(stage => ({
+    return STAGES.map(stage => ({
       stage,
-      clients: sampleClients.filter(c => c.stage === stage)
+      clients: clients
+        .filter(c => c.stage === stage)
+        .map(clientToDisplay),
+      stats: { avgDaysInStage: 0, conversionRate: 0 }
     }));
-  }, []);
+  }, [clients]);
 
-  // Pipeline flow data
+  // Pipeline flow data from real clients
   const flowData = useMemo(() => {
-    return pipelineStats.map(stat => ({
-      name: stat.stage,
-      clients: stat.count,
-      conversion: stat.conversionRate
-    }));
-  }, []);
+    return STAGES.map(stage => {
+      const count = clients.filter(c => c.stage === stage).length;
+      const config = stageConfig[stage as keyof typeof stageConfig];
+      return {
+        name: config?.label ?? stage,
+        clients: count,
+        conversion: 0
+      };
+    });
+  }, [clients]);
+
+  const totalClients = clients.length;
+  const convertedCount = clients.filter(c => c.outcome === 'CONVERTED').length;
+  const conversionRate = totalClients > 0 ? Math.round((convertedCount / totalClients) * 100) : 0;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-slate-500">Loading pipeline...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -208,7 +241,7 @@ export default function PipelineVisualizer() {
                 <Users className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{sampleClients.length}</p>
+                <p className="text-2xl font-bold">{totalClients}</p>
                 <p className="text-xs text-slate-500">Total Seekers</p>
               </div>
             </div>
@@ -221,7 +254,7 @@ export default function PipelineVisualizer() {
                 <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">20%</p>
+                <p className="text-2xl font-bold">{conversionRate}%</p>
                 <p className="text-xs text-slate-500">Conversion Rate</p>
               </div>
             </div>
@@ -234,7 +267,7 @@ export default function PipelineVisualizer() {
                 <Clock className="h-5 w-5 text-yellow-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">28</p>
+                <p className="text-2xl font-bold">0</p>
                 <p className="text-xs text-slate-500">Avg. Days/Stage</p>
               </div>
             </div>
@@ -247,7 +280,7 @@ export default function PipelineVisualizer() {
                 <AlertTriangle className="h-5 w-5 text-pink-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">3</p>
+                <p className="text-2xl font-bold">0</p>
                 <p className="text-xs text-slate-500">Pink Flags</p>
               </div>
             </div>
@@ -291,13 +324,14 @@ export default function PipelineVisualizer() {
         </CardHeader>
         <CardContent>
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {clientsByStage.map(({ stage, clients }) => (
+            {clientsByStage.map(({ stage, clients: stageClients, stats }) => (
               <StageColumn
                 key={stage}
                 stage={stage}
-                clients={clients}
+                clients={stageClients}
                 isActive={selectedStage === stage}
                 onClick={() => setSelectedStage(selectedStage === stage ? null : stage)}
+                stats={stats}
               />
             ))}
           </div>
@@ -312,7 +346,7 @@ export default function PipelineVisualizer() {
             <CardTitle className="text-lg">Conversion Funnel</CardTitle>
           </CardHeader>
           <CardContent>
-            <ConversionFunnel />
+            <ConversionFunnel clients={clients} />
           </CardContent>
         </Card>
 
