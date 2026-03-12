@@ -1,30 +1,22 @@
-﻿{
-  "$schema": "https://schema.tauri.app/config/2/capability",
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capabilities for Sandi Bot Desktop",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "shell:allow-open",
+    "sql:default",
+    "sql:allow-execute",
+    "sql:allow-select",
     "fs:default",
+    "fs:allow-read",
+    "fs:allow-write",
+    "fs:allow-read-dir",
+    "fs:allow-copy-file",
+    "fs:allow-create",
+    "fs:allow-mkdir",
     "dialog:default",
-    {
-      "identifier": "fs:allow-read",
-      "allow": [
-        { "path": "$APPDATA/**" },
-        { "path": "$DOCUMENT/**" },
-        { "path": "$DOWNLOAD/**" },
-        { "path": "$HOME/**" }
-      ]
-    },
-    {
-      "identifier": "fs:allow-write",
-      "allow": [
-        { "path": "$APPDATA/**" },
-        { "path": "$DOCUMENT/**" },
-        { "path": "$DOWNLOAD/**" },
-        { "path": "$HOME/**" }
-      ]
-    }
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }
