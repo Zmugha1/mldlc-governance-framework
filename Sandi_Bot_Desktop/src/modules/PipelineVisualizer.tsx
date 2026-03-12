@@ -296,20 +296,25 @@ export default function PipelineVisualizer() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            {knowledgeGraph.clientExperience.stages.map((stage) => (
+            {knowledgeGraph.clientExperience.stages.map((stage) => {
+              const compartmentAbbr = stage.compartment === 'Business Development'
+                ? 'BD'
+                : stage.compartment.split(' ')[1] || stage.compartment.slice(0, 2);
+              return (
               <div key={stage.name} className="p-4 rounded-xl border-2" style={{ borderColor: stage.color, backgroundColor: `${stage.color}40` }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="h-8 w-8 rounded-lg flex items-center justify-center text-sm font-bold" style={{ backgroundColor: stage.color }}>
-                    {stage.compartment.split(' ')[1] || 'BD'}
+                  <div className="h-8 w-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0" style={{ backgroundColor: stage.color }}>
+                    {compartmentAbbr}
                   </div>
-                  <h4 className="font-semibold text-slate-900">{stage.name}</h4>
+                  <h4 className="font-semibold text-slate-900 min-w-0">{stage.name}</h4>
                 </div>
                 <p className="text-sm text-slate-600 mb-2">{stage.objective}</p>
                 <div className="text-xs text-slate-500">
                   <span className="font-medium">Milestone:</span> {stage.milestone}
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </CardContent>
       </Card>
