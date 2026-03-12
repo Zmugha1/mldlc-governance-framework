@@ -1,11 +1,11 @@
-﻿use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
 #[tauri::command]
 pub fn watch_folder(path: String) -> Result<String, String> {
-    let (tx, rx) = channel();
+    let (tx, _rx) = channel();
     let mut watcher = RecommendedWatcher::new(
         move |res| {
             let _ = tx.send(res);

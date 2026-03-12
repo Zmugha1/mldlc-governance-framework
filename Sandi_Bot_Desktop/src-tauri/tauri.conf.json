@@ -60,6 +60,9 @@
                                              "$DOWNLOAD/*",
                                              "$HOME/*"
                                          ]
+                           },
+                    "sql":  {
+                               "preload":  ["sqlite:sandi_bot.db"]
                            }
                 }
 }

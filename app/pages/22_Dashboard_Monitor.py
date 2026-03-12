@@ -20,6 +20,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SANDY_DB_CANDIDATES = [
     _REPO_ROOT / "Sandi_Dashboard_Complete" / "data" / "sandi_dashboard.db",
     _REPO_ROOT / "Sandi_Dashboard" / "data" / "sandi_dashboard.db",
+    _REPO_ROOT / "SandiStahl_Bot" / "app" / "data" / "sandy_dashboard.db",
     _REPO_ROOT / "SandiStahl_Bot" / "app" / "data" / "sandi_dashboard.db",
 ]
 
@@ -32,11 +33,7 @@ def get_sandy_db_connection():
     return None
 
 
-st.set_page_config(
-    page_title="Dashboard Monitor | MLDLC",
-    page_icon="📊",
-    layout="wide"
-)
+# set_page_config already called in main app - do not call again
 
 # Page Header
 st.title("📊 Sandy's Dashboard Monitor")

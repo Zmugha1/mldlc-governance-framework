@@ -60,6 +60,7 @@ st.sidebar.markdown("---")
 page = st.sidebar.radio("Navigate", [
     "📊 Dashboard", "👥 Clients", "📋 Client Profile",
     "🎯 Pipeline", "💡 Coaching Helper", "📝 Log Call",
+    "📊 Dashboard Monitor",
 ])
 
 # Load sample data
@@ -120,17 +121,16 @@ if page == "📊 Dashboard":
 
     with col_right:
         st.markdown('<p class="section-title">📊 Pipeline Overview</p>', unsafe_allow_html=True)
-        import plotly.graph_objects as go
-        fig = go.Figure(
-            go.Funnel(
-                y=["IC", "C1", "C2", "C3", "C4", "C5"],
-                x=[1, 0, 1, 1, 1, 0],
-                textinfo="value",
-                marker={"color": ["#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#6B7280"]},
-            )
-        )
-        fig.update_layout(height=250, margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        stages = ["IC", "C1", "C2", "C3", "C4", "C5"]
+        counts = [sum(1 for c in data.get("clients", []) if c.get("compartment") == s) for s in stages]
+        colors = ["#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#6B7280"]
+        max_c = max(counts) or 1
+        pipeline_html = "<div style='background:white;padding:12px;border-radius:8px;'>"
+        for i, (s, c) in enumerate(zip(stages, counts)):
+            w = max((c / max_c) * 100, 5)
+            pipeline_html += f"""<div style="margin:6px 0;"><div style="display:flex;justify-content:space-between;font-size:12px;"><span>{s}</span><span>{c}</span></div><div style="background:#E5E7EB;height:20px;border-radius:6px;overflow:hidden;"><div style="background:{colors[i]};width:{w}%;height:100%;border-radius:6px;display:flex;align-items:center;padding-left:8px;"><span style="color:white;font-weight:600;font-size:11px;">{c}</span></div></div></div>"""
+        pipeline_html += "</div>"
+        st.markdown(pipeline_html, unsafe_allow_html=True)
 
         st.markdown('<p class="section-title">🔥 Hot Prospects</p>', unsafe_allow_html=True)
         prospects = [
@@ -242,18 +242,14 @@ elif page == "📋 Client Profile":
         with tab_disc:
             col_chart, col_tips = st.columns([1, 1])
             with col_chart:
-                import plotly.graph_objects as go
                 scores = client.get("disc_scores", {"D": 0, "I": 0, "S": 0, "C": 0})
-                fig = go.Figure(
-                    data=go.Scatterpolar(
-                        r=[scores.get("D", 0), scores.get("I", 0), scores.get("S", 0), scores.get("C", 0)],
-                        theta=["D (Dominance)", "I (Influence)", "S (Steadiness)", "C (Compliance)"],
-                        fill="toself",
-                        marker_color="#6B46C1",
-                    )
-                )
-                fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), showlegend=False, height=300)
-                st.plotly_chart(fig, use_container_width=True)
+                d, i, s, c = scores.get("D", 0), scores.get("I", 0), scores.get("S", 0), scores.get("C", 0)
+                max_val = max(d, i, s, c) or 1
+                st.markdown("**DISC Scores**")
+                for label, val in [("D (Dominance)", d), ("I (Influence)", i), ("S (Steadiness)", s), ("C (Compliance)", c)]:
+                    w = (val / max_val) * 100 if max_val else 0
+                    w = max(w, 5)
+                    st.markdown(f"""<div style="margin:8px 0;"><div style="display:flex;justify-content:space-between;font-size:13px;"><span>{label}</span><span>{val}</span></div><div style="background:#E5E7EB;height:24px;border-radius:6px;overflow:hidden;"><div style="background:#6B46C1;width:{w}%;height:100%;border-radius:6px;"></div></div></div>""", unsafe_allow_html=True)
             with col_tips:
                 st.markdown(f"### 💡 Coaching Tips for {client['disc_style']}-Style")
                 tips = {
@@ -294,17 +290,13 @@ elif page == "📋 Client Profile":
 elif page == "🎯 Pipeline":
     st.title("🎯 Pipeline Visualizer")
 
-    import plotly.graph_objects as go
-
-    fig = go.Figure(
-        go.Funnel(
-            y=["IC", "C1", "C2", "C3", "C4", "C5"],
-            x=[1, 0, 1, 1, 1, 0],
-            marker={"color": ["#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#6B7280"]},
-        )
-    )
-    fig.update_layout(title="Client Pipeline")
-    st.plotly_chart(fig, use_container_width=True)
+    stages = ["IC", "C1", "C2", "C3", "C4", "C5"]
+    counts = [sum(1 for c in data.get("clients", []) if c.get("compartment") == s) for s in stages]
+    colors = ["#3B82F6", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#6B7280"]
+    max_c = max(counts) or 1
+    for i, (s, c) in enumerate(zip(stages, counts)):
+        w = max((c / max_c) * 100, 5)
+        st.markdown(f"""<div style="margin:10px 0;"><div style="display:flex;justify-content:space-between;"><strong>{s}</strong><span>{c} clients</span></div><div style="background:#E5E7EB;height:28px;border-radius:8px;overflow:hidden;"><div style="background:{colors[i]};width:{w}%;height:100%;border-radius:8px;display:flex;align-items:center;padding-left:12px;"><span style="color:white;font-weight:600;">{c}</span></div></div></div>""", unsafe_allow_html=True)
 
 # === COACHING HELPER ===
 elif page == "💡 Coaching Helper":
@@ -331,6 +323,10 @@ elif page == "💡 Coaching Helper":
                 st.markdown("**⚠️ Watch For:**")
                 for flag in client["red_flags"]:
                     st.warning(flag)
+
+# === DASHBOARD MONITOR ===
+elif page == "📊 Dashboard Monitor":
+    st.switch_page("pages/22_Dashboard_Monitor.py")
 
 # === LOG CALL ===
 elif page == "📝 Log Call":

@@ -8,6 +8,15 @@ alwaysApply: false
 
 Reference: [PRODUCTION_ROADMAP.md](../../PRODUCTION_ROADMAP.md)
 
+## Production Repo — REQUIRED
+
+**All production code and files must be committed and pushed directly to:**
+https://github.com/Zmugha1/Sandi_Bot_Desktop
+
+- After any change to Sandi_Bot_Desktop code, commit and push to that repo.
+- If working inside mldlc-governance-framework, use: `git subtree push --prefix=Sandi_Bot_Desktop https://github.com/Zmugha1/Sandi_Bot_Desktop.git main`
+- Or work in a dedicated clone: `git clone https://github.com/Zmugha1/Sandi_Bot_Desktop.git`
+
 ## Critical Rules (Never Violate)
 
 1. **Never modify the POC repo** — `Sandi_Bot_Coaching_Intelligence` is frozen (live on Netlify).
