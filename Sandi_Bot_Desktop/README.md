@@ -1,0 +1,73 @@
+# Sandi Bot Desktop — Coaching Intelligence
+
+> Airgapped desktop application for franchise coach Sandy Stahl.  
+> **Production roadmap:** See [../PRODUCTION_ROADMAP.md](../PRODUCTION_ROADMAP.md)
+
+## Tech Stack
+
+- **Tauri v2** — Native desktop shell (~5MB installer)
+- **React 19 + TypeScript + Vite 5**
+- **Tailwind CSS 3.4** — Do NOT upgrade to v4
+- **SQLite** — Local persistence via rusqlite
+- **shadcn/ui + Radix UI** — Component library
+
+## Prerequisites
+
+1. **Node.js 18+** and npm
+2. **Rust** — Install from [rustup.rs](https://rustup.rs/)
+3. **Platform deps** — See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+
+## Quick Start
+
+```bash
+cd Sandi_Bot_Desktop
+npm install
+npm run tauri:dev
+```
+
+## Project Structure
+
+```
+Sandi_Bot_Desktop/
+├── src/                    # React frontend
+│   ├── modules/            # 8 core UI modules
+│   ├── components/         # Shared components
+│   ├── services/           # Data layer (Phase 2+)
+│   └── types/              # TypeScript types
+├── src-tauri/              # Rust backend
+│   └── src/
+│       ├── database.rs     # SQLite schema + queries
+│       ├── pdf_parser.rs   # PDF extraction
+│       ├── file_watcher.rs # Folder monitoring
+│       └── backup.rs       # Backup system
+└── prompts/                # LLM templates (Phase 7)
+```
+
+## 8 Modules
+
+| Module | Description |
+|--------|-------------|
+| Executive Dashboard | KPIs, pipeline health, hot prospects |
+| Client Intelligence | DISC, You 2.0, vision statements |
+| Pipeline Visualizer | 5-compartment coaching journey |
+| Live Coaching Assistant | Sandi Bot with CLEAR framework |
+| Post-Call Analysis | CLEAR scoring & insights |
+| Admin Streamliner | Activity logs & settings |
+| Audit & Transparency | Source citations & audit logs |
+| How to Use | Instructions & guide |
+
+## Critical Rules
+
+- **Never** use `better-sqlite3` (Node native module)
+- **Never** use `pdf-parse` — use `pdf-extract` / `lopdf` (Rust)
+- **Never** upgrade Tailwind to v4
+- **Never** use Electron — Tauri only
+- **Always** log recommendations to audit table
+
+## POC Reference
+
+- [Sandi_Bot_Coaching_Intelligence](https://github.com/Zmugha1/Sandi_Bot_Coaching_Intelligence) — Frozen POC (live on Netlify). Do not modify.
+
+---
+
+*For Sandy. Coaching intelligence. Ready to use.* ☕

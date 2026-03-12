@@ -1,0 +1,35 @@
+---
+description: Sandi Bot Desktop production rules — Tauri, SQLite, PDF, Tailwind
+globs: Sandi_Bot_Desktop/**/*
+alwaysApply: false
+---
+
+# Sandi Bot Desktop — Production Rules
+
+Reference: [PRODUCTION_ROADMAP.md](../../PRODUCTION_ROADMAP.md)
+
+## Critical Rules (Never Violate)
+
+1. **Never modify the POC repo** — `Sandi_Bot_Coaching_Intelligence` is frozen (live on Netlify).
+2. **Never use `better-sqlite3`** — Node native module incompatible with Tauri. Use `tauri-plugin-sql` or rusqlite.
+3. **Never use `pdf-parse`** — Use `pdf-extract` (Rust) primary, `lopdf` fallback.
+4. **Never upgrade Tailwind to v4** — Stay on Tailwind 3.4.
+5. **Never use Electron** — Tauri v2 only.
+6. **Always test Rust** — Run `cargo check` before `npm run tauri:dev`.
+7. **Every recommendation** — Must be logged to `audit_log` table.
+
+## Tech Stack
+
+- Tauri v2, React 19, TypeScript, Vite 5
+- Tailwind 3.4, shadcn/ui, Recharts
+- SQLite via tauri-plugin-sql or rusqlite
+- PDF: pdf-extract → lopdf fallback
+
+## IPC Commands
+
+Every `invoke()` in TypeScript must have a matching `#[tauri::command]` in `main.rs` / `lib.rs`.
+
+## File Watcher
+
+- Use `std::env::var("USERPROFILE")` on Windows, `std::env::var("HOME")` elsewhere.
+- No `dirs::home_dir()` dependency.

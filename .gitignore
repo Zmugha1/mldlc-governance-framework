@@ -38,3 +38,7 @@ court-of-rules/custom-rules/*
 
 # SandiStahl_Bot - separate repo (pushed to github.com/Zmugha1/SandiStahl_Bot)
 SandiStahl_Bot/
+
+# Sandi Bot Desktop (Tauri + React)
+Sandi_Bot_Desktop/node_modules/
+Sandi_Bot_Desktop/dist/

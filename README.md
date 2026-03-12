@@ -40,6 +40,10 @@ uvicorn mcp.mcp_server:app --reload --port 8000
 ```
 mldlc-governance-framework/
 ├── app/                    # Streamlit application
+├── Sandi_Bot_Desktop/      # Sandi Bot Desktop (Tauri + React) — Production
+├── Sandi_Dashboard/        # Sandy coaching dashboard (Streamlit)
+├── Sandi_Dashboard_Complete/
+├── PRODUCTION_ROADMAP.md    # Sandi Bot Desktop build guide
 ├── schemas/                # JSON schemas for artifacts
 ├── process/                # VTCO process definitions
 ├── governance/              # Risk matrix and workflows
@@ -48,6 +52,10 @@ mldlc-governance-framework/
 ├── mcp/                    # Model Context Protocol server
 └── tests/                  # Test suite
 ```
+
+### Sandi Bot Desktop (Production)
+
+Coaching Intelligence desktop app for Sandy Stahl. See [PRODUCTION_ROADMAP.md](PRODUCTION_ROADMAP.md) and [Sandi_Bot_Desktop/README.md](Sandi_Bot_Desktop/README.md).
 
 ## Framework Components
 
