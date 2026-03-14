@@ -1,0 +1,54 @@
+{
+  "client_id": "",
+  "name": "",
+  "organization": "",
+  "role": "",
+  "domain": "",
+  "methodology": {
+    "framework": "",
+    "framework_version": "",
+    "pink_flag_rules": [],
+    "scoring_dimensions": [
+      "identity",
+      "commitment",
+      "financial",
+      "execution"
+    ]
+  },
+  "agents": {
+    "document_agent": true,
+    "coaching_agent": true,
+    "synthesis_agent": false,
+    "outreach_agent": false,
+    "pattern_agent": true
+  },
+  "triggers": {
+    "coaching_prep": "module_open",
+    "synthesis_fire": "docs_complete",
+    "post_call": "session_saved"
+  },
+  "ui_preferences": {
+    "recommendation_display": "expanded",
+    "confidence_threshold_display": 85
+  },
+  "external_integrations": {
+    "gmail": false,
+    "linkedin": false,
+    "calendar": false
+  },
+  "llm": {
+    "model": "phi3:mini",
+    "confidence_floor": 0.65,
+    "approval_required_below": 0.85
+  },
+  "audit": {
+    "reasoning_required": true,
+    "override_reason_required": false,
+    "similar_clients_in_log": false
+  },
+  "evaluation": {
+    "primary_kpi": "",
+    "baseline_captured": false,
+    "review_cadence": "quarterly"
+  }
+}

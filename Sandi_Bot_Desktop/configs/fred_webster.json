@@ -1,0 +1,59 @@
+{
+  "client_id": "fred_webster",
+  "name": "Fred Webster",
+  "organization": "The Entrepreneur's Source",
+  "role": "Franchise Coach",
+  "domain": "franchise_coaching",
+  "methodology": {
+    "framework": "TES+CLEAR",
+    "framework_version": "2026",
+    "pink_flag_rules": [
+      "spouse_alignment_unknown_by_session_2",
+      "financial_readiness_below_2_for_3_sessions",
+      "same_stage_over_35_days",
+      "engagement_dropped_from_previous_session"
+    ],
+    "scoring_dimensions": [
+      "identity",
+      "commitment",
+      "financial",
+      "execution"
+    ]
+  },
+  "agents": {
+    "document_agent": true,
+    "coaching_agent": true,
+    "synthesis_agent": true,
+    "outreach_agent": true,
+    "pattern_agent": true
+  },
+  "triggers": {
+    "coaching_prep": "module_open",
+    "synthesis_fire": "docs_complete",
+    "post_call": "session_saved"
+  },
+  "ui_preferences": {
+    "recommendation_display": "collapsed",
+    "confidence_threshold_display": 85
+  },
+  "external_integrations": {
+    "gmail": true,
+    "linkedin": true,
+    "calendar": false
+  },
+  "llm": {
+    "model": "llama3.1:8b",
+    "confidence_floor": 0.65,
+    "approval_required_below": 0.85
+  },
+  "audit": {
+    "reasoning_required": true,
+    "override_reason_required": false,
+    "similar_clients_in_log": false
+  },
+  "evaluation": {
+    "primary_kpi": "conversion_rate",
+    "baseline_captured": false,
+    "review_cadence": "quarterly"
+  }
+}
