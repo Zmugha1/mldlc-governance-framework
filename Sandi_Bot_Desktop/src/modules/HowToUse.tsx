@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   BookOpen, 
   Users, 
@@ -20,6 +20,7 @@ import {
   Eye,
   Lock
 } from 'lucide-react';
+import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -67,6 +68,22 @@ function StepNumber({ number }: { number: number }) {
 }
 
 export default function HowToUse() {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(false);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        <SkeletonCard lines={4} lineHeight={20} />
+        <SkeletonCard lines={3} lineHeight={16} />
+        <SkeletonCard lines={5} lineHeight={14} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}

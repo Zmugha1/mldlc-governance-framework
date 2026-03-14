@@ -24,8 +24,10 @@ import {
   LineChart,
   Line
 } from 'recharts';
+import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
+import { getConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
 import type { DashboardStats } from '@/types';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { cn } from '@/lib/utils';
@@ -133,14 +135,20 @@ export default function ExecutiveDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [clients, setClients] = useState<Awaited<ReturnType<typeof getAllClients>>>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     Promise.all([getDashboardStats(), getAllClients()])
       .then(([s, c]) => {
         setStats(s);
         setClients(c);
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error(err);
+        setError(String(err?.message ?? err ?? 'Failed to load dashboard'));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -160,7 +168,7 @@ export default function ExecutiveDashboard() {
       return {
         stage: config?.label ?? stage,
         count,
-        conversion: count > 0 ? 20 : 0,
+        conversion: getConversionRate(count),
       };
     });
   }, [clients]);
@@ -196,24 +204,41 @@ export default function ExecutiveDashboard() {
   }, [clients]);
 
   const pipelineStageCards = useMemo(() => {
+    const defaults = getPipelineStageDefaults();
     return STAGES.map((stage) => {
       const count = clients.filter((c) => c.stage === stage).length;
-      return { stage, count, avgDays: 21, conversion: 20 };
+      return { stage, count, avgDays: defaults.avgDays, conversion: defaults.conversion };
     });
   }, [clients]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-slate-500">Loading dashboard...</p>
+      <div className="p-6 space-y-4">
+        <SkeletonCard lines={4} lineHeight={20} />
+        <SkeletonCard lines={3} lineHeight={16} />
+        <SkeletonCard lines={5} lineHeight={14} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Something went wrong</h3>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
       </div>
     );
   }
 
   if (!stats) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-red-500">Failed to load dashboard</p>
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Something went wrong</h3>
+          <p className="text-red-600 text-sm mt-1">Failed to load dashboard</p>
+        </div>
       </div>
     );
   }

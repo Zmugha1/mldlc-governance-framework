@@ -73,3 +73,19 @@ export async function getRecommendation(
     },
   };
 }
+
+/** Human-readable explanation for PUSH/NURTURE/PAUSE recommendation */
+export function getRecommendationMessage(
+  recommendation: 'PUSH' | 'NURTURE' | 'PAUSE'
+): string {
+  switch (recommendation) {
+    case 'PUSH':
+      return 'They show high readiness - advance aggressively toward next steps.';
+    case 'NURTURE':
+      return 'Build the relationship with valuable content and check-ins.';
+    case 'PAUSE':
+      return 'Give them space - they need more time to evaluate.';
+    default:
+      return '';
+  }
+}

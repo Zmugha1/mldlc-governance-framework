@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Activity, 
   Phone, 
@@ -27,8 +27,15 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { activityLogs, sampleClients, knowledgeGraph } from '@/data/sampleClients';
+import { SkeletonCard } from '@/components/SkeletonCard';
+import { knowledgeGraph } from '@/data/sampleClients';
+import { getAllClients, getRankedClients, getPushClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
+import { getAuditLog, auditEntriesToActivityLogs } from '@/services/auditService';
+import { clientToDisplay } from '@/services/clientAdapter';
+import type { ActivityLog } from '@/types';
 import { cn } from '@/lib/utils';
+
+type DisplayClient = ReturnType<typeof clientToDisplay>;
 
 // Activity Type Config
 const activityConfig = {
@@ -41,7 +48,7 @@ const activityConfig = {
 };
 
 // Activity Log Item
-function ActivityItem({ log }: { log: typeof activityLogs[0] }) {
+function ActivityItem({ log }: { log: ActivityLog }) {
   const config = activityConfig[log.type];
   const Icon = config.icon;
 
@@ -103,12 +110,32 @@ function StatCard({ title, value, change, icon: Icon, color }: {
 export default function AdminStreamliner() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
+  const [clients, setClients] = useState<DisplayClient[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState({
     emailAlerts: true,
     pushNotifications: false,
     weeklyReports: true,
     clientUpdates: true,
   });
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    Promise.all([getAllClients(), getAuditLog(100)])
+      .then(([rawClients, auditEntries]) => {
+        setClients(rawClients.map(clientToDisplay));
+        const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
+        setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
+      })
+      .catch((err) => {
+        console.error(err);
+        setError(String(err?.message ?? err ?? 'Failed to load data'));
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   // Filter logs
   const filteredLogs = useMemo(() => {
@@ -122,7 +149,7 @@ export default function AdminStreamliner() {
       
       return matchesSearch && matchesType;
     });
-  }, [searchTerm, filterType]);
+  }, [searchTerm, filterType, activityLogs]);
 
   // Activity stats
   const activityStats = useMemo(() => {
@@ -134,7 +161,28 @@ export default function AdminStreamliner() {
       stageChanges: activityLogs.filter(l => l.type === 'stage_change').length,
     };
     return stats;
-  }, []);
+  }, [activityLogs]);
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        <SkeletonCard lines={4} lineHeight={20} />
+        <SkeletonCard lines={3} lineHeight={16} />
+        <SkeletonCard lines={5} lineHeight={14} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Something went wrong</h3>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -309,8 +357,7 @@ export default function AdminStreamliner() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {sampleClients
-                    .sort((a, b) => b.confidence - a.confidence)
+                  {getRankedClients(clients)
                     .slice(0, 5)
                     .map((client, index) => (
                       <div key={client.id} className="flex items-center gap-4 p-3 rounded-lg bg-slate-50">
@@ -381,24 +428,24 @@ export default function AdminStreamliner() {
               <CardContent>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 text-center">
-                    <p className="text-3xl font-bold text-blue-600">{sampleClients.length}</p>
+                    <p className="text-3xl font-bold text-blue-600">{clients.length}</p>
                     <p className="text-sm text-blue-700">Total Clients</p>
                   </div>
                   <div className="p-4 rounded-xl bg-green-50 border border-green-100 text-center">
                     <p className="text-3xl font-bold text-green-600">
-                      {sampleClients.filter(c => c.recommendation === 'PUSH').length}
+                      {getPushClients(clients).length}
                     </p>
                     <p className="text-sm text-green-700">PUSH Ready</p>
                   </div>
                   <div className="p-4 rounded-xl bg-purple-50 border border-purple-100 text-center">
                     <p className="text-3xl font-bold text-purple-600">
-                      {Math.round(sampleClients.reduce((acc, c) => acc + c.confidence, 0) / sampleClients.length)}%
+                      {getAverageConfidence(clients)}%
                     </p>
                     <p className="text-sm text-purple-700">Avg. Confidence</p>
                   </div>
                   <div className="p-4 rounded-xl bg-orange-50 border border-orange-100 text-center">
                     <p className="text-3xl font-bold text-orange-600">
-                      {sampleClients.filter(c => c.tumay.spouse.supportive).length}
+                      {getSupportiveSpouseClients(clients).length}
                     </p>
                     <p className="text-sm text-orange-700">Spouse Aligned</p>
                   </div>

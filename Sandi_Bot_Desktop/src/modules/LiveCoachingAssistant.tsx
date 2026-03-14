@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   MessageSquare, 
   Send, 
@@ -26,10 +26,18 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { sampleClients, coachingScripts, recommendationConfig, knowledgeGraph } from '@/data/sampleClients';
-import { auditLog, generateSourceCitations, generateResponseExplanation, type SourceCitation } from '@/data/auditLog';
-import type { ClientProfile } from '@/types';
+import { SkeletonCard } from '@/components/SkeletonCard';
+import { coachingScripts, recommendationConfig, knowledgeGraph } from '@/data/sampleClients';
+import { generateSourceCitations, generateResponseExplanation, type SourceCitation } from '@/data/auditLog';
+import { getAllClients } from '@/services/clientService';
+import { logEntry } from '@/services/auditService';
+import { clientToDisplay } from '@/services/clientAdapter';
+import { getDiscCoachingTips, getHomeworkByStage, getPinkFlagsByStage, calculateReadinessScore } from '@/services/coachingService';
+import { getRecommendationMessage } from '@/services/recommendationService';
 import { cn } from '@/lib/utils';
+
+/** Display format for client (ClientProfile-like) */
+type DisplayClient = ReturnType<typeof clientToDisplay>;
 
 // Chat Message Component with Source Citations
 interface ChatMessageProps {
@@ -208,7 +216,7 @@ function ExplanationDialog({
   query: string;
   response: string;
   sources: SourceCitation[];
-  client?: ClientProfile;
+  client?: DisplayClient;
   isOpen: boolean; 
   onClose: () => void;
 }) {
@@ -238,7 +246,7 @@ function ExplanationDialog({
 }
 
 // Recommendation Card
-function RecommendationCard({ client }: { client: ClientProfile }) {
+function RecommendationCard({ client }: { client: DisplayClient }) {
   const config = recommendationConfig[client.recommendation];
   const Icon = config.icon === 'ArrowUp' ? ArrowUp : config.icon === 'Heart' ? Heart : Pause;
   
@@ -277,7 +285,7 @@ function RecommendationCard({ client }: { client: ClientProfile }) {
         <ul className="space-y-1">
           <li className="text-sm flex items-start gap-2">
             <Sparkles className="h-4 w-4 mt-0.5 shrink-0" style={{ color: config.color }} />
-            <span>Readiness: {Math.round((Object.values(client.readiness).reduce((a, b) => a + b, 0) / 20) * 100)}%</span>
+            <span>Readiness: {calculateReadinessScore(client.readiness)}%</span>
           </li>
           <li className="text-sm flex items-start gap-2">
             <Sparkles className="h-4 w-4 mt-0.5 shrink-0" style={{ color: config.color }} />
@@ -301,15 +309,14 @@ function ScriptCard({ script }: { script: typeof coachingScripts[0] }) {
     navigator.clipboard.writeText(script.content);
     setCopied(true);
     
-    // Log the copy action
-    auditLog.log({
-      userId: 'sandy',
-      userName: 'Sandy Stahl',
-      type: 'script_copied',
-      module: 'Live Coaching Assistant',
-      query: `Copy script: ${script.title}`,
-      response: 'Script copied to clipboard',
-    });
+    void logEntry(
+      'SCRIPT_COPIED',
+      null,
+      `Copy script: ${script.title}`,
+      'Script copied to clipboard',
+      null,
+      'deterministic'
+    );
     
     setTimeout(() => setCopied(false), 2000);
   };
@@ -467,7 +474,10 @@ const quickActions = [
 ];
 
 export default function LiveCoachingAssistant() {
-  const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
+  const [clients, setClients] = useState<DisplayClient[]>([]);
+  const [selectedClient, setSelectedClient] = useState<DisplayClient | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Array<{
     type: 'user' | 'bot';
     content: string;
@@ -485,21 +495,31 @@ export default function LiveCoachingAssistant() {
   const [currentQuery, setCurrentQuery] = useState('');
   const [currentResponse, setCurrentResponse] = useState('');
 
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    getAllClients()
+      .then((raw) => setClients(raw.map(clientToDisplay)))
+      .catch((err) => {
+        console.error(err);
+        setError(String(err?.message ?? err ?? 'Failed to load clients'));
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
   const sendMessage = (messageText: string) => {
     if (!messageText.trim()) return;
 
     const query = messageText;
 
-    // Log the query
-    auditLog.log({
-      userId: 'sandy',
-      userName: 'Sandy Stahl',
-      type: 'chat_query',
-      module: 'Live Coaching Assistant',
-      query: query,
-      clientId: selectedClient?.id,
-      clientName: selectedClient?.name,
-    });
+    void logEntry(
+      'CHAT_QUERY',
+      selectedClient?.id ?? null,
+      query,
+      null,
+      null,
+      'deterministic'
+    );
 
     // Add user message
     setMessages(prev => [...prev, { type: 'user', content: query }]);
@@ -516,59 +536,61 @@ export default function LiveCoachingAssistant() {
 
       if (lowerInput.includes('push') || lowerInput.includes('pause')) {
         if (selectedClient) {
-          response = `Based on ${selectedClient.name}'s profile:\n\n• Readiness: ${Math.round((Object.values(selectedClient.readiness).reduce((a, b) => a + b, 0) / 20) * 100)}%\n• Persona: ${selectedClient.persona}\n• Stage: ${selectedClient.stage}\n\nRecommendation: **${selectedClient.recommendation}** (${selectedClient.confidence}% confidence)\n\n${selectedClient.recommendation === 'PUSH' ? 'They show high readiness - advance aggressively toward next steps.' : selectedClient.recommendation === 'NURTURE' ? 'Build the relationship with valuable content and check-ins.' : 'Give them space - they need more time to evaluate.'}`;
+          const readiness = calculateReadinessScore(selectedClient.readiness);
+          const msg = getRecommendationMessage(selectedClient.recommendation);
+          response = `Based on ${selectedClient.name}'s profile:\n\n• Readiness: ${readiness}%\n• Persona: ${selectedClient.persona}\n• Stage: ${selectedClient.stage}\n\nRecommendation: **${selectedClient.recommendation}** (${selectedClient.confidence}% confidence)\n\n${msg}`;
 
-          auditLog.log({
-            userId: 'sandy',
-            userName: 'Sandy Stahl',
-            type: 'recommendation_generated',
-            module: 'Live Coaching Assistant',
-            query: query,
-            response: response,
-            clientId: selectedClient.id,
-            clientName: selectedClient.name,
-            recommendation: selectedClient.recommendation,
-            confidenceScore: selectedClient.confidence,
-            reasoningFactors: [
-              `Readiness: ${Math.round((Object.values(selectedClient.readiness).reduce((a, b) => a + b, 0) / 20) * 100)}%`,
+          void logEntry(
+            'RECOMMENDATION_GENERATED',
+            selectedClient.id,
+            query,
+            response,
+            JSON.stringify([
+              `Readiness: ${readiness}%`,
               `Persona: ${selectedClient.persona}`,
               `Stage: ${selectedClient.stage}`,
-            ],
-            sourcesCited: sources,
-          });
+            ]),
+            'deterministic'
+          );
         } else {
           response = 'Please select a client first so I can analyze their specific situation.';
         }
       } else if (lowerInput.includes('say') || lowerInput.includes('script')) {
         if (selectedClient) {
-          const disc = knowledgeGraph.discCoaching[selectedClient.disc.style];
-          response = `For ${selectedClient.name} (${selectedClient.disc.style} style):\n\n**Opening approach:**\n${disc.coachingTips[0]}\n\n**Key phrases to use:**\n• "${selectedClient.ilwe.income.target} in ${selectedClient.ilwe.income.timeline} is achievable with the right system"\n• "Let's talk about how this fits your goal to ${selectedClient.visionStatement.motivators.workLife.toLowerCase()}"\n\n**Avoid:**\n${disc.coachingTips.slice(-1)[0]}`;
+          const tips = getDiscCoachingTips(selectedClient.disc.style);
+          const opening = tips[0] ?? 'Be direct and get to the point quickly';
+          const avoid = tips[tips.length - 1] ?? "Don't waste time with small talk";
+          response = `For ${selectedClient.name} (${selectedClient.disc.style} style):\n\n**Opening approach:**\n${opening}\n\n**Key phrases to use:**\n• "${selectedClient.ilwe.income.target} in ${selectedClient.ilwe.income.timeline} is achievable with the right system"\n• "Let's talk about how this fits your goal to ${selectedClient.visionStatement.motivators.workLife.toLowerCase()}"\n\n**Avoid:**\n${avoid}`;
         } else {
           response = 'Select a client to get persona-specific scripts and language recommendations.';
         }
       } else if (lowerInput.includes('homework')) {
-        response = 'Suggested homework based on their stage:\n\n• **IC:** Send DISC and You 2.0 assessments\n• **C1:** Review DISC results, discuss You 2.0 statement\n• **C2:** Complete TUMAY, discuss funding options\n• **C3:** Prepare for Discovery Center, research possibilities\n• **C4:** Contact franchise owners, complete validation';
+        const stage = selectedClient?.stage ?? '';
+        const homework = getHomeworkByStage(stage);
+        response = 'Suggested homework based on their stage:\n\n' + homework.join('\n');
       } else if (lowerInput.includes('spouse')) {
         response = 'To address spouse concerns:\n\n1. **Include spouse in next call** - make them feel part of the process\n2. **Provide data and facts** - spouses often need concrete information\n3. **Address financial concerns** - show funding options and ROI projections\n4. **Share success stories** - other couples who made the transition\n5. **Give them time** - don\'t rush the decision';
       } else if (lowerInput.includes('pink flag')) {
-        response = 'Pink Flags to watch for:\n\n• **C1:** Not completing assessments, not involving spouse\n• **C2:** Only talking about job market, not open to funding\n• **C3:** Dismissing possibilities before learning, not showing up for Zor calls\n• **C4:** Making assumptive comments, spouse opposed\n\nIf you see a pattern of Pink Flags, it may indicate a coaching opportunity.';
+        const stage = selectedClient?.stage ?? '';
+        const flags = getPinkFlagsByStage(stage);
+        const flagText = flags.length > 0
+          ? flags.map((f) => `• ${f}`).join('\n')
+          : '• **C1:** Not completing assessments, not involving spouse\n• **C2:** Only talking about job market, not open to funding\n• **C3:** Dismissing possibilities before learning, not showing up for Zor calls\n• **C4:** Making assumptive comments, spouse opposed';
+        response = `Pink Flags to watch for:\n\n${flagText}\n\nIf you see a pattern of Pink Flags, it may indicate a coaching opportunity.`;
       } else {
         response = 'I can help you with:\n\n• Push/pause recommendations\n• Call scripts and talking points\n• Homework assignments\n• Financial positioning\n• Objection handling\n• Spouse concerns\n• Pink flag identification\n• CLEAR framework questions\n\nWhat would you like to know?';
       }
 
       setCurrentResponse(response);
 
-      auditLog.log({
-        userId: 'sandy',
-        userName: 'Sandy Stahl',
-        type: 'chat_response',
-        module: 'Live Coaching Assistant',
-        query: query,
-        response: response,
-        clientId: selectedClient?.id,
-        clientName: selectedClient?.name,
-        sourcesCited: sources,
-      });
+      void logEntry(
+        'CHAT_RESPONSE',
+        selectedClient?.id ?? null,
+        query,
+        response,
+        JSON.stringify(sources),
+        'deterministic'
+      );
 
       setMessages(prev => [...prev, { type: 'bot', content: response, sources }]);
     }, 500);
@@ -592,6 +614,27 @@ export default function LiveCoachingAssistant() {
     setShowExplanation(true);
   };
 
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        <SkeletonCard lines={4} lineHeight={20} />
+        <SkeletonCard lines={3} lineHeight={16} />
+        <SkeletonCard lines={5} lineHeight={14} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Something went wrong</h3>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
       {/* Left Panel - Client Selection */}
@@ -602,22 +645,19 @@ export default function LiveCoachingAssistant() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="space-y-1 max-h-[300px] overflow-auto">
-              {sampleClients.map((client) => (
+              {clients.map((client) => (
                 <button
                   key={client.id}
                   onClick={() => {
                     setSelectedClient(client);
-                    // Log client access
-                    auditLog.log({
-                      userId: 'sandy',
-                      userName: 'Sandy Stahl',
-                      type: 'client_data_accessed',
-                      module: 'Live Coaching Assistant',
-                      clientId: client.id,
-                      clientName: client.name,
-                      query: `Access client profile: ${client.name}`,
-                      response: 'Client profile loaded',
-                    });
+                    void logEntry(
+                      'CLIENT_ACCESSED',
+                      client.id,
+                      `Access client profile: ${client.name}`,
+                      'Client profile loaded',
+                      null,
+                      'deterministic'
+                    );
                   }}
                   className={cn(
                     "w-full flex items-center gap-3 p-3 text-left hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0",

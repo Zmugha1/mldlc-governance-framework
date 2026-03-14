@@ -22,10 +22,12 @@ import { Button } from '@/components/ui/button';
 import { FileUploadZone, type UploadedFile } from '@/components/FileUploadZone';
 import { LocalFileWatcher } from '@/components/LocalFileWatcher';
 import { parseDocument, generateClientFromDocuments } from '@/utils/documentParser';
+import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
 import { getAllClients, createClient, updateClient, deleteClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
+import { calculateReadinessScore } from '@/services/coachingService';
 import { cn } from '@/lib/utils';
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
@@ -368,13 +370,19 @@ export default function ClientIntelligence() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [createName, setCreateName] = useState('');
 
   const loadClients = () => {
+    setLoading(true);
+    setError(null);
     getAllClients()
       .then(setClients)
-      .catch(console.error)
+      .catch((err) => {
+        console.error(err);
+        setError(String(err?.message ?? err ?? 'Failed to load clients'));
+      })
       .finally(() => setLoading(false));
   };
 
@@ -453,8 +461,21 @@ export default function ClientIntelligence() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-slate-500">Loading clients...</p>
+      <div className="p-6 space-y-4">
+        <SkeletonCard lines={4} lineHeight={20} />
+        <SkeletonCard lines={3} lineHeight={16} />
+        <SkeletonCard lines={5} lineHeight={14} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Something went wrong</h3>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
       </div>
     );
   }
@@ -583,14 +604,12 @@ export default function ClientIntelligence() {
                         <div
                           className="h-full bg-blue-500 rounded-full"
                           style={{
-                            width: `${(Object.values(client.readiness).reduce((a, b) => a + b, 0) / 20) * 100}%`,
+                            width: `${calculateReadinessScore(client.readiness)}%`,
                           }}
                         />
                       </div>
                       <span className="text-xs font-medium">
-                        {Math.round(
-                          (Object.values(client.readiness).reduce((a, b) => a + b, 0) / 20) * 100
-                        )}
+                        {calculateReadinessScore(client.readiness)}
                         %
                       </span>
                     </div>

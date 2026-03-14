@@ -186,3 +186,27 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     pauseCount,
   };
 }
+
+/** Clients sorted by confidence descending (highest first) */
+export function getRankedClients(clients: { confidence?: number }[]): { confidence?: number }[] {
+  return [...clients].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+}
+
+/** Clients with recommendation === 'PUSH' */
+export function getPushClients(clients: { recommendation?: string }[]): { recommendation?: string }[] {
+  return clients.filter((c) => c.recommendation === 'PUSH');
+}
+
+/** Average confidence across clients (0 if empty) */
+export function getAverageConfidence(clients: { confidence?: number }[]): number {
+  if (clients.length === 0) return 0;
+  const sum = clients.reduce((acc, c) => acc + (c.confidence ?? 0), 0);
+  return Math.round(sum / clients.length);
+}
+
+/** Clients with supportive spouse (tumay.spouse.supportive === true) */
+export function getSupportiveSpouseClients(
+  clients: { tumay?: { spouse?: { supportive?: boolean } } }[]
+): { tumay?: { spouse?: { supportive?: boolean } } }[] {
+  return clients.filter((c) => c.tumay?.spouse?.supportive === true);
+}

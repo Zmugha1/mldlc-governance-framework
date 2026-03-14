@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { SkeletonCard } from '@/components/SkeletonCard';
 import { getAuditLog } from '@/services/auditService';
 import type { AuditEntry } from '@/types';
 import { cn } from '@/lib/utils';
@@ -246,14 +247,17 @@ export default function AuditTransparency() {
   const [filterType, setFilterType] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   const refreshLogs = async () => {
     setLoading(true);
+    setError(null);
     try {
       const entries = await getAuditLog(200);
       setLogs(entries);
     } catch (err) {
       console.error('Failed to load audit log:', err);
+      setError(String(err?.message ?? err ?? 'Failed to load audit log'));
       setLogs([]);
     } finally {
       setLoading(false);
@@ -291,6 +295,27 @@ export default function AuditTransparency() {
     setIsModalOpen(true);
   };
   
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        <SkeletonCard lines={4} lineHeight={20} />
+        <SkeletonCard lines={3} lineHeight={16} />
+        <SkeletonCard lines={5} lineHeight={14} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Something went wrong</h3>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   const filteredLogs = logs.filter(log => {
     if (filterType !== 'all' && log.action_type !== filterType) return false;
     if (searchTerm === '') return true;

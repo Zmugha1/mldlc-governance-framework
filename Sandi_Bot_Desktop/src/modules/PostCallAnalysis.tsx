@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Mic, 
   BarChart3, 
@@ -31,8 +31,17 @@ import {
   PolarRadiusAxis,
   Radar
 } from 'recharts';
+import { SkeletonCard } from '@/components/SkeletonCard';
 import { sampleClients, knowledgeGraph } from '@/data/sampleClients';
 import type { CLEARScores } from '@/types';
+import {
+  getScoreColor,
+  calculateOverallScore,
+  getHistoricalAverages,
+  getCoachingTip,
+  calculateCallAverage,
+  getStrengthsAndOpportunities,
+} from '@/services/postCallService';
 import { cn } from '@/lib/utils';
 
 // CLEAR Dimensions from Knowledge Graph
@@ -72,12 +81,7 @@ const clearDimensions = [
 // Score Badge
 function ScoreBadge({ score }: { score: number }) {
   return (
-    <Badge 
-      className={cn(
-        "text-white",
-        score >= 4 ? "bg-green-500" : score >= 3 ? "bg-yellow-500" : "bg-red-500"
-      )}
-    >
+    <Badge className={cn('text-white', getScoreColor(score))}>
       {score}/5
     </Badge>
   );
@@ -136,6 +140,7 @@ const mockHistoricalScores: CLEARScores[] = [
 ];
 
 export default function PostCallAnalysis() {
+  const [loading, setLoading] = useState(true);
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [scores, setScores] = useState({
     curiosity: 3,
@@ -148,9 +153,7 @@ export default function PostCallAnalysis() {
   const [saved, setSaved] = useState(false);
 
   // Calculate overall score
-  const overallScore = useMemo(() => {
-    return Object.values(scores).reduce((a, b) => a + b, 0) / 5;
-  }, [scores]);
+  const overallScore = useMemo(() => calculateOverallScore(scores), [scores]);
 
   // Radar chart data
   const radarData = clearDimensions.map(dim => ({
@@ -160,47 +163,31 @@ export default function PostCallAnalysis() {
   }));
 
   // Historical averages
-  const historicalAverages = useMemo(() => {
-    const totals = { curiosity: 0, locating: 0, engagement: 0, accountability: 0, reflection: 0 };
-    mockHistoricalScores.forEach(score => {
-      totals.curiosity += score.curiosity;
-      totals.locating += score.locating;
-      totals.engagement += score.engagement;
-      totals.accountability += score.accountability;
-      totals.reflection += score.reflection;
-    });
-    const count = mockHistoricalScores.length;
-    return [
-      { dimension: 'Curiosity', current: scores.curiosity, average: totals.curiosity / count },
-      { dimension: 'Locating', current: scores.locating, average: totals.locating / count },
-      { dimension: 'Engagement', current: scores.engagement, average: totals.engagement / count },
-      { dimension: 'Accountability', current: scores.accountability, average: totals.accountability / count },
-      { dimension: 'Reflection', current: scores.reflection, average: totals.reflection / count },
-    ];
-  }, [scores]);
+  const historicalAverages = useMemo(
+    () => getHistoricalAverages(mockHistoricalScores, scores),
+    [scores]
+  );
 
   const handleSave = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const getCoachingTip = () => {
-    const lowestDimension = clearDimensions.reduce((prev, curr) => 
-      scores[prev.key as keyof typeof scores] < scores[curr.key as keyof typeof scores] ? prev : curr
-    );
-    
-    const tips: Record<string, string> = {
-      curiosity: 'Try asking more open-ended questions like "What would make our time together today valuable?"',
-      locating: 'Spend more time understanding exactly where they are in their decision process.',
-      engagement: 'Use 1-3 exact words they spoke in your follow-up questions.',
-      accountability: 'Be more specific about next steps and get clear commitments with deadlines.',
-      reflection: 'Ask "What insight or a-ha did you gain today?" at the end of the call.',
-    };
-    
-    return { dimension: lowestDimension.label, tip: tips[lowestDimension.key] };
-  };
+  useEffect(() => {
+    setLoading(false);
+  }, []);
 
-  const coachingTip = getCoachingTip();
+  const coachingTip = getCoachingTip(scores);
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        <SkeletonCard lines={4} lineHeight={20} />
+        <SkeletonCard lines={3} lineHeight={16} />
+        <SkeletonCard lines={5} lineHeight={14} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -413,7 +400,7 @@ export default function PostCallAnalysis() {
             <CardContent>
               <div className="space-y-4">
                 {mockHistoricalScores.map((score, index) => {
-                  const avg = (score.curiosity + score.locating + score.engagement + score.accountability + score.reflection) / 5;
+                  const avg = calculateCallAverage(score);
                   return (
                     <div key={index} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                       <div className="flex items-center justify-between mb-3">
@@ -426,12 +413,7 @@ export default function PostCallAnalysis() {
                             <p className="text-sm text-slate-500">{score.notes}</p>
                           </div>
                         </div>
-                        <Badge 
-                          className={cn(
-                            "text-white",
-                            avg >= 4 ? "bg-green-500" : avg >= 3 ? "bg-yellow-500" : "bg-red-500"
-                          )}
-                        >
+                        <Badge className={cn('text-white', getScoreColor(avg))}>
                           {avg.toFixed(1)}/5
                         </Badge>
                       </div>
@@ -495,15 +477,12 @@ export default function PostCallAnalysis() {
                     Top Strengths
                   </h4>
                   <div className="space-y-2">
-                    {clearDimensions
-                      .sort((a, b) => scores[b.key as keyof typeof scores] - scores[a.key as keyof typeof scores])
-                      .slice(0, 2)
-                      .map(dim => (
-                        <div key={dim.key} className="p-3 rounded-lg bg-green-50 border border-green-100">
-                          <p className="font-medium text-green-900">{dim.label}</p>
-                          <p className="text-sm text-green-700">Score: {scores[dim.key as keyof typeof scores]}/5</p>
-                        </div>
-                      ))}
+                    {getStrengthsAndOpportunities(scores).strengths.map((item) => (
+                      <div key={item.label} className="p-3 rounded-lg bg-green-50 border border-green-100">
+                        <p className="font-medium text-green-900">{item.label}</p>
+                        <p className="text-sm text-green-700">Score: {item.score}/5</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div>
@@ -512,15 +491,12 @@ export default function PostCallAnalysis() {
                     Growth Opportunities
                   </h4>
                   <div className="space-y-2">
-                    {clearDimensions
-                      .sort((a, b) => scores[a.key as keyof typeof scores] - scores[b.key as keyof typeof scores])
-                      .slice(0, 2)
-                      .map(dim => (
-                        <div key={dim.key} className="p-3 rounded-lg bg-orange-50 border border-orange-100">
-                          <p className="font-medium text-orange-900">{dim.label}</p>
-                          <p className="text-sm text-orange-700">Score: {scores[dim.key as keyof typeof scores]}/5</p>
-                        </div>
-                      ))}
+                    {getStrengthsAndOpportunities(scores).opportunities.map((item) => (
+                      <div key={item.label} className="p-3 rounded-lg bg-orange-50 border border-orange-100">
+                        <p className="font-medium text-orange-900">{item.label}</p>
+                        <p className="text-sm text-orange-700">Score: {item.score}/5</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </CardContent>

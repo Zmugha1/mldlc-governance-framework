@@ -17,8 +17,10 @@ import {
   Tooltip, 
   ResponsiveContainer
 } from 'recharts';
+import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, discColors, knowledgeGraph } from '@/data/sampleClients';
 import { getAllClients } from '@/services/clientService';
+import { calculateConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import type { Client } from '@/types';
 import { cn } from '@/lib/utils';
@@ -186,46 +188,67 @@ export default function PipelineVisualizer() {
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     getAllClients()
       .then(setClients)
-      .catch(console.error)
+      .catch((err) => {
+        console.error(err);
+        setError(String(err?.message ?? err ?? 'Failed to load pipeline'));
+      })
       .finally(() => setLoading(false));
   }, []);
 
   // Group clients by stage (display format for StageColumn)
   const clientsByStage = useMemo(() => {
+    const defaults = getPipelineStageDefaults();
     return STAGES.map(stage => ({
       stage,
       clients: clients
         .filter(c => c.stage === stage)
         .map(clientToDisplay),
-      stats: { avgDaysInStage: 0, conversionRate: 0 }
+      stats: { avgDaysInStage: defaults.avgDaysInStage, conversionRate: defaults.conversionRate }
     }));
   }, [clients]);
 
   // Pipeline flow data from real clients
   const flowData = useMemo(() => {
+    const defaults = getPipelineStageDefaults();
     return STAGES.map(stage => {
       const count = clients.filter(c => c.stage === stage).length;
       const config = stageConfig[stage as keyof typeof stageConfig];
       return {
         name: config?.label ?? stage,
         clients: count,
-        conversion: 0
+        conversion: defaults.flowConversion
       };
     });
   }, [clients]);
 
   const totalClients = clients.length;
   const convertedCount = clients.filter(c => c.outcome === 'CONVERTED').length;
-  const conversionRate = totalClients > 0 ? Math.round((convertedCount / totalClients) * 100) : 0;
+  const conversionRate = calculateConversionRate(convertedCount, totalClients);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-slate-500">Loading pipeline...</p>
+      <div className="p-6 space-y-4">
+        <SkeletonCard lines={4} lineHeight={20} />
+        <SkeletonCard lines={3} lineHeight={16} />
+        <SkeletonCard lines={5} lineHeight={14} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Something went wrong</h3>
+          <p className="text-red-600 text-sm mt-1">{error}</p>
+        </div>
       </div>
     );
   }
