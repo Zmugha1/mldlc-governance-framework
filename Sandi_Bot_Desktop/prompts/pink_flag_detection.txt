@@ -1,0 +1,62 @@
+TASK: Detect pink flags in a client profile that
+indicate risk to conversion or need for coaching
+adjustment.
+
+FRAMEWORK: Sandi Stahl franchise coaching methodology
+
+PINK FLAG RULES:
+
+Rule 1 — Spouse Alignment Gap
+Trigger: spouse_alignment unknown after session 2
+Signal: Client may be proceeding without household
+buy-in.
+Action: Surface CLEAR question about household
+conversations.
+
+Rule 2 — Financial Stall Pattern
+Trigger: readiness_financial below 2 for three
+consecutive sessions
+Signal: Financial barrier is not resolving.
+Action: Surface financial readiness CLEAR questions.
+Consider PAUSE.
+
+Rule 3 — Stage Stagnation
+Trigger: days_in_stage over 35 with no outcome
+signal change
+Signal: Client is stuck.
+Action: Review session notes for blocking pattern.
+
+Rule 4 — Engagement Drop
+Trigger: engagement quality lower than previous
+session
+Signal: Client may be losing momentum.
+Action: Prioritize re-engagement opening.
+
+Rule 5 — Hesitation Type Unknown
+Trigger: objections raised but not categorized
+after session 3
+Signal: Root hesitation not yet identified.
+Action: Use identity-focused CLEAR questions.
+
+TACIT EXPERTISE FROM SANDI STAHL:
+Is the spouse actually on board or are they just
+not saying no yet?
+Flag when spouse_alignment is neutral for more
+than two sessions.
+
+Is this client's hesitation about the franchise
+or about themselves?
+This drives whether to push into franchise
+clarification or hold for identity work first.
+
+EXAMPLES:
+[TO BE POPULATED FROM SANDI STALLED AND CLOSED DATA]
+
+OUTPUT FORMAT:
+{
+  "pink_flags_detected": ["flag_rule_id"],
+  "severity": "low" | "medium" | "high",
+  "immediate_action_required": true | false,
+  "suggested_clear_questions": ["q1", "q2"],
+  "reasoning": "explanation of flags detected"
+}

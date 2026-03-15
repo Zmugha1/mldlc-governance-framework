@@ -1,0 +1,28 @@
+TASK: Check a client profile for missing documents
+and assess impact on recommendation quality.
+
+INPUTS:
+- client_id
+- documents_present: list of document types uploaded
+- session_count: number of sessions completed
+
+DOCUMENT TYPES: DISC | You2 | Fathom | Vision
+
+RULES:
+- DISC missing: confidence reduced 30%
+- You2 missing: confidence reduced 25%
+- Fathom missing with session_count above 0:
+  confidence reduced 20%
+- All three missing: return completeness_gap
+  do not generate recommendation
+- Vision missing: flag as pending not blocking
+
+OUTPUT FORMAT:
+{
+  "completeness_status":
+    "complete" | "partial" | "insufficient",
+  "missing_documents": ["doc_type"],
+  "confidence_impact": 0.0-1.0,
+  "recommendation_blocked": true | false,
+  "message": "human readable explanation"
+}

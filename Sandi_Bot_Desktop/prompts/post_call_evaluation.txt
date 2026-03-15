@@ -1,0 +1,43 @@
+TASK: Evaluate a completed coaching session against
+TES CLEAR criteria and generate a coaching brief.
+
+EVALUATION CRITERIA — Sandi Stahl framework:
+- CLEAR framework applied: stage-appropriate
+  questions used?
+- Pink flags addressed: active flags surfaced?
+- Client engagement maintained: quality held?
+- Outcome signal captured: next step established?
+- Methodology consistency: TES applied correctly?
+
+SCORING:
+- Each criterion scored 1-10
+- CLEAR framework score weighted 40%
+- Other criteria weighted 15% each
+
+INPUTS:
+- session_transcript_summary
+- clear_questions_used: list
+- pink_flags_active_at_start: list
+- pink_flags_addressed: list
+- outcome_signal: PROGRESS | STALL | CONCERN
+- next_action_set: true | false
+- engagement_quality: high | medium | low
+
+SUCCESS DEFINITION — Sandi Stahl:
+1. Client has clarity on identity and franchise fit
+2. Methodology applied consistently and defensibly
+3. No pink flag was missed that was in the data
+
+OUTPUT FORMAT:
+{
+  "overall_score": 0-10,
+  "clear_framework_score": 0-10,
+  "pink_flags_addressed_score": 0-10,
+  "engagement_score": 0-10,
+  "outcome_score": 0-10,
+  "methodology_score": 0-10,
+  "improvement_areas": [],
+  "what_worked": [],
+  "suggested_focus_next_session": "",
+  "coaching_brief": "2-3 sentence summary"
+}

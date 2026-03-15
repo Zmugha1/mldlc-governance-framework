@@ -1,0 +1,40 @@
+TASK: Extract coaching intelligence from a Fathom
+call transcript for a franchise coaching session.
+
+EXTRACTION TARGETS:
+- session_date: date of the call
+- session_duration: length in minutes
+- stage_at_time: pipeline stage during session
+- key_topics: main topics discussed
+- objections_raised: hesitations or objections
+- objection_type:
+    franchise_related | self_related |
+    external | unknown
+- engagement_quality: high | medium | low
+- spouse_mentions: any spouse or household mentions
+- financial_signals: financial readiness signals
+- pink_flags_in_transcript: concerning signals
+- outcome_signal: PROGRESS | STALL | CONCERN
+- next_action_mentioned: next steps discussed
+- coach_questions_used: CLEAR or TES language used
+- client_energy_shift: notable tone changes
+
+OUTPUT FORMAT:
+{
+  "session_date": "",
+  "session_duration": null,
+  "stage_at_time": "",
+  "key_topics": [],
+  "objections_raised": [],
+  "objection_type": "",
+  "engagement_quality": "",
+  "spouse_mentions": [],
+  "financial_signals": [],
+  "pink_flags_in_transcript": [],
+  "outcome_signal": "",
+  "next_action_mentioned": "",
+  "coach_questions_used": [],
+  "client_energy_shift": "",
+  "extraction_confidence": 0.0-1.0,
+  "extraction_notes": ""
+}

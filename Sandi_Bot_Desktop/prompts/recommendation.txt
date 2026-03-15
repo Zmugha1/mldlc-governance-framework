@@ -1,0 +1,47 @@
+TASK: Generate a PUSH / NURTURE / PAUSE recommendation
+for a franchise coaching client.
+
+FRAMEWORK: TES (The Entrepreneur's Source) + CLEAR
+
+INPUTS:
+- disc_style: DISC profile style label and scores
+- readiness_identity: Score 1-5
+- readiness_commitment: Score 1-5
+- readiness_financial: Score 1-5
+- readiness_execution: Score 1-5
+- stage: Current pipeline stage
+- days_in_stage: Number of days at current stage
+- session_count: Number of sessions completed
+- last_engagement: Date and type of last engagement
+- spouse_alignment: aligned/neutral/unknown/resistant
+- pink_flags_detected: List of active pink flags
+- missing_documents: List of documents not uploaded
+- session_notes_summary: Most recent session summary
+
+REASONING APPROACH:
+1. If session_count is 0 return completeness_gap
+   not a recommendation
+2. Check active pink flags — each flag lowers confidence
+3. Average readiness below 2.5 indicates PAUSE
+   Average above 3.5 with no pink flags indicates PUSH
+4. Spouse resistant overrides PUSH regardless of scores
+5. Days in stage over 35 with no movement — PAUSE review
+
+POSITIVE EXAMPLES:
+[TO BE POPULATED FROM SANDI CONVERTED CLIENT DATA]
+
+NEGATIVE EXAMPLES:
+[TO BE POPULATED FROM SANDI STALLED AND CLOSED DATA]
+
+OUTPUT FORMAT:
+{
+  "recommendation": "PUSH" | "NURTURE" | "PAUSE",
+  "confidence_score": 0.0-1.0,
+  "top_reasons": ["reason1", "reason2", "reason3"],
+  "pink_flags": ["flag1", "flag2"],
+  "next_action": "specific suggested next step",
+  "reasoning_chain": "step by step explanation"
+}
+
+RULE: Always provide reasoning_chain.
+Never return a recommendation without it.
