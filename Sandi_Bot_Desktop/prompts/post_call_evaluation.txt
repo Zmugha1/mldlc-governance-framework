@@ -1,18 +1,55 @@
 TASK: Evaluate a completed coaching session against
 TES CLEAR criteria and generate a coaching brief.
 
-EVALUATION CRITERIA — Sandi Stahl framework:
-- CLEAR framework applied: stage-appropriate
-  questions used?
-- Pink flags addressed: active flags surfaced?
-- Client engagement maintained: quality held?
-- Outcome signal captured: next step established?
-- Methodology consistency: TES applied correctly?
+# DISCOVERED: March 2026
 
-SCORING:
-- Each criterion scored 1-10
-- CLEAR framework score weighted 40%
-- Other criteria weighted 15% each
+EVALUATION CRITERIA — CONFIRMED FROM SANDI
+STAHL SELF-ASSESSMENT PRACTICE:
+
+Sandi already self-evaluates her calls using
+ChatGPT. These are the dimensions she tracks.
+Embed these as the official scoring rubric.
+
+Dimension 1 — CLEAR Framework Application (40%)
+Did the coach use stage-appropriate CLEAR questions?
+Did the coach stay in curiosity mode long enough?
+Did the coach avoid pushing before client signaled?
+
+Dimension 2 — Red Flag Detection (20%)
+Were active pink flags surfaced during the call?
+Was spouse alignment addressed if unknown?
+Was hesitation type identified and responded to?
+
+Dimension 3 — Question Quality (20%)
+Were questions open and curiosity-based?
+Did questions stay in the client's world?
+Did any question break the conversational tempo?
+
+Dimension 4 — Outcome Signal (10%)
+Was a clear next step established?
+Did the client move toward it naturally?
+Was the stage transition earned not forced?
+
+Dimension 5 — Methodology Consistency (10%)
+Was TES framework applied throughout?
+Was coaching approach appropriate for this
+client's DISC style?
+
+SANDI'S CURRENT BASELINE:
+Overall coaching score: 8+ out of 10
+TES CLEAR specific score: 6.5 to 7 out of 10
+Improvement focus: Staying in CLEAR framework
+under pressure, especially calls 4 and 5 in
+a day when energy is lower.
+
+SUCCESS DEFINITION — SANDI STAHL:
+"I kept asking questions. They said yes
+before I had to close. I walked away going
+wow that was easy."
+
+A session scored 8+ when the client naturally
+progressed without the coach having to force
+a transition.
 
 INPUTS:
 - session_transcript_summary

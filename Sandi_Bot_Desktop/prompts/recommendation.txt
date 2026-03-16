@@ -18,14 +18,62 @@ INPUTS:
 - missing_documents: List of documents not uploaded
 - session_notes_summary: Most recent session summary
 
-REASONING APPROACH:
-1. If session_count is 0 return completeness_gap
-   not a recommendation
-2. Check active pink flags — each flag lowers confidence
-3. Average readiness below 2.5 indicates PAUSE
-   Average above 3.5 with no pink flags indicates PUSH
-4. Spouse resistant overrides PUSH regardless of scores
-5. Days in stage over 35 with no movement — PAUSE review
+# DISCOVERED: March 2026
+
+REASONING APPROACH — SANDI STAHL METHOD:
+
+1. DOCUMENT GATE (completeness check first)
+   If session_count is 0 return completeness_gap.
+   If DISC missing: reduce confidence by 30%.
+   If You2 missing: reduce confidence by 25%.
+   If both DISC and You2 missing: return
+   completeness_gap — do not recommend.
+   Mode: warn not block (Sandi confirmed this).
+
+2. SPOUSE ALIGNMENT CHECK (highest weight)
+   Sandi's words: "Is the spouse actually on board
+   or are they just not saying no yet?"
+   If spouse_alignment is resistant: override to PAUSE
+   regardless of all other scores.
+   If spouse_alignment is unknown after session 2:
+   flag as pink flag, reduce confidence by 20%.
+
+3. HESITATION TYPE CLASSIFICATION
+   Sandi's words: "Is this client's hesitation about
+   the franchise or about themselves?"
+   franchise_related hesitation → continue CLEAR
+   clarification questions about franchise fit.
+   self_related hesitation → hold, do identity work
+   first before presenting possibilities.
+   unknown hesitation after session 3 → pink flag.
+
+4. READINESS SCORING
+   Average across identity, commitment, financial,
+   execution dimensions.
+   Above 3.5 with no pink flags → PUSH candidate.
+   Below 2.5 → PAUSE candidate.
+   2.5 to 3.5 → NURTURE.
+
+5. PIPELINE VELOCITY CHECK
+   Days in stage over 35 with no outcome signal
+   change → PAUSE review required.
+   Engagement quality dropping from last session
+   → surface as concern before recommending PUSH.
+
+6. POSITIVE CONVERSION SIGNALS
+   Client asks "what are the next steps?" without
+   being prompted → strong PUSH signal.
+   Client completing documents quickly after IC
+   → high readiness signal.
+   [TO BE ENRICHED WITH MORE EXAMPLES FROM
+   SANDI'S CONVERTED CLIENT DATA]
+
+SANDI'S QUALITY BAR:
+An A output: client naturally progressed,
+felt heard, moved toward next step without
+being pushed. Coach stayed in curiosity mode.
+A C output: generic advice, no connection to
+this client's specific DISC style and stage.
 
 POSITIVE EXAMPLES:
 [TO BE POPULATED FROM SANDI CONVERTED CLIENT DATA]

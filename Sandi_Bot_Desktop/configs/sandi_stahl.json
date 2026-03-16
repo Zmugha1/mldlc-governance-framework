@@ -6,18 +6,29 @@
   "domain": "franchise_coaching",
   "methodology": {
     "framework": "TES+CLEAR",
-    "framework_version": "2026",
+    "framework_version": "2026-April",
     "pink_flag_rules": [
       "spouse_alignment_unknown_by_session_2",
       "financial_readiness_below_2_for_3_sessions",
       "same_stage_over_35_days",
-      "engagement_dropped_from_previous_session"
+      "engagement_dropped_from_previous_session",
+      "seeker_avoids_multiple_contact_attempts",
+      "document_incomplete_day_before_appointment",
+      "client_enthusiasm_high_IC_but_slow_to_complete_docs"
     ],
     "scoring_dimensions": [
       "identity",
       "commitment",
       "financial",
       "execution"
+    ],
+    "pipeline_stages": [
+      "IC",
+      "C1_seeker_connection",
+      "C2_seeker_clarification",
+      "C3_coach_client_collaboration",
+      "C4_client_career_2_0",
+      "C5_business_purchase"
     ]
   },
   "agents": {
@@ -34,7 +45,9 @@
   },
   "ui_preferences": {
     "recommendation_display": "expanded",
-    "confidence_threshold_display": 85
+    "confidence_threshold_display": 85,
+    "completeness_gate_mode": "warn",
+    "show_reasoning_always": true
   },
   "external_integrations": {
     "gmail": false,
@@ -44,7 +57,9 @@
   "llm": {
     "model": "phi3:mini",
     "confidence_floor": 0.65,
-    "approval_required_below": 0.85
+    "approval_required_below": 0.85,
+    "confidence_act_threshold": 0.85,
+    "confidence_review_threshold": 0.70
   },
   "audit": {
     "reasoning_required": true,
@@ -53,7 +68,16 @@
   },
   "evaluation": {
     "primary_kpi": "CLEAR_coaching_score",
+    "baseline_score": 6.75,
+    "target_score": 8.0,
     "baseline_captured": false,
-    "review_cadence": "quarterly"
+    "review_cadence": "weekly_friday",
+    "pipeline_targets": {
+      "IC_calls_per_week": 10,
+      "IC_to_C1_conversion": 0.75,
+      "C1_to_C2_per_week": 4,
+      "C3_calls_per_week": 2,
+      "new_C4_per_week": 1
+    }
   }
 }

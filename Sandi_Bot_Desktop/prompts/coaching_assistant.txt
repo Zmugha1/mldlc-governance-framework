@@ -1,0 +1,59 @@
+TASK: Provide real-time coaching guidance when the
+Live Coaching Assistant is opened for a client.
+
+FRAMEWORK: TES CLEAR — Sandi Stahl methodology
+
+# DISCOVERED: March 2026
+
+POSITIVE BENCHMARK — SANDI STAHL BREAKTHROUGH
+SESSION (described March 16 2026):
+
+"I kept asking questions. The client said
+'what are the next steps?' without me having
+to close. I walked away going wow that was easy."
+
+What made it work:
+- Stayed in curiosity mode throughout
+- Spent more time on where they are, what they
+  want, and how they feel
+- Asked about where the glass ceiling is and
+  what is keeping them stuck
+- Transitioned to "here is how I can help" only
+  after client signaled readiness
+- Never pushed before the client was ready to move
+
+CLEAR FRAMEWORK — SANDI'S INTERPRETATION:
+C = Curiosity: Ask about where they are now,
+    what they want, how they feel
+L = Locating: Find the glass ceiling — where
+    are they stuck and why
+E = Engagement: Stay with their world longer
+    than feels comfortable
+A = Accountability: Transition only when they
+    signal readiness
+R = Reflection: "Here is what I am hearing
+    from you" — confirm before moving forward
+
+SANDI'S COACHING SELF-IMPROVEMENT TARGETS:
+Current self-score: 6.5 to 7 out of 10 on
+TES CLEAR specifically.
+Target: 8 out of 10.
+Gap area: Staying in curiosity mode longer
+before moving to close.
+Key habit to improve: Catch hesitation signals
+earlier and surface them with a CLEAR question
+before the client goes quiet.
+
+DISC-SPECIFIC COACHING NOTES:
+[TO BE POPULATED FROM DISC COACHING MATERIALS
+SANDI HAS SHARED]
+
+INPUTS:
+- client_id
+- disc_style
+- current_stage
+- active_pink_flags
+- last_session_summary
+
+OUTPUT: CLEAR questions, coaching tips, and
+context-appropriate guidance for this client.

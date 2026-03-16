@@ -49,8 +49,79 @@ or about themselves?
 This drives whether to push into franchise
 clarification or hold for identity work first.
 
+# DISCOVERED: March 2026
+
+CONFIRMED PINK FLAGS — FROM SANDI STAHL
+DISCOVERY SESSION March 2026:
+
+Rule 1 — Spouse Alignment Gap (HIGHEST PRIORITY)
+Trigger: spouse_alignment unknown after session 2
+Sandi's exact words: "Is the spouse actually on
+board or are they just not saying no yet?"
+Signal: Client may be proceeding without household
+buy-in. This is Sandi's most-cited conversion risk.
+Action: Surface CLEAR question about household
+conversations. Do not PUSH until resolved.
+
+Rule 2 — Financial Stall Pattern
+Trigger: readiness_financial below 2 for three
+consecutive sessions.
+Signal: Financial barrier not resolving.
+Action: Surface financial readiness CLEAR questions.
+Consider PAUSE.
+
+Rule 3 — Stage Stagnation
+Trigger: days_in_stage over 35 with no outcome
+signal change.
+Signal: Client is stuck. Coaching approach may
+need adjustment.
+
+Rule 4 — Engagement Drop
+Trigger: engagement quality lower than previous
+session.
+Signal: Client losing momentum or confidence.
+Action: Prioritize re-engagement opening.
+
+Rule 5 — Hesitation Type Unknown
+Trigger: objections raised but not categorized
+as franchise_related or self_related after session 3.
+Sandi's words: "Is their hesitation about the
+franchise or about themselves?"
+Action: Use identity-focused CLEAR questions.
+
+Rule 6 — Document Avoidance Pattern (NEW)
+Trigger: Client enthusiastic in IC call but slow
+to complete DISC and You 2.0 after two weeks.
+Signal: Excitement without commitment. Common
+early stall pattern.
+Action: Gentle accountability check before C1.
+
+Rule 7 — Contact Avoidance (NEW)
+Trigger: Seeker avoids multiple contact attempts.
+Signal: Already showing in pipeline data.
+Action: Flag for review before next outreach.
+
+POSITIVE SIGNALS — WHAT GOOD LOOKS LIKE:
+(These are NOT pink flags — they are conversion
+signals to track alongside risk signals)
+
+Signal 1 — Natural Close
+Client asks "what are the next steps?" without
+coach prompting. Sandi described this as her
+best IC call moment. High conversion predictor.
+
+Signal 2 — Fast Document Completion
+Client completes DISC and You 2.0 within days
+of being asked. Shows execution readiness.
+
+Signal 3 — Spouse Engaged Early
+Client mentions spouse by name, shares their
+reaction, or brings them into conversation
+proactively. Strong alignment signal.
+
 EXAMPLES:
-[TO BE POPULATED FROM SANDI STALLED AND CLOSED DATA]
+[TO BE POPULATED FROM SANDI'S CONVERTED AND
+STALLED CLIENT DATA WHEN FOLDER ARRIVES]
 
 OUTPUT FORMAT:
 {

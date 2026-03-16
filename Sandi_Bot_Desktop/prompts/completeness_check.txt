@@ -8,6 +8,29 @@ INPUTS:
 
 DOCUMENT TYPES: DISC | You2 | Fathom | Vision
 
+# DISCOVERED: March 2026
+
+CONFIRMED GATE MODE: warn — not block.
+Sandi's preference: Show what is missing clearly
+on the dashboard. Do not prevent a recommendation.
+She said: "I wanted something on my dashboard
+that said oh you haven't put the You 2.0 in
+here yet."
+
+DOCUMENT PRIORITY (confirmed from discovery):
+DISC — required for communication style scoring
+You2 — required for strengths/dangers analysis
+Fathom — required for session history and patterns
+Vision — not required for recommendation,
+  flag as pending only
+
+NAMING CONSISTENCY RULE (new from discovery):
+Client name must match exactly across all documents.
+Sandi discovered: client goes by Matt but signed
+as Matthew across documents.
+Rule: Flag name mismatches as a completeness warning.
+Do not silently merge different name variations.
+
 RULES:
 - DISC missing: confidence reduced 30%
 - You2 missing: confidence reduced 25%
