@@ -10,6 +10,30 @@ fn greet(name: String) -> String {
 }
 
 #[tauri::command]
+async fn watch_client_folders(base_path: String) -> Result<String, String> {
+    // Phase 3 implementation pending
+    Ok(format!("Watching: {}", base_path))
+}
+
+#[tauri::command]
+async fn process_document(file_path: String, doc_type: String) -> Result<String, String> {
+    // Phase 3 implementation pending
+    Ok(format!("Processing: {} as {}", file_path, doc_type))
+}
+
+#[tauri::command]
+async fn extract_text_from_pdf(file_path: String) -> Result<String, String> {
+    // Phase 3 implementation pending
+    Ok(format!("Extracted text from: {}", file_path))
+}
+
+#[tauri::command]
+async fn bulk_import_folder(folder_path: String) -> Result<String, String> {
+    // Phase 3 implementation pending
+    Ok(format!("Bulk importing: {}", folder_path))
+}
+
+#[tauri::command]
 fn get_app_dir(_app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(windows)]
     let home = std::env::var("USERPROFILE").map_err(|e| e.to_string())?;
@@ -126,6 +150,68 @@ pub fn run() {
                 )",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "create_document_extractions_table",
+            sql: "CREATE TABLE IF NOT EXISTS document_extractions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                document_type TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                extraction_status TEXT DEFAULT 'pending',
+                extracted_data TEXT,
+                extraction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                error_message TEXT,
+                FOREIGN KEY (client_id) REFERENCES clients(id)
+            )",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 8,
+            description: "create_client_disc_profiles_table",
+            sql: "CREATE TABLE IF NOT EXISTS client_disc_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT UNIQUE NOT NULL,
+                adapted_d INTEGER, adapted_i INTEGER,
+                adapted_s INTEGER, adapted_c INTEGER,
+                natural_d INTEGER, natural_i INTEGER,
+                natural_s INTEGER, natural_c INTEGER,
+                primary_style_label TEXT,
+                primary_style_combination TEXT,
+                driving_forces_primary TEXT,
+                communication_dos TEXT,
+                communication_donts TEXT,
+                stress_signals TEXT,
+                assessment_date TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_id) REFERENCES clients(id)
+            )",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 9,
+            description: "create_client_you2_profiles_table",
+            sql: "CREATE TABLE IF NOT EXISTS client_you2_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT UNIQUE NOT NULL,
+                one_year_vision TEXT,
+                spouse_name TEXT,
+                spouse_role TEXT,
+                spouse_on_calls TEXT,
+                spouse_mindset TEXT,
+                financial_net_worth_range TEXT,
+                credit_score INTEGER,
+                launch_timeline TEXT,
+                dangers TEXT,
+                strengths TEXT,
+                opportunities TEXT,
+                areas_of_interest TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_id) REFERENCES clients(id)
+            )",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -140,6 +226,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             get_app_dir,
+            watch_client_folders,
+            process_document,
+            extract_text_from_pdf,
+            bulk_import_folder,
             pdf_parser::parse_pdf,
             file_watcher::watch_folder,
             backup::create_backup,
