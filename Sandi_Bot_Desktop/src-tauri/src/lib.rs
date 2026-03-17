@@ -40,6 +40,13 @@ async fn bulk_import_folder(folder_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn read_prompt_file(name: String) -> Result<String, String> {
+    let prompt_path = format!("prompts/{}.txt", name);
+    std::fs::read_to_string(&prompt_path)
+        .map_err(|e| format!("Failed to read prompt {}: {}", name, e))
+}
+
+#[tauri::command]
 fn get_app_dir(_app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(windows)]
     let home = std::env::var("USERPROFILE").map_err(|e| e.to_string())?;
@@ -218,6 +225,94 @@ pub fn run() {
             )",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 10,
+            description: "add_disc_driving_forces_situational",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN driving_forces_situational TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "add_disc_driving_forces_indifferent",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN driving_forces_indifferent TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 12,
+            description: "add_disc_ideal_environment",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN ideal_environment TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 13,
+            description: "add_disc_value_to_organization",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN value_to_organization TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 14,
+            description: "add_disc_areas_for_improvement",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN areas_for_improvement TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 15,
+            description: "add_you2_time_commitment",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN time_commitment TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 16,
+            description: "add_you2_reasons_for_change",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN reasons_for_change TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 17,
+            description: "add_you2_location_preference",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN location_preference TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 18,
+            description: "add_you2_skills",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN skills TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 19,
+            description: "add_you2_prior_business_experience",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN prior_business_experience TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 20,
+            description: "add_you2_self_sufficiency_excitement",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN self_sufficiency_excitement TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 21,
+            description: "add_you2_additional_stakeholders",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN additional_stakeholders TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 22,
+            description: "create_coaching_sessions_table",
+            sql: "CREATE TABLE IF NOT EXISTS coaching_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                session_date TEXT,
+                session_number INTEGER,
+                stage TEXT,
+                notes TEXT,
+                next_actions TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_id) REFERENCES clients(id)
+            )",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -231,6 +326,7 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             greet,
+            read_prompt_file,
             get_app_dir,
             watch_client_folders,
             process_document,

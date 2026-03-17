@@ -144,6 +144,48 @@ Config controls: audit.reasoning_required
 
 ---
 
+## Document Extraction Operations
+
+### extract_disc_profile(client_id, file_path, raw_text)
+Layer: Skills
+Prompt: prompts/disc_extraction.txt
+Input: { client_id: string, file_path: string, raw_text: string }
+Output: ExtractionResult<DiscProfile>
+Calibrated for TTI Talent Insights format.
+Approval required: extraction_confidence below 0.70
+Audit: always
+Config controls: llm.model
+
+### extract_you2_profile(client_id, file_path, raw_text)
+Layer: Skills
+Prompt: prompts/you2_extraction.txt
+Input: { client_id: string, file_path: string, raw_text: string }
+Output: ExtractionResult<You2Profile>
+Calibrated for TES You 2.0 + TUMAY format.
+Approval required: extraction_confidence below 0.70
+Audit: always
+Config controls: llm.model
+
+### extract_fathom_session(client_id, file_path, raw_text)
+Layer: Skills
+Prompt: prompts/fathom_extraction.txt
+Input: { client_id: string, file_path: string, raw_text: string }
+Output: ExtractionResult<FathomSession>
+Approval required: extraction_confidence below 0.70
+Audit: always
+Config controls: llm.model
+
+### get_extraction_status(client_id)
+Layer: Skills
+Prompt: none — deterministic
+Input: { client_id: string }
+Output: Record<DocumentType, ExtractionStatus>
+Approval required: never
+Audit: always
+Config controls: none
+
+---
+
 ## FRED-ONLY OPERATIONS
 Loads only when agents.synthesis_agent: true in config
 
