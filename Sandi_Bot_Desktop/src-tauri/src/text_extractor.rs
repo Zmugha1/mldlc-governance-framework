@@ -50,50 +50,54 @@ pub fn extract_text(file_path: &str) -> ExtractionResult {
 }
 
 fn extract_pdf(file_path: &str) -> ExtractionResult {
+    // Attempt 1: lopdf raw stream parsing (Chrome-printed PDFs)
+    let stream_result = try_pdf_stream_extraction(file_path);
+    if stream_result.trim().len() > 50 {
+        return ExtractionResult::success(stream_result, "pdf");
+    }
+
+    // Attempt 2: pdf-extract crate (standard PDFs)
+    match std::fs::read(file_path) {
+        Ok(bytes) => match pdf_extract::extract_text_from_mem(&bytes) {
+            Ok(text) if text.trim().len() > 50 => {
+                return ExtractionResult::success(text, "pdf");
+            }
+            Ok(_) => {}
+            Err(e) => {
+                return ExtractionResult::failure("pdf", e.to_string());
+            }
+        },
+        Err(e) => return ExtractionResult::failure("pdf", e.to_string()),
+    }
+
+    // Both failed — image-based PDF
+    ExtractionResult::failure(
+        "pdf",
+        "PDF appears to be image-based. \
+         Text extraction not possible without OCR. \
+         Please export the TTI report as a \
+         text-selectable PDF."
+            .to_string(),
+    )
+}
+
+fn try_pdf_stream_extraction(file_path: &str) -> String {
     match lopdf::Document::load(file_path) {
-        Err(e) => ExtractionResult::failure("pdf", e.to_string()),
+        Err(_) => String::new(),
         Ok(doc) => {
             let mut text = String::new();
             let pages = doc.get_pages();
-
-            // First pass: pdf_extract (works for standard PDFs)
-            match std::fs::read(file_path) {
-                Ok(bytes) => {
-                    if let Ok(extracted) = pdf_extract::extract_text_from_mem(&bytes) {
-                        if !extracted.trim().is_empty() {
-                            text = extracted;
-                            text.push('\n');
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-
-            // Second pass: raw content stream if first pass got too little
-            // Chrome-printed TTI DISC PDFs need this
-            if text.trim().len() < 100 {
-                for (_page_num, page_id) in &pages {
-                    if let Ok(content) = doc.get_page_content(*page_id) {
-                        let raw = String::from_utf8_lossy(&content);
-                        let extracted = extract_text_from_pdf_stream(&raw);
-                        if !extracted.is_empty() {
-                            text.push_str(&extracted);
-                            text.push('\n');
-                        }
+            for (_page_num, page_id) in &pages {
+                if let Ok(content) = doc.get_page_content(*page_id) {
+                    let raw = String::from_utf8_lossy(&content);
+                    let extracted = extract_text_from_pdf_stream(&raw);
+                    if !extracted.is_empty() {
+                        text.push_str(&extracted);
+                        text.push('\n');
                     }
                 }
             }
-
-            if text.trim().len() > 5 {
-                ExtractionResult::success(text, "pdf")
-            } else {
-                ExtractionResult::failure(
-                    "pdf",
-                    "PDF has no extractable text. \
-                     May be image-only or encrypted."
-                        .to_string(),
-                )
-            }
+            text
         }
     }
 }

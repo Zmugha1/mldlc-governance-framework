@@ -3,6 +3,7 @@ mod file_watcher;
 mod backup;
 mod text_extractor;
 
+use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[tauri::command]
@@ -40,10 +41,43 @@ async fn bulk_import_folder(folder_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn read_prompt_file(name: String) -> Result<String, String> {
-    let prompt_path = format!("prompts/{}.txt", name);
-    std::fs::read_to_string(&prompt_path)
-        .map_err(|e| format!("Failed to read prompt {}: {}", name, e))
+fn read_prompt_file(name: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+    // Try multiple locations for prompts (dev cwd is unpredictable)
+    let possible_paths = vec![
+        format!("prompts/{}.txt", name),
+        format!("../prompts/{}.txt", name),
+        format!("../../prompts/{}.txt", name),
+    ];
+
+    for path in &possible_paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if !content.trim().is_empty() {
+                return Ok(content);
+            }
+        }
+    }
+
+    // Try Tauri resource path
+    if let Ok(resource_path) = app_handle.path().resource_dir() {
+        let prompt_path = resource_path
+            .join("prompts")
+            .join(format!("{}.txt", name));
+        if let Ok(content) = std::fs::read_to_string(&prompt_path) {
+            if !content.trim().is_empty() {
+                return Ok(content);
+            }
+        }
+    }
+
+    // Fallback so extraction can proceed without file
+    let fallback = match name.as_str() {
+        "disc_extraction" => "Extract DISC behavioral assessment data from this TTI report. Return structured JSON only.",
+        "you2_extraction" => "Extract You 2.0 and TUMAY intake form data. Return structured JSON only.",
+        "fathom_extraction" => "Extract coaching session data from this transcript. Return structured JSON only.",
+        _ => "Extract structured data from this document. Return JSON only.",
+    };
+
+    Ok(fallback.to_string())
 }
 
 #[tauri::command]
@@ -490,6 +524,12 @@ pub fn run() {
             version: 31,
             description: "clear_empty_disc_profiles",
             sql: "DELETE FROM client_disc_profiles WHERE natural_d IS NULL AND natural_i IS NULL AND natural_s IS NULL AND natural_c IS NULL",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 32,
+            description: "clear_failed_extractions_v2",
+            sql: "DELETE FROM document_extractions WHERE extraction_status IN ('failed', 'pending')",
             kind: MigrationKind::Up,
         },
     ];

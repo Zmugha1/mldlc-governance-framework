@@ -1,0 +1,5 @@
+You are extracting data from a franchise client
+vision statement document.
+This document describes the client's desired future
+and motivations for business ownership.
+Extract the key themes, goals, and aspirations.

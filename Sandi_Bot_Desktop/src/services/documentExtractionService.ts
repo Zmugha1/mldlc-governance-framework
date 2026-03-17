@@ -275,6 +275,34 @@ Schema:
         ? error
         : JSON.stringify(error) ?? 'Unknown error';
     console.error('Extraction error full details:', error);
+
+    // Image-based PDF — record as skipped with actionable message
+    if (
+      message.includes('image-based') ||
+      message.includes('no extractable text') ||
+      message.includes('image-only')
+    ) {
+      await recordExtraction(
+        clientId,
+        'disc',
+        filePath,
+        fileName,
+        'skipped',
+        null,
+        'TTI report is image-based PDF. ' +
+          'Please export from TTI portal as ' +
+          'text-selectable PDF and re-import.'
+      );
+      return {
+        success: false,
+        data: null,
+        error:
+          'Image-based PDF — please export as ' +
+          'text-selectable PDF from TTI portal',
+        extraction_status: 'skipped',
+      };
+    }
+
     await recordExtraction(
       clientId,
       'disc',

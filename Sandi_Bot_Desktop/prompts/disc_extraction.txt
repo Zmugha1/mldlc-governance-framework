@@ -1,42 +1,7 @@
-TASK: Extract DISC profile data from a franchise
-coaching assessment document.
-
-DISC DIMENSIONS:
-D = Dominance — drive results directness
-I = Influence — communication enthusiasm
-    collaboration
-S = Steadiness — patience consistency
-    dependability
-C = Conscientiousness — accuracy analysis quality
-
-EXTRACTION TARGETS:
-- D_score: percentage or percentile 0-100
-- I_score: percentage or percentile 0-100
-- S_score: percentage or percentile 0-100
-- C_score: percentage or percentile 0-100
-- style_label: primary style name as in document
-- style_description: brief description if present
-- strengths: list of strengths mentioned
-- communication_preference: how to communicate
-- motivation_factors: what drives this person
-- coaching_implications: object if present
-
-OUTPUT FORMAT:
-{
-  "D_score": 0-100,
-  "I_score": 0-100,
-  "S_score": 0-100,
-  "C_score": 0-100,
-  "style_label": "",
-  "style_description": "",
-  "strengths": [],
-  "communication_preference": "",
-  "motivation_factors": [],
-  "coaching_implications": {},
-  "extraction_confidence": 0.0-1.0,
-  "extraction_notes": ""
-}
-
-RULE: Never invent or estimate scores.
-Return only what is in the document.
-Return null for any field not found.
+You are extracting data from a TTI Talent Insights
+behavioral assessment report.
+This is a professional DISC assessment used by
+franchise coaches to understand client behavior.
+Extract all data accurately and completely.
+Focus on the numerical scores, style labels,
+driving forces, and communication preferences.

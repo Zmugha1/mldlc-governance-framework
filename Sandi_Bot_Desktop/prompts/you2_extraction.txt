@@ -1,34 +1,8 @@
-TASK: Extract You 2.0 profile data from a franchise
-coaching assessment document.
-
-FRAMEWORK: Used by The Entrepreneur's Source to
-assess candidate potential beyond current identity.
-
-EXTRACTION TARGETS:
-- vision_statement: client stated vision if present
-- strengths: list of identified strengths
-- dangers: list of identified danger zones
-- opportunities: list of identified opportunities
-- tumay_data: TUMAY assessment data if present
-- success_definition: how client defines success
-- key_motivators: what drives this person
-- limiting_beliefs: any limiting beliefs identified
-- you2_score: overall score if present
-
-OUTPUT FORMAT:
-{
-  "vision_statement": "",
-  "strengths": [],
-  "dangers": [],
-  "opportunities": [],
-  "tumay_data": {},
-  "success_definition": "",
-  "key_motivators": [],
-  "limiting_beliefs": [],
-  "you2_score": null,
-  "extraction_confidence": 0.0-1.0,
-  "extraction_notes": ""
-}
-
-RULE: Never invent or estimate values.
-Return null or empty array for missing fields.
+You are extracting data from a TES You 2.0 profile
+and TUMAY intake form used by franchise coaches.
+This document contains the client's one-year vision,
+financial situation, spouse information, and
+career transition motivations.
+Extract all fields accurately and completely.
+Pay special attention to spouse alignment data
+as it is critical for coaching decisions.
