@@ -1,5 +1,26 @@
 # Sandi Bot Desktop — Production Roadmap & Cursor Build Guide
 
+---
+## ⚠️ CURSOR RULES — READ BEFORE EVERY SESSION
+
+COMPLETED — do not rebuild:
+- text_extractor.rs — all file formats (commit b884342)
+- documentExtractionService.ts — Ollama integration
+  is LIVE at http://localhost:11434/api/generate
+  using phi3:mini — DO NOT rebuild Ollama calls
+- Migrations 1–27 complete — new ones start at 28+
+- client_id is string (TEXT/UUID) everywhere
+- Database is sandi_bot.db via getDb()
+
+RULES:
+- Never use sqlite:coaching.db
+- Never use better-sqlite3
+- Never use Electron
+- Never upgrade Tailwind to v4
+- Work on dev branch only
+- cargo check before npm run tauri:dev
+---
+
 > **AI Solutions Architect:** Dr. Data — Decision Intelligence  
 > **Client:** Sandy Stahl — Franchise Coach  
 > **Product:** Airgapped Coaching Intelligence Desktop Application  
@@ -452,6 +473,12 @@ ACCEPTANCE TEST:
 **Goal:** Drop a PDF into a folder. Client profile appears automatically.  
 **Investment:** $3,000  
 **Timeline:** Week 2-3
+
+**Status:**
+- Phase 3 text extractor: **COMPLETE**
+- Phase 3 extraction service: **COMPLETE**
+- Stage inference: **IN PROGRESS**
+- Profile builder / Bulk import: **NOT STARTED**
 
 ## Pre-Phase Requirement
 
