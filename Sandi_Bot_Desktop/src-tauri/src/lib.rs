@@ -47,6 +47,17 @@ fn read_prompt_file(name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn list_directory_files(path: String) -> Result<Vec<String>, String> {
+    let dir = std::fs::read_dir(&path)
+        .map_err(|e| format!("Cannot read {}: {}", path, e))?;
+    let files: Vec<String> = dir
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    Ok(files)
+}
+
+#[tauri::command]
 fn get_app_dir(_app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(windows)]
     let home = std::env::var("USERPROFILE").map_err(|e| e.to_string())?;
@@ -343,6 +354,21 @@ pub fn run() {
             sql: "ALTER TABLE clients ADD COLUMN pink_flags TEXT DEFAULT '[]'",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 28,
+            description: "create_client_stage_log_table",
+            sql: "CREATE TABLE IF NOT EXISTS client_stage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                previous_stage TEXT,
+                new_stage TEXT,
+                previous_bucket TEXT,
+                new_bucket TEXT,
+                changed_by TEXT DEFAULT 'system',
+                changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -357,6 +383,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             read_prompt_file,
+            list_directory_files,
             get_app_dir,
             watch_client_folders,
             process_document,

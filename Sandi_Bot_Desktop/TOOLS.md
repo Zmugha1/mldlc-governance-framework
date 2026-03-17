@@ -186,6 +186,50 @@ Config controls: none
 
 ---
 
+## STAGE INFERENCE & PROFILE BUILDER
+
+### infer_client_stage
+Layer: Skills
+Prompt: none — pure logic
+Input: { client_id: string, bucket: OutcomeBucket }
+Output: { inferred_stage, confidence, reasoning,
+          missing_documents }
+Audit: always
+Approval: none — system infers, Sandi confirms
+LLM: no
+
+### confirm_client_stage
+Layer: Skills
+Prompt: none
+Input: { client_id: string, stage: string,
+         confirmed_by: string }
+Output: { success: boolean }
+Audit: always
+Approval: none — this IS the approval
+LLM: no
+
+### rebuild_client_profile
+Layer: Skills
+Prompt: none
+Input: { client_id: string }
+Output: { success: boolean, readiness_score: number,
+          recommendation: string, pink_flags: string[] }
+Audit: always
+Approval: none
+LLM: no — calls existing recommendationService
+
+### bulk_import_folder
+Layer: Skills
+Prompt: none — orchestrates documentExtractionService
+Input: { base_path: string }
+Output: { processed: number, failed: number,
+          clients_created: number, errors: string[] }
+Audit: always
+Approval: none
+LLM: yes — calls documentExtractionService
+
+---
+
 ## FRED-ONLY OPERATIONS
 Loads only when agents.synthesis_agent: true in config
 

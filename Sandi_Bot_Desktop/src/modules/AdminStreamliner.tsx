@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   Activity, 
   Phone, 
@@ -19,7 +20,8 @@ import {
   CheckCircle2,
   BookOpen,
   Heart,
-  Target
+  Target,
+  FolderInput
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,7 +30,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { SkeletonCard } from '@/components/SkeletonCard';
+import { Progress } from '@/components/ui/progress';
 import { knowledgeGraph } from '@/data/sampleClients';
+import { bulkImportFolder, type BulkImportResult, type ImportProgress } from '@/services/bulkImportService';
 import { getAllClients, getRankedClients, getPushClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
 import { getAuditLog, auditEntriesToActivityLogs } from '@/services/auditService';
 import { clientToDisplay } from '@/services/clientAdapter';
@@ -120,6 +124,9 @@ export default function AdminStreamliner() {
     weeklyReports: true,
     clientUpdates: true,
   });
+  const [importRunning, setImportRunning] = useState(false);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+  const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -136,6 +143,35 @@ export default function AdminStreamliner() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const handleBulkImport = async () => {
+    setImportRunning(true);
+    setImportProgress(null);
+    setImportResult(null);
+    try {
+      const appDir = await invoke<string>('get_app_dir');
+      const basePath = `${appDir.replace(/[/\\]+$/, '')}/clients`;
+      const result = await bulkImportFolder(basePath, (p) => setImportProgress(p));
+      setImportResult(result);
+      const [rawClients, auditEntries] = await Promise.all([
+        getAllClients(),
+        getAuditLog(100)
+      ]);
+      setClients(rawClients.map(clientToDisplay));
+      const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
+      setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
+    } catch (err) {
+      setImportResult({
+        processed: 0,
+        failed: 0,
+        clients_created: 0,
+        errors: [err instanceof Error ? err.message : String(err)]
+      });
+    } finally {
+      setImportRunning(false);
+      setImportProgress(null);
+    }
+  };
 
   // Filter logs
   const filteredLogs = useMemo(() => {
@@ -191,6 +227,10 @@ export default function AdminStreamliner() {
           <TabsTrigger value="activity">
             <Activity className="h-4 w-4 mr-2" />
             Activity Log
+          </TabsTrigger>
+          <TabsTrigger value="import">
+            <FolderInput className="h-4 w-4 mr-2" />
+            Import
           </TabsTrigger>
           <TabsTrigger value="analytics">
             <TrendingUp className="h-4 w-4 mr-2" />
@@ -297,6 +337,65 @@ export default function AdminStreamliner() {
                   </div>
                 )}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Import Tab */}
+        <TabsContent value="import">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FolderInput className="h-5 w-5" />
+                Bulk Import Client Files
+              </CardTitle>
+              <CardDescription>
+                Import from ~/SandiBot/clients (Active, Paused, WIN, Various folders)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                onClick={handleBulkImport}
+                disabled={importRunning}
+              >
+                <FolderInput className="h-4 w-4 mr-2" />
+                Import All Client Files
+              </Button>
+              {importRunning && importProgress && (
+                <div className="space-y-2">
+                  <Progress
+                    value={importProgress.total > 0
+                      ? (importProgress.current / importProgress.total) * 100
+                      : 0}
+                    className="h-2"
+                  />
+                  <p className="text-sm text-slate-600">
+                    Processing {importProgress.current_client} ({importProgress.current} of {importProgress.total} files)
+                  </p>
+                </div>
+              )}
+              {importResult && !importRunning && (
+                <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
+                  <p className="font-medium text-green-700">
+                    ✓ {importResult.clients_created} clients loaded, {importResult.processed} documents processed
+                  </p>
+                  {importResult.failed > 0 && (
+                    <p className="text-sm text-amber-700">
+                      {importResult.failed} file(s) failed
+                    </p>
+                  )}
+                  {importResult.errors.length > 0 && (
+                    <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
+                      {importResult.errors.slice(0, 10).map((e, i) => (
+                        <li key={i}>{e}</li>
+                      ))}
+                      {importResult.errors.length > 10 && (
+                        <li>...and {importResult.errors.length - 10} more</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
