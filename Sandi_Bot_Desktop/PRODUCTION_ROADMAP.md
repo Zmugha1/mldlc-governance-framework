@@ -8,9 +8,17 @@ COMPLETED — do not rebuild:
 - documentExtractionService.ts — Ollama integration
   is LIVE at http://localhost:11434/api/generate
   using phi3:mini — DO NOT rebuild Ollama calls
-- Migrations 1–27 complete — new ones start at 28+
+- Migrations 1–28 complete — new ones start at 29+
 - client_id is string (TEXT/UUID) everywhere
 - Database is sandi_bot.db via getDb()
+
+CRITICAL MIGRATION RULE:
+NEVER edit a migration that has already been committed.
+tauri-plugin-sql checksums every migration. Editing one
+crashes the app with "migration X was previously applied
+but has been modified". ALWAYS add a new migration for
+any schema change. Current highest: check lib.rs.
+If unsure, grep for "version" in lib.rs and use max + 1.
 
 RULES:
 - Never use sqlite:coaching.db

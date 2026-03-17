@@ -69,6 +69,28 @@ fn get_app_dir(_app: tauri::AppHandle) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // ─────────────────────────────────────────────
+    // MIGRATION RULES — READ BEFORE EDITING
+    // ─────────────────────────────────────────────
+    // 1. NEVER edit an existing migration.
+    //    tauri-plugin-sql checksums every entry.
+    //    Editing any migration after first run
+    //    crashes the app on next launch.
+    //
+    // 2. ALWAYS add new migrations at the end.
+    //    Current highest version: 28 (check below)
+    //
+    // 3. To find current highest version:
+    //    grep for the last Migration block.
+    //
+    // 4. If you see this error:
+    //    "migration X was previously applied but
+    //     has been modified" — do NOT edit more
+    //    migrations. Delete the dev database at:
+    //    %APPDATA%\com.sandibot.desktop\sandi_bot.db
+    //    and fix the modified migration using
+    //    git to restore its original content.
+    // ─────────────────────────────────────────────
     let migrations = vec![
         Migration {
             version: 1,
