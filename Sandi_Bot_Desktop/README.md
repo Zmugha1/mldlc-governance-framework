@@ -56,6 +56,35 @@ Sandi_Bot_Desktop/
 | Audit & Transparency | Source citations & audit logs |
 | How to Use | Instructions & guide |
 
+## Current Build Status — March 2026
+
+### Phase 3 Complete
+- File-agnostic text extraction
+  Supports: PDF, DOCX, PPTX, XLSX, CSV, TXT
+- Document extraction pipeline
+  Handles: TTI Talent Insights DISC, TES You 2.0,
+  TUMAY intake, Fathom transcripts, Vision statements
+- Stage inference from document completeness
+  IC → C1 → C2 → C3 → C4 → C5 (WIN)
+- Bulk import from folder structure
+  Active / WIN / Paused / Various
+- STZ feedback logging foundation
+  L1-L5 evaluation framework (29 migrations)
+
+### Client File Structure
+Place Sandi's client files at:
+C:\Users\zumah\SandiBot\clients\
+  Active\[ClientName]\[files]
+  WIN\[ClientName]\[files]
+  Paused\[ClientName]\[files]
+  Various\[ClientName]\[files]
+
+### Next Steps
+- Bulk import test with real client files
+- File watcher for automatic drop-detection
+- STZ feedback wiring into services
+- Post-Call A/B/C grade UI additions
+
 ## Critical Rules
 
 - **Never** use `better-sqlite3` (Node native module)

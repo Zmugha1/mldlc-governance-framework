@@ -12,6 +12,41 @@ COMPLETED — do not rebuild:
 - client_id is string (TEXT/UUID) everywhere
 - Database is sandi_bot.db via getDb()
 
+COMPLETE — Stage inference service
+- src/services/stageInferenceService.ts
+- WIN/Active/Paused/Various folder mapping
+- FOLDER_TO_BUCKET mapping confirmed
+- Commit: 6825a90
+
+COMPLETE — Profile builder service
+- src/services/profileBuilderService.ts
+- Calls existing recommendationService
+- Does not duplicate existing logic
+- Commit: 6825a90
+
+COMPLETE — Bulk import service
+- src/services/bulkImportService.ts
+- Reads Active/WIN/Paused/Various/[ClientName]/
+- Concatenates TUMAY + You2 for combined extraction
+- Commit: 6825a90
+
+COMPLETE — STZ feedback log foundation
+- Migration 29: stz_feedback_log table
+- src/services/feedbackLogService.ts
+- L1-L5 evaluation framework ready
+- Commit: e1a6d79
+
+COMPLETE — Client folder structure
+- setup_client_folders.ps1
+- create_client_folder IPC command
+- Base path: C:\Users\zumah\SandiBot\clients\
+- Commit: a66f559
+
+NOT STARTED — Wire logInteraction into services
+NOT STARTED — Post-Call A/B/C grade UI
+NOT STARTED — Friday Zone signal card
+NOT STARTED — File watcher (auto drop-detect)
+
 CRITICAL MIGRATION RULE:
 NEVER edit a migration that has already been committed.
 tauri-plugin-sql checksums every migration. Editing one

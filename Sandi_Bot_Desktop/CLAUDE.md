@@ -184,3 +184,39 @@ Client: Sandi Stahl — Franchise Coach (Founding Partner)
 Client: Fred Webster — Power User
 Repo: github.com/Zmugha1/Sandi_Bot_Desktop
 Contact: drdatadecisionintelligence.com
+
+## CURRENT STATE — March 2026
+
+### Services built and passing (do not rebuild):
+- text_extractor.rs — pdf, docx, pptx, xlsx, csv, txt
+- documentExtractionService.ts — Ollama integration
+  LIVE at http://localhost:11434/api/generate
+  Model: phi3:mini — DO NOT rebuild Ollama calls
+- stageInferenceService.ts — bucket/stage mapping
+- profileBuilderService.ts — calls existing services
+- bulkImportService.ts — processes client folders
+- feedbackLogService.ts — STZ L1-L5 logging
+
+### Database migrations complete: 1-29
+### Next new migration number: 30
+
+### Client folder base path:
+C:\Users\zumah\SandiBot\clients\
+Subfolders: Active\ WIN\ Paused\ Various\
+Each bucket contains [ClientName]\ subfolders.
+
+### Folder to bucket mapping (in stageInferenceService.ts):
+Active  → active
+WIN     → converted
+Paused  → paused
+Various → various
+
+### CRITICAL: Ollama must be running before
+any extraction or bulk import. Check with:
+ollama list
+Required model: phi3:mini
+
+### Existing services to CALL not replace:
+- coachingService.calculateReadinessScore()
+- recommendationService.getRecommendation()
+- pipelineService — PipelineStage types
