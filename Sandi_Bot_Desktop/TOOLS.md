@@ -228,6 +228,24 @@ Audit: always
 Approval: none
 LLM: yes — calls documentExtractionService
 
+### log_stz_interaction
+Layer: Skills
+Prompt: none — deterministic
+Input: { STZInteractionLog }
+Output: { success: boolean }
+Audit: never — this IS the audit system
+Approval: none
+LLM: no
+
+### update_l5_signals
+Layer: Skills
+Prompt: none — deterministic
+Input: { session_id: string, l5: L5Signals }
+Output: { success: boolean }
+Audit: never
+Approval: none
+LLM: no
+
 ---
 
 ## FRED-ONLY OPERATIONS
