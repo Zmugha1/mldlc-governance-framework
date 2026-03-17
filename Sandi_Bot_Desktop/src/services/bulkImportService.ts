@@ -28,30 +28,99 @@ const SUPPORTED_EXTENSIONS = [
   '.pdf', '.docx', '.pptx', '.txt', '.xlsx', '.csv'
 ];
 
-function normalizeClientName(folderName: string): string {
-  return folderName
+function normalizeClientName(
+  nameOrFolder: string
+): string {
+  // Remove file extension if present
+  const withoutExt = nameOrFolder
+    .replace(/\.[^/.]+$/, '');
+
+  // Extract part before " - " or " – " or "_-_"
+  const beforeDash = withoutExt
+    .split(/ - | – |_-_/)[0];
+
+  // Replace underscores with spaces
+  const withSpaces = beforeDash
     .replace(/_/g, ' ')
-    .trim()
+    .trim();
+
+  // Title case each word
+  return withSpaces
     .split(' ')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .filter(w => w.length > 0)
+    .map(w => w.charAt(0).toUpperCase() +
+               w.slice(1).toLowerCase())
     .join(' ');
 }
 
 function detectDocType(
-  fileName: string
+  fileName: string,
+  extractedText?: string
 ): 'disc' | 'you2' | 'fathom' | 'vision' | null {
   const lower = fileName.toLowerCase();
-  if (lower.includes('ttsi') || lower.includes('disc')) return 'disc';
-  if (lower.includes('tumay') || lower.includes('you2') ||
+
+  // Filename-based detection first
+  if (lower.includes('ttsi') ||
+      lower.includes('disc') ||
+      lower.includes('talent insight')) return 'disc';
+
+  if (lower.includes('tumay')) return 'you2';
+
+  if (lower.includes('you2') ||
+      lower.includes('you 2') ||
       lower.includes('you_2')) return 'you2';
-  if (lower.includes('fathom') || lower.includes('transcript')) return 'fathom';
+
   if (lower.includes('vision')) return 'vision';
+
+  if (lower.includes('fathom') ||
+      lower.includes('transcript') ||
+      lower.includes('convo') ||
+      lower.includes('conv') ||
+      lower.includes('session') ||
+      lower.includes('call') ||
+      lower.includes('recording')) return 'fathom';
+
+  // Content-based detection fallback
+  // Used when filename gives no clues
+  if (extractedText) {
+    const text = extractedText.substring(0, 1000).toLowerCase();
+
+    if (text.includes('tti talent insights') ||
+        text.includes('tti success insights') ||
+        text.includes('behavioral style') ||
+        text.includes('driving forces') ||
+        text.includes('adapted style')) return 'disc';
+
+    if (text.includes('tell us more about you') ||
+        text.includes('tumay') ||
+        text.includes('question 1 - your contact') ||
+        text.includes('best phone')) return 'you2';
+
+    if (text.includes('if we looked at your life') ||
+        text.includes('you 2.0') ||
+        text.includes('top 3 dangers') ||
+        text.includes('top 3 strengths')) return 'you2';
+
+    if (text.includes('transcript') ||
+        text.includes('recording') ||
+        text.includes('speaker') ||
+        text.includes('fathom') ||
+        text.includes('[00:') ||
+        text.includes('minutes')) return 'fathom';
+
+    if (text.includes('vision statement') ||
+        text.includes('my vision') ||
+        text.includes('in 5 years')) return 'vision';
+  }
+
   return null;
 }
 
 function isYou2File(fileName: string): boolean {
   const lower = fileName.toLowerCase();
-  return lower.includes('tumay') || lower.includes('you2') ||
+  return lower.includes('tumay') ||
+         lower.includes('you2') ||
+         lower.includes('you 2') ||
          lower.includes('you_2');
 }
 
@@ -218,9 +287,6 @@ export async function bulkImportFolder(
         current_client: clientName
       });
 
-      const docType = detectDocType(file.fileName);
-      if (!docType) continue;
-
       try {
         const extracted = await invoke<{
           text: string;
@@ -235,6 +301,12 @@ export async function bulkImportFolder(
           result.errors.push(`${file.fileName}: ${extracted.error ?? 'extraction failed'}`);
           continue;
         }
+
+        const docType = detectDocType(
+          file.fileName,
+          extracted.text
+        );
+        if (!docType) continue;
 
         const r = await processDocument(
           clientId,
