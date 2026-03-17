@@ -1,6 +1,7 @@
 mod pdf_parser;
 mod file_watcher;
 mod backup;
+mod text_extractor;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -22,9 +23,14 @@ async fn process_document(file_path: String, doc_type: String) -> Result<String,
 }
 
 #[tauri::command]
-async fn extract_text_from_pdf(file_path: String) -> Result<String, String> {
-    // Phase 3 implementation pending
-    Ok(format!("Extracted text from: {}", file_path))
+async fn extract_text_from_any_file(file_path: String) -> Result<serde_json::Value, String> {
+    let result = text_extractor::extract_text(&file_path);
+    Ok(serde_json::json!({
+        "text": result.text,
+        "format": result.format,
+        "success": result.success,
+        "error": result.error
+    }))
 }
 
 #[tauri::command]
@@ -228,7 +234,7 @@ pub fn run() {
             get_app_dir,
             watch_client_folders,
             process_document,
-            extract_text_from_pdf,
+            extract_text_from_any_file,
             bulk_import_folder,
             pdf_parser::parse_pdf,
             file_watcher::watch_folder,
