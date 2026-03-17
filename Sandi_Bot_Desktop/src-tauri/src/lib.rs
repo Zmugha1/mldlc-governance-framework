@@ -480,6 +480,18 @@ pub fn run() {
             CREATE INDEX IF NOT EXISTS idx_feedback_stage ON stz_feedback_log(pipeline_stage);",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 30,
+            description: "clear_failed_extractions",
+            sql: "DELETE FROM document_extractions WHERE extraction_status = 'failed' OR extraction_status = 'pending'",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 31,
+            description: "clear_empty_disc_profiles",
+            sql: "DELETE FROM client_disc_profiles WHERE natural_d IS NULL AND natural_i IS NULL AND natural_s IS NULL AND natural_c IS NULL",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

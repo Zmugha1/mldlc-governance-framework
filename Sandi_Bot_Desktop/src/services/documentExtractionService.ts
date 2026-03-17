@@ -20,21 +20,59 @@ async function callOllama(
   systemPrompt: string,
   userContent: string
 ): Promise<string> {
-  const response = await fetch(OLLAMA_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt: `${systemPrompt}\n\nDocument text:\n${userContent}`,
-      stream: false,
-      options: { temperature: 0.1, num_predict: 2000 },
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Ollama request failed: ${response.status}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    120000 // 2 minute timeout per document
+  );
+
+  try {
+    const response = await fetch(OLLAMA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt: `${systemPrompt}\n\nDocument text:\n${userContent}`,
+        stream: false,
+        options: {
+          temperature: 0.1,
+          num_predict: 2000
+        }
+      })
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error(
+        `Ollama request failed: ${response.status} ` +
+        `${response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+
+    if (!data.response) {
+      throw new Error(
+        'Ollama returned empty response. ' +
+        'Model may still be loading.'
+      );
+    }
+
+    return data.response;
+
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof Error &&
+        error.name === 'AbortError') {
+      throw new Error(
+        'Ollama timeout after 2 minutes. ' +
+        'Document may be too large for phi3:mini.'
+      );
+    }
+    throw error;
   }
-  const data = await response.json();
-  return data.response;
 }
 
 function parseExtractionResponse<T>(rawResponse: string): T | null {
@@ -231,7 +269,12 @@ Schema:
       extraction_status: 'complete',
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : JSON.stringify(error) ?? 'Unknown error';
+    console.error('Extraction error full details:', error);
     await recordExtraction(
       clientId,
       'disc',
@@ -445,7 +488,12 @@ Schema:
       extraction_status: 'complete',
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : JSON.stringify(error) ?? 'Unknown error';
+    console.error('Extraction error full details:', error);
     await recordExtraction(
       clientId,
       'you2',
@@ -579,7 +627,12 @@ Positive signals to detect:
       extraction_status: 'complete',
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : JSON.stringify(error) ?? 'Unknown error';
+    console.error('Extraction error full details:', error);
     await recordExtraction(
       clientId,
       'fathom',
@@ -680,15 +733,23 @@ export async function processDocument(
     DiscProfile | You2Profile | FathomSession | null
   >
 > {
+  // Truncate to fit phi3:mini context window
+  // ~4k tokens = ~16000 characters
+  const MAX_CHARS = 14000;
+  const truncatedText = rawText.length > MAX_CHARS
+    ? rawText.substring(0, MAX_CHARS) +
+      '\n\n[Document truncated — extract from above only]'
+    : rawText;
+
   switch (documentType) {
     case 'disc':
-      return extractDiscProfile(clientId, rawText, fileName, filePath);
+      return extractDiscProfile(clientId, truncatedText, fileName, filePath);
     case 'you2':
-      return extractYou2Profile(clientId, rawText, fileName, filePath);
+      return extractYou2Profile(clientId, truncatedText, fileName, filePath);
     case 'fathom':
-      return extractFathomSession(clientId, rawText, fileName, filePath);
+      return extractFathomSession(clientId, truncatedText, fileName, filePath);
     case 'vision':
-      return handleVisionStatement(clientId, fileName, filePath, rawText);
+      return handleVisionStatement(clientId, fileName, filePath, truncatedText);
     default:
       return {
         success: false,

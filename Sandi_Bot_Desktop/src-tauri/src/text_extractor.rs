@@ -50,17 +50,86 @@ pub fn extract_text(file_path: &str) -> ExtractionResult {
 }
 
 fn extract_pdf(file_path: &str) -> ExtractionResult {
-    match std::fs::read(file_path) {
+    match lopdf::Document::load(file_path) {
         Err(e) => ExtractionResult::failure("pdf", e.to_string()),
-        Ok(bytes) => match pdf_extract::extract_text_from_mem(&bytes) {
-            Ok(text) if text.trim().len() > 50 => ExtractionResult::success(text, "pdf"),
-            Ok(_) => ExtractionResult::failure(
-                "pdf",
-                "PDF appears to be scanned. No extractable text.".to_string(),
-            ),
-            Err(e) => ExtractionResult::failure("pdf", e.to_string()),
-        },
+        Ok(doc) => {
+            let mut text = String::new();
+            let pages = doc.get_pages();
+
+            // First pass: pdf_extract (works for standard PDFs)
+            match std::fs::read(file_path) {
+                Ok(bytes) => {
+                    if let Ok(extracted) = pdf_extract::extract_text_from_mem(&bytes) {
+                        if !extracted.trim().is_empty() {
+                            text = extracted;
+                            text.push('\n');
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+
+            // Second pass: raw content stream if first pass got too little
+            // Chrome-printed TTI DISC PDFs need this
+            if text.trim().len() < 100 {
+                for (_page_num, page_id) in &pages {
+                    if let Ok(content) = doc.get_page_content(*page_id) {
+                        let raw = String::from_utf8_lossy(&content);
+                        let extracted = extract_text_from_pdf_stream(&raw);
+                        if !extracted.is_empty() {
+                            text.push_str(&extracted);
+                            text.push('\n');
+                        }
+                    }
+                }
+            }
+
+            if text.trim().len() > 5 {
+                ExtractionResult::success(text, "pdf")
+            } else {
+                ExtractionResult::failure(
+                    "pdf",
+                    "PDF has no extractable text. \
+                     May be image-only or encrypted."
+                        .to_string(),
+                )
+            }
+        }
     }
+}
+
+fn extract_text_from_pdf_stream(stream: &str) -> String {
+    let mut result = String::new();
+    let mut in_text_block = false;
+
+    for line in stream.lines() {
+        let trimmed = line.trim();
+        if trimmed == "BT" {
+            in_text_block = true;
+            continue;
+        }
+        if trimmed == "ET" {
+            in_text_block = false;
+            continue;
+        }
+        if in_text_block {
+            if trimmed.ends_with("Tj") || trimmed.ends_with("TJ") {
+                let text = trimmed
+                    .trim_end_matches("Tj")
+                    .trim_end_matches("TJ")
+                    .trim();
+                let clean = text
+                    .trim_start_matches('(')
+                    .trim_end_matches(')')
+                    .trim();
+                if !clean.is_empty() && clean.chars().any(|c| c.is_alphanumeric()) {
+                    result.push_str(clean);
+                    result.push(' ');
+                }
+            }
+        }
+    }
+    result.trim().to_string()
 }
 
 fn extract_plain_text(file_path: &str) -> ExtractionResult {
