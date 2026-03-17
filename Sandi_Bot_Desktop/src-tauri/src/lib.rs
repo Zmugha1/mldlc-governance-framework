@@ -58,6 +58,21 @@ fn list_directory_files(path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+fn create_client_folder(
+    base_path: String,
+    bucket: String,
+    client_name: String,
+) -> Result<String, String> {
+    let folder_path = std::path::Path::new(&base_path)
+        .join(&bucket)
+        .join(&client_name);
+    std::fs::create_dir_all(&folder_path).map_err(|e| {
+        format!("Failed to create folder {}: {}", folder_path.display(), e)
+    })?;
+    Ok(folder_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 fn get_app_dir(_app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(windows)]
     let home = std::env::var("USERPROFILE").map_err(|e| e.to_string())?;
@@ -481,6 +496,7 @@ pub fn run() {
             read_prompt_file,
             list_directory_files,
             get_app_dir,
+            create_client_folder,
             watch_client_folders,
             process_document,
             extract_text_from_any_file,
