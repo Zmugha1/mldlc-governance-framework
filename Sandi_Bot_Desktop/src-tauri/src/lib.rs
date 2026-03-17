@@ -313,6 +313,36 @@ pub fn run() {
             )",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 23,
+            description: "add_clients_outcome_bucket",
+            sql: "ALTER TABLE clients ADD COLUMN outcome_bucket TEXT DEFAULT 'active'",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 24,
+            description: "add_clients_inferred_stage",
+            sql: "ALTER TABLE clients ADD COLUMN inferred_stage TEXT DEFAULT 'IC'",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 25,
+            description: "add_clients_stage_confirmed",
+            sql: "ALTER TABLE clients ADD COLUMN stage_confirmed INTEGER DEFAULT 0",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 26,
+            description: "add_clients_readiness_score",
+            sql: "ALTER TABLE clients ADD COLUMN readiness_score INTEGER DEFAULT 0",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 27,
+            description: "add_clients_pink_flags",
+            sql: "ALTER TABLE clients ADD COLUMN pink_flags TEXT DEFAULT '[]'",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

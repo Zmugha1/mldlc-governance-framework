@@ -1,5 +1,5 @@
 import type { Client } from '@/types';
-import type { DISCProfile, You2Profile, TUMAYProfile, VisionStatement, FathomNote } from '@/types';
+import type { DISCProfile, You2ProfilePoc, TUMAYProfile, VisionStatement, FathomNote } from '@/types';
 
 export interface ParsedDocument {
   type: 'DISC' | 'You2.0' | 'TUMAY' | 'Vision' | 'Fathom' | 'Unknown';
@@ -184,8 +184,8 @@ function generateDISCCoachingTips(style: 'D' | 'I' | 'S' | 'C'): string[] {
   return tips[style];
 }
 
-export function parseYou2(content: string): You2Profile {
-  const profile: You2Profile = {
+export function parseYou2(content: string): You2ProfilePoc {
+  const profile: You2ProfilePoc = {
     statement: '',
     dangers: [],
     opportunities: [],
@@ -451,7 +451,7 @@ export function generateClientFromDocuments(documents: ParsedDocument[]): Partia
         break;
       }
       case 'You2.0': {
-        const you2 = doc.data as You2Profile | undefined;
+        const you2 = doc.data as You2ProfilePoc | undefined;
         client.you2_statement = you2?.statement;
         client.you2_dangers = you2?.dangers?.join('\n');
         client.you2_opportunities = you2?.opportunities?.join('\n');

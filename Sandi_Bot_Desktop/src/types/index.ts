@@ -1,5 +1,8 @@
 // Sandy Stahl Coaching Intelligence - Type Definitions
 
+import type { You2Profile } from './extractions';
+export type { You2Profile };
+
 // ============================================
 // DISC BEHAVIORAL STYLES
 // ============================================
@@ -22,10 +25,10 @@ export interface DISCProfile {
 }
 
 // ============================================
-// YOU 2.0 PROFILE
+// YOU 2.0 PROFILE (POC/display format)
 // ============================================
-
-export interface You2Profile {
+/** POC/sample data format for ClientProfile.you2 — distinct from extraction You2Profile */
+export interface You2ProfilePoc {
   statement: string;
   dangers: string[];
   opportunities: string[];
@@ -174,7 +177,7 @@ export interface ClientProfile {
   
   // Assessments
   disc: DISCProfile;
-  you2: You2Profile;
+  you2: You2ProfilePoc;
   tumay: TUMAYProfile;
   visionStatement: VisionStatement;
   ilwe: ILWEGoals;
@@ -384,6 +387,11 @@ export interface Client {
   confidence: number;
   recommendation: 'PUSH' | 'NURTURE' | 'PAUSE';
   outcome?: 'ACTIVE' | 'CONVERTED' | 'STALLED' | 'CLOSED';
+  outcome_bucket?: string;
+  inferred_stage?: string;
+  stage_confirmed?: number;
+  readiness_score?: number;
+  pink_flags?: string;
   notes?: string;
   created_at: string;
   updated_at: string;
