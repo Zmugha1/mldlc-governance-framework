@@ -133,6 +133,9 @@ Phase 2: DELIVERED — SQLite persistence, real data
 Pre-Phase 3: DELIVERED — agents, configs, prompts,
              TOOLS.md, services clean
 Phase 3: IN PROGRESS — document ingestion pipeline
+Phase 3B: COMPLETE — DISC deterministic extraction
+Phase 3C: IN PROGRESS — STZ human feedback loop
+Phase 3D: IN PROGRESS — PDF extraction hardening
 Phase 4: NEXT — installer, backup, polish
 Phase 5: RETAINER — Neo4j knowledge graph
 Phase 6: RETAINER — intelligence engine
@@ -150,6 +153,56 @@ Phase 8: YEAR 2 — productization, new clients
 8. Never build without adding to TOOLS.md first
 9. Never return a recommendation without reasoning
 10. Always run cargo check before npm run tauri:dev
+
+## PDF Extraction Rules
+- Never use lopdf for TTI DISC reports
+- Always use extract_pdf_pages IPC command
+- pdfium-render is the primary extractor
+- Tesseract CLI is the OCR fallback
+- Temp images use BMP format not PNG
+- image crate needs png feature in Cargo.toml
+- pdfium.dll must be in src-tauri/
+
+## Model Rules
+- OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_k_m'
+- Never revert to llama3.1:8b
+- Never revert to qwen2.5:7b (non-instruct)
+- Full JSON schema always passed to Ollama
+- DISC_FORMAT_SCHEMA and YOU2_FORMAT_SCHEMA
+  defined in documentExtractionService.ts
+
+## Migration Rules
+- Migrations 1-47 complete — never edit
+- Migration 48 = extraction_corrections table
+  NOT YET RUN — run before next feature build
+- Next migration after 48 = 49+
+
+## File Path Rules
+- Client folders may use underscores or spaces
+- Always normalize: replace _ with space
+  when matching folder names to client names
+- Always use actual disk path for IPC calls
+- Never construct paths from client name alone
+
+## Known Working DISC Scores (Ground Truth)
+Use these to validate extraction is correct:
+
+Andrew Tait:
+  Natural:  D=42, I=15, S=84, C=71
+  Adapted:  D=38, I=18, S=78, C=75
+  Style: Supporting Coordinator
+  Date: 2026-01-28
+
+Dena Sauer:
+  Natural:  D=25, I=78, S=68, C=45
+  Adapted:  D=18, I=74, S=74, C=45
+  Style: Promoting Relater
+  Confirmed: pdfium extraction 2026-03-18
+
+Jeff Dayton:
+  Natural:  D=15, I=68, S=80, C=61
+  Adapted:  D=16, I=72, S=68, C=58
+  Confirmed: pdfium extraction 2026-03-18
 
 ## Reference Files
 TOOLS.md               — named operations registry
@@ -191,14 +244,14 @@ Contact: drdatadecisionintelligence.com
 - text_extractor.rs — pdf, docx, pptx, xlsx, csv, txt
 - documentExtractionService.ts — Ollama integration
   LIVE at http://localhost:11434/api/generate
-  Model: phi3:mini — DO NOT rebuild Ollama calls
+  Model: qwen2.5:7b-instruct-q4_k_m — DO NOT rebuild Ollama calls
 - stageInferenceService.ts — bucket/stage mapping
 - profileBuilderService.ts — calls existing services
 - bulkImportService.ts — processes client folders
 - feedbackLogService.ts — STZ L1-L5 logging
 
-### Database migrations complete: 1-29
-### Next new migration number: 30
+### Database migrations complete: 1-47
+### Next new migration number: 48 (extraction_corrections — not yet run)
 
 ### Client folder base path:
 C:\Users\zumah\SandiBot\clients\
@@ -214,7 +267,7 @@ Various → various
 ### CRITICAL: Ollama must be running before
 any extraction or bulk import. Check with:
 ollama list
-Required model: phi3:mini
+Required model: qwen2.5:7b-instruct-q4_k_m
 
 ### Existing services to CALL not replace:
 - coachingService.calculateReadinessScore()

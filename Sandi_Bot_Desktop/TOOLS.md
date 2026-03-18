@@ -186,6 +186,79 @@ Config controls: none
 
 ---
 
+## PDF Extraction IPC Commands
+
+### extract_pdf_pages
+Input: { file_path: string, page_numbers: number[] }
+Output: { text: string, format: string,
+          success: boolean, error: string | null }
+Backend: pdfium-render + Tesseract CLI fallback
+Audit: no
+LLM: no
+Notes: pdfium primary, OCR for image-based PDFs
+       BMP temp format, 15s OCR timeout
+
+### parse_disc_scores_from_text
+Input: { text: string }
+Output: {
+  adapted_d/i/s/c: number | null,
+  natural_d/i/s/c: number | null,
+  found: boolean
+}
+Backend: disc_parser.rs deterministic regex
+Audit: no
+LLM: no
+Notes: 4 fallback patterns, covers both
+       TTI DISC standard and Talent Insights
+       Executive format
+
+### debug_disc_pages
+Input: { file_path: string }
+Output: string (raw page text)
+Backend: text_extractor.rs
+Audit: no
+LLM: no
+Notes: development/diagnostic only
+
+### test_disc_extraction
+Input: { file_path: string }
+Output: {
+  scores: DiscScores,
+  text_preview: string,
+  text_length: number,
+  page_numbers: number[],
+  success: boolean,
+  error: string | null
+}
+Backend: disc_parser + text_extractor
+Audit: no
+LLM: no
+Notes: single file verbose test mode
+
+### check_tesseract
+Input: none
+Output: boolean
+Backend: Tesseract CLI version check
+Audit: no
+LLM: no
+
+### log_human_correction (PENDING — mig 48)
+Input: {
+  client_id: string,
+  document_type: string,
+  field_corrected: string,
+  original_value: string,
+  corrected_value: string,
+  correction_scope: 'once' | 'retrain' | 'flag',
+  confirmed_by: string
+}
+Output: { success: boolean }
+Audit: always
+LLM: no
+Notes: requires migration 48 to run first
+
+---
+
 ## STAGE INFERENCE & PROFILE BUILDER
 
 ### infer_client_stage

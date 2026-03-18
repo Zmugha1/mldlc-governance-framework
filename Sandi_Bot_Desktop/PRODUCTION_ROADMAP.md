@@ -81,7 +81,7 @@ RULES:
 
 1. **Never modify the POC repo.** `Sandi_Bot_Coaching_Intelligence` is frozen. It is the live demo on Netlify. This production repo is separate.
 2. **Never use `better-sqlite3`.** It is a Node.js native module incompatible with Tauri. Always use `tauri-plugin-sql` with SQLite.
-3. **Never use `pdf-parse`.** Use `pdf-extract` (Rust crate) as primary, `lopdf` as fallback.
+3. **Never use `pdf-parse`.** Use `pdfium-render` (primary), Tesseract CLI (OCR fallback). Never use lopdf for TTI DISC reports.
 4. **Never upgrade Tailwind to v4.** Stay on Tailwind 3.4 — it matches the POC exactly.
 5. **Never use Electron.** Tauri v2 only. Smaller installer, better performance, native Rust backend.
 6. **Always test Rust changes with `cargo check` before `npm run tauri:dev`.**
@@ -105,12 +105,11 @@ Database               SQLite via tauri-plugin-sql     Single .sqlite file
 Search                 SQLite FTS5                     Built into SQLite
 File System            tauri-plugin-fs                 Native OS access
 Folder Picker          tauri-plugin-dialog             Backup location UI
-PDF Extraction         pdf-extract (Rust crate)        Primary text extractor
-PDF Fallback           lopdf (Rust crate)              Secondary extractor
-OCR (if needed)        tesseract-rs                    Only for scanned PDFs
+PDF Extraction         pdfium-render (Rust crate)       Primary — TTI DISC reports
+PDF Fallback           Tesseract CLI OCR               Image-based PDFs
+PDF Temp Format        BMP (codec-free)                PNG needs image crate png feature
 LLM Runtime            Ollama (local server)           localhost:11434
-LLM Model (fast)       phi3:mini                       2.3GB, simple docs
-LLM Model (smart)      llama3.1:8b                     4.7GB, complex docs
+LLM Model              qwen2.5:7b-instruct-q4_k_m      Document extraction (DISC, You2, Fathom)
 Knowledge Graph        Neo4j Community (local)         Phase 5+
 Graph Embeddings       Node2Vec (Python script)        Phase 6C+
 ```
@@ -525,8 +524,11 @@ ACCEPTANCE TEST:
 **Status:**
 - Phase 3 text extractor: **COMPLETE**
 - Phase 3 extraction service: **COMPLETE**
-- Stage inference: **IN PROGRESS**
-- Profile builder / Bulk import: **NOT STARTED**
+- Phase 3B — DISC deterministic extraction: **COMPLETE**
+- Phase 3C — STZ human feedback loop: **IN PROGRESS**
+- Phase 3D — PDF extraction hardening: **IN PROGRESS**
+- Stage inference: **COMPLETE**
+- Profile builder / Bulk import: **COMPLETE**
 
 ## Pre-Phase Requirement
 
@@ -645,6 +647,59 @@ ACCEPTANCE TEST:
 [ ] Ollama offline → graceful fallback, no crash
 [ ] All extractions logged in audit trail
 ```
+
+---
+
+# PHASE 3B — DISC Deterministic Extraction — COMPLETE
+
+**Delivered March 2026:**
+- disc_parser.rs — deterministic regex parser (4 fallback patterns)
+- extract_pages_by_numbers — pdfium-render based, pages 23-25, 28, 34-36
+- Two IPC commands: extract_pdf_pages, parse_disc_scores_from_text
+- Model switched to qwen2.5:7b-instruct-q4_k_m
+- Two-pass extraction: regex first, LLM for narrative fields
+- 11 DISC profiles with real scores confirmed
+
+---
+
+# PHASE 3C — STZ Human Feedback Loop — IN PROGRESS
+
+**Partially built:**
+- extraction_corrections table (migration 48) — NOT YET RUN
+- logExtractionCorrection() — built
+- Correction history UI — built
+- stz_feedback_log L5 update — built
+
+**Pending:** Run migration 48 before next feature build.
+
+---
+
+# PHASE 3D — PDF Extraction Hardening — IN PROGRESS
+
+**Problem discovered:**
+- lopdf returns raw PDF operators on Chrome-printed TTI reports
+- pdfium-render replaces lopdf
+- OCR fallback via Tesseract CLI for image-based PDFs
+- PNG encoding bug: image crate needs png feature flag
+- BMP fallback added as safety net
+
+**Current extraction results:**
+- 11 DISC profiles complete with real scores
+- 5 image-based PDFs pending OCR fix
+- You2 extraction — timeouts on large files
+- Fathom — 17 complete
+- Vision — 18 complete
+
+**Commits in this phase:**
+- 58a274d page-targeted extraction
+- 041284e pdfium sync + qwen2.5:7b-instruct
+- a4b8fac wire OCR fallback
+- 131c8d1 AbortController timeout fix
+- 6ee6cc7 bulk import error isolation
+- 86f3722 loose DISC regex fallback
+- 934ed2e DISC extraction errors + logging
+- 8b98964 test DISC button
+- a5d844e OCR PNG encoding + BMP fallback
 
 ---
 
@@ -942,19 +997,16 @@ Pricing model for additional coaches:
 ## Known Issues — Track and Fix
 
 ```
-Issue                          File              Priority
-──────────────────────────────────────────────────────────
-move || syntax fix             file_watcher.rs   P0 — Phase 1
-dirs::home_dir() missing dep   file_watcher.rs   P0 — Phase 1
-Database::load() pattern       backup.rs         P0 — Phase 1
-Database::load() pattern       database.rs       P0 — Phase 1
-lopdf raw bytes extraction     pdf_parser.rs     P0 — Phase 1
-DISC regex too loose           pdf_parser.rs     P2 — Phase 3
-App.tsx is test harness        App.tsx           P1 — Phase 1
-index.css Inter font           index.css         P2 — Phase 1
-App.css dead code              App.css           P1 — Phase 1
-No error boundaries            —                 P1 — Phase 1
-tauri-plugin-sql Builder API   backup.rs         P0 — Phase 1
+Issue                          Status      Notes
+────────────────────────────────────────────────────────────────────
+DISC scores all zero           RESOLVED    pdfium-render
+lopdf raw operators            RESOLVED    pdfium-render
+Bulk import dies on timeout     RESOLVED    AbortController
+TUMAY infinite loop            RESOLVED    skip logic
+PNG encoding on Windows        IN PROGRESS image crate png feature
+You2 large file timeouts       IN PROGRESS
+Folder name normalization      IN PROGRESS underscore vs space
+Migration 48 not yet run       PENDING    extraction_corrections table
 ```
 
 ---

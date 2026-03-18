@@ -17,11 +17,30 @@
 2. **Rust** — Install from [rustup.rs](https://rustup.rs/)
 3. **Platform deps** — See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
+### Required Runtime Dependencies
+
+- **pdfium.dll** — Place in `src-tauri/`
+  - Download: [github.com/bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries)
+  - File: pdfium-win-x64.tgz → extract pdfium.dll
+
+- **Tesseract OCR v5.5+**
+  - Download: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki)
+  - Install to: `C:\Program Files\Tesseract-OCR\`
+  - Required language: eng
+
+- **Ollama**
+  - Model: `qwen2.5:7b-instruct-q4_k_m`
+  - Command: `ollama pull qwen2.5:7b-instruct-q4_k_m`
+
 ## Quick Start
 
 ```bash
 cd Sandi_Bot_Desktop
 npm install
+# Place pdfium.dll in src-tauri/
+# Install Tesseract with English pack
+# ollama pull qwen2.5:7b-instruct-q4_k_m
+# ollama serve  # keep running
 npm run tauri:dev
 ```
 
@@ -88,7 +107,7 @@ C:\Users\zumah\SandiBot\clients\
 ## Critical Rules
 
 - **Never** use `better-sqlite3` (Node native module)
-- **Never** use `pdf-parse` — use `pdf-extract` / `lopdf` (Rust)
+- **Never** use `pdf-parse` — use `pdfium-render` / Tesseract OCR (Rust)
 - **Never** upgrade Tailwind to v4
 - **Never** use Electron — Tauri only
 - **Always** log recommendations to audit table
