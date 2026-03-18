@@ -402,6 +402,18 @@ export default function AdminStreamliner() {
                 >
                   Retry Failed Only
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Dena_Sauer\\Dena Sauer - ttsi.pdf';
+                    const text = await invoke<string>('debug_disc_pages', { filePath: path });
+                    console.log('=== DEBUG DISC PAGES 23-25 ===');
+                    console.log(text);
+                  }}
+                >
+                  Debug DISC Pages
+                </Button>
               </div>
               {importRunning && importProgress && (
                 <div className="space-y-2">
