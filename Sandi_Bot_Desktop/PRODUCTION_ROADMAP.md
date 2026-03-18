@@ -47,6 +47,11 @@ NOT STARTED — Post-Call A/B/C grade UI
 NOT STARTED — Friday Zone signal card
 NOT STARTED — File watcher (auto drop-detect)
 
+FUTURE — nuextract: Consider pulling nuextract for
+improved structured extraction from LLM output.
+Do not pull now — qwen2.5:14b with format:json is
+current solution.
+
 CRITICAL MIGRATION RULE:
 NEVER edit a migration that has already been committed.
 tauri-plugin-sql checksums every migration. Editing one

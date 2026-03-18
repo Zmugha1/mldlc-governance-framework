@@ -10,7 +10,7 @@ import type {
 } from '../types/extractions';
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
-const OLLAMA_MODEL = 'llama3.1:8b';
+const OLLAMA_MODEL = 'qwen2.5:14b';
 
 async function loadPrompt(promptName: string): Promise<string> {
   return await invoke<string>('read_prompt_file', { name: promptName });
@@ -21,9 +21,10 @@ async function callOllama(
   userContent: string
 ): Promise<string> {
   const controller = new AbortController();
+  // qwen2.5:14b needs more time than phi3
   const timeout = setTimeout(
     () => controller.abort(),
-    300000 // 5 minute timeout per document
+    300000 // 5 minute timeout
   );
 
   try {
@@ -33,12 +34,13 @@ async function callOllama(
       signal: controller.signal,
       body: JSON.stringify({
         model: OLLAMA_MODEL,
-        prompt: `${systemPrompt}\n\nDocument text:\n${userContent}\n\nRemember: respond with ONLY the JSON object. No other text.`,
+        prompt: `${systemPrompt}\n\nDocument text:\n${userContent}\n\nIMPORTANT: Your response must be ONLY a valid JSON object. No explanation. No preamble. No markdown. Start with { and end with }.`,
         stream: false,
         format: 'json',
         options: {
-          temperature: 0.1,
-          num_predict: 3000
+          temperature: 0,
+          num_predict: 4000,
+          num_ctx: 8192
         }
       })
     });
@@ -68,23 +70,41 @@ async function callOllama(
         error.name === 'AbortError') {
       throw new Error(
         'Ollama timeout after 5 minutes. ' +
-        'Document may be too large.'
+        'Document may be too large for local model.'
       );
     }
     throw error;
   }
 }
 
-function parseExtractionResponse<T>(rawResponse: string): T | null {
+function parseExtractionResponse<T>(
+  rawResponse: string
+): T | null {
   try {
-    const cleaned = rawResponse
-      .replace(/```json\n?/g, '')
+    // Remove markdown code fences
+    let cleaned = rawResponse
+      .replace(/```json\n?/gi, '')
       .replace(/```\n?/g, '')
       .trim();
+
+    // Find JSON object boundaries
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+
+    if (firstBrace !== -1 && lastBrace !== -1 &&
+        lastBrace > firstBrace) {
+      cleaned = cleaned.substring(
+        firstBrace, lastBrace + 1
+      );
+    }
+
     return JSON.parse(cleaned) as T;
   } catch (error) {
-    console.error('JSON parse failed:', error);
-    console.error('Raw response was:', rawResponse);
+    console.error('JSON parse failed.');
+    console.error('Raw response length:',
+      rawResponse.length);
+    console.error('First 500 chars:',
+      rawResponse.substring(0, 500));
     return null;
   }
 }
@@ -761,8 +781,8 @@ export async function processDocument(
     DiscProfile | You2Profile | FathomSession | null
   >
 > {
-  // Truncate to fit llama3.1:8b context window
-  const MAX_CHARS = 8000;
+  // Truncate to fit qwen2.5:14b 8k context window
+  const MAX_CHARS = 6000;
   const truncatedText = rawText.length > MAX_CHARS
     ? rawText.substring(0, MAX_CHARS) +
       '\n\n[Document truncated — extract from above only]'
