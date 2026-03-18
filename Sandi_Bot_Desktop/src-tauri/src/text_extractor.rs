@@ -218,7 +218,7 @@ pub fn extract_pages_by_numbers(
 
     // Try pdfium-render first
     match extract_with_pdfium(path, &page_numbers) {
-        Ok(text) if text.trim().len() > 50 => ExtractionResult {
+        Ok(text) if text.trim().len() > 100 => ExtractionResult {
             text,
             format: "pdf".to_string(),
             success: true,
