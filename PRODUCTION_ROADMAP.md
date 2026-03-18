@@ -271,36 +271,146 @@ parse_with_llm            parse_with_llm()       AdminStreamliner (Phase 7)
 
 ---
 
-# PHASE 1 — Tauri Desktop Foundation
+# PHASE 1 — Tauri Desktop Foundation ✅ COMPLETE
 
 **Goal:** App launches as a real desktop window. All 8 modules render. IPC bridge works.  
 **Investment:** $2,500  
 **Timeline:** Week 1
 
-## Phase 1 Acceptance Checklist
-
-```
-[ ] npm run tauri:dev launches desktop window
-[ ] All 8 modules render without blank screen
-[ ] Sidebar navigation works between modules
-[ ] No TypeScript errors in terminal
-[ ] cargo check passes with no errors
-[ ] ErrorBoundary exists and wraps each module
-[ ] App.css deleted and not imported
-[ ] kimi plugin not present in vite.config.ts
-```
+- App launches as desktop window
+- All 8 modules render
+- IPC bridge working
+- cargo check passing
 
 ---
 
-# PHASE 2 — Database & Real Persistence
+# PHASE 2 — Database & Real Persistence ✅ COMPLETE
 
 **Goal:** All data survives closing and reopening the app.
 
+- SQLite via tauri-plugin-sql
+- All client CRUD working
+- Audit log writing on every action
+- FTS5 search working
+- Migrations 1-46 complete
+
 ---
 
-# PHASE 3 — Document Ingestion Pipeline
+# PHASE 3 — Document Ingestion Pipeline ✅ COMPLETE
 
 **Goal:** Drop a PDF into a folder. Client profile appears automatically.
+
+- text_extractor.rs: pdf/docx/pptx/xlsx/csv
+- documentExtractionService.ts
+- stageInferenceService.ts
+- profileBuilderService.ts
+- bulkImportService.ts
+- feedbackLogService.ts
+- extractionReviewService.ts
+- 17 clients in database in correct buckets
+- Migrations 1-47 complete
+
+---
+
+# PHASE 3B — Extraction Architecture Fix ✅ COMPLETE
+
+**Commit:** 58a274d
+
+**Problem solved:** Full 47-page PDF was being truncated to 4000 chars. Scores on page 25 were never reached. All DISC scores were zero.
+
+**Solution delivered:**
+- disc_parser.rs — deterministic regex parser
+  - Three fallback patterns for SIA/SIN line
+  - No LLM needed for numeric scores
+- extract_pages_by_numbers() in text_extractor.rs
+  - Extracts pages 23-25, 28, 34-36 for DISC
+  - Covers both TTI DISC and TTI Talent Insights Executive format (page shift confirmed)
+- Two IPC commands added:
+  - extract_pdf_pages
+  - parse_disc_scores_from_text
+- Model switched: llama3.1:8b → qwen2.5:7b
+  - 1.4s response time confirmed
+  - Full JSON schema enforcement added
+  - DISC_FORMAT_SCHEMA and YOU2_FORMAT_SCHEMA
+- Two-pass extraction:
+  - Pass 1: deterministic regex → numeric scores
+  - Pass 2: qwen2.5:7b → narrative fields only
+- Migration 47: clear_failed_for_page_targeted
+
+**Ground truth validation:**
+Andrew Tait — Natural D=42 I=15 S=84 C=71  
+             Adapted D=38 I=18 S=78 C=75  
+             Style: Supporting Coordinator
+
+### TTI DISC Standard Report — Page Map (confirmed)
+
+| Pages | Content |
+|-------|---------|
+| 6-7 | Behavioral Characteristics |
+| 9-10 | Checklist for Communicating |
+| 12 | Perceptions / Stress Signals |
+| 22 | Areas for Improvement |
+| **23-25** | **Behavioral Hierarchy — SCORES HERE** |
+| | SIA/SIN line format: |
+| | SIA: 38-18-78-75 (20) |
+| | SIN: 42-15-84-71 (20) |
+| 26-27 | Style Graphs + TTI Wheel |
+| 34-36 | Driving Forces Clusters |
+| 44 | Ideal Environment |
+
+**TTI Talent Insights Executive — Page Shift:** Scores appear on page 24 (not 25) due to extra Time Wasters section (pp 17-20). Extractor pulls pages 23-25 to cover both.
+
+---
+
+# PHASE 3C — STZ Human Feedback Loop 🔄 IN PROGRESS
+
+Connects the two feedback systems:
+
+**LOOP 1 — Automatic (complete)**
+- stz_feedback_log table
+- feedbackLogService.ts
+- L1-L5 signals on every extraction
+
+**LOOP 2 — Human confirmation (in progress)**
+- extractionReviewService.ts
+- Data Review UI
+- extraction_corrections table (migration 48)
+
+**Changes being made:**
+- Migration 48: extraction_corrections table
+- logExtractionCorrection() function
+- confirmYou2Data() calls correction logger
+- saveDiscData() calls correction logger
+- Correction history panel in Data Review UI
+- Correction scope dropdown (once/retrain/flag)
+- stz_feedback_log L5 updated on human confirm
+- audit_log entry on every correction
+
+**When complete:** every human confirmation or correction in the UI automatically updates L4 and L5 signals in stz_feedback_log. Patterns accumulate showing which document types have highest correction rates. Those prompts get improved first.
+
+---
+
+## Document Type — Extraction Method Routing
+
+| Document Type | Extraction Method |
+|---------------|-------------------|
+| DISC scores | Deterministic regex (no LLM, pages 23-25) |
+| DISC narrative | qwen2.5:7b (pages 9-10, 12, 22, 28, 34-36) |
+| You2 | qwen2.5:7b full doc, YOU2_FORMAT_SCHEMA |
+| Fathom/Convo | qwen2.5:7b full doc |
+| TUMAY | qwen2.5:7b full doc |
+| Image-based PDFs | Manual entry via Data Review UI |
+
+---
+
+## Known Issues — Resolved
+
+| Issue | Status |
+|-------|--------|
+| DISC scores all zero | ✅ RESOLVED (page targeting) |
+| LLM hallucinating scores | ✅ RESOLVED (deterministic) |
+| Wrong model for structured output | ✅ RESOLVED (qwen2.5:7b) |
+| format:'json' too loose | ✅ RESOLVED (full schema) |
 
 ---
 
