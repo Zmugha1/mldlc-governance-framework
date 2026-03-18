@@ -10,7 +10,7 @@ import type {
 } from '../types/extractions';
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
-const OLLAMA_MODEL = 'qwen2.5:14b';
+const OLLAMA_MODEL = 'llama3.1:8b';
 
 async function loadPrompt(promptName: string): Promise<string> {
   return await invoke<string>('read_prompt_file', { name: promptName });
@@ -39,8 +39,7 @@ async function callOllama(
         format: 'json',
         options: {
           temperature: 0,
-          num_predict: 4000,
-          num_ctx: 8192
+          num_predict: 4000
         }
       })
     });
