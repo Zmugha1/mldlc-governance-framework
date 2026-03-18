@@ -445,6 +445,36 @@ export default function AdminStreamliner() {
                 >
                   Test DISC (Jeff Dayton)
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Andrew_Tait\\Andrew Tait - ttsi.pdf';
+                    console.log('Testing DISC extraction for Andrew Tait...');
+                    setTestDiscOutput('Running...');
+                    try {
+                      const result = await invoke<{
+                        success: boolean;
+                        format: string;
+                        error: string | null;
+                        text_length: number;
+                        text_preview: string;
+                        scores: Record<string, unknown> | null;
+                        file_path: string;
+                        page_numbers: number[];
+                      }>('test_disc_extraction', { filePath: path });
+                      const out = JSON.stringify(result, null, 2);
+                      console.log('=== TEST DISC EXTRACTION (Andrew Tait) ===', out);
+                      setTestDiscOutput(out);
+                    } catch (e) {
+                      const errMsg = e instanceof Error ? e.message : String(e);
+                      console.error('test_disc_extraction failed:', e);
+                      setTestDiscOutput(`Error: ${errMsg}`);
+                    }
+                  }}
+                >
+                  Test DISC (Andrew Tait)
+                </Button>
               </div>
               {importRunning && importProgress && (
                 <div className="space-y-2">

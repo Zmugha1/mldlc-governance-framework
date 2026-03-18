@@ -390,12 +390,21 @@ fn extract_with_ocr(path: &Path, page_numbers: &[u32]) -> Result<String, String>
                 )
                 .map_err(|e| format!("Page {} render failed: {}", page_num, e))?;
 
-            let temp_path = std::env::temp_dir().join(format!("disc_page_{}.png", page_num));
+            // Try PNG first
+            let temp_png = std::env::temp_dir().join(format!("disc_page_{}.png", page_num));
+            let save_result = bitmap.as_image().save(&temp_png);
 
-            bitmap
-                .as_image()
-                .save(&temp_path)
-                .map_err(|e| format!("Failed to save temp image for page {}: {}", page_num, e))?;
+            // If PNG fails, fall back to BMP (no codec needed)
+            let temp_path = if save_result.is_ok() {
+                temp_png.clone()
+            } else {
+                let temp_bmp = std::env::temp_dir().join(format!("disc_page_{}.bmp", page_num));
+                bitmap
+                    .as_image()
+                    .save(&temp_bmp)
+                    .map_err(|e| format!("Failed to save temp image for page {}: {}", page_num, e))?;
+                temp_bmp
+            };
 
             let tesseract_path = temp_path.to_string_lossy();
             println!("[DISC] OCR command: tesseract {} stdout -l eng", tesseract_path);
@@ -403,6 +412,7 @@ fn extract_with_ocr(path: &Path, page_numbers: &[u32]) -> Result<String, String>
             let text = run_tesseract_ocr(&temp_path)
                 .map_err(|e| format!("Tesseract OCR failed for page {}: {}", page_num, e))?;
 
+            // Always clean up temp file
             let _ = std::fs::remove_file(&temp_path);
 
             if !text.trim().is_empty() {
