@@ -414,6 +414,31 @@ export default function AdminStreamliner() {
                 >
                   Debug DISC Pages
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Jeff_Dayton\\Jeff Dayton - ttsi.pdf';
+                    try {
+                      const result = await invoke<{
+                        success: boolean;
+                        format: string;
+                        error: string | null;
+                        text_length: number;
+                        text_preview: string;
+                        scores: Record<string, unknown> | null;
+                        file_path: string;
+                        page_numbers: number[];
+                      }>('test_disc_extraction', { filePath: path });
+                      console.log('=== TEST DISC EXTRACTION (verbose) ===');
+                      console.log(JSON.stringify(result, null, 2));
+                    } catch (e) {
+                      console.error('test_disc_extraction failed:', e);
+                    }
+                  }}
+                >
+                  Test DISC (Jeff Dayton)
+                </Button>
               </div>
               {importRunning && importProgress && (
                 <div className="space-y-2">

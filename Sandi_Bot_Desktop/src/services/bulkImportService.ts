@@ -385,15 +385,44 @@ export async function bulkImportFolder(
           continue;
         }
 
-        const extracted = await invoke<{
-          text: string;
-          success: boolean;
-          error?: string;
-        }>('extract_text_from_any_file', {
-          filePath: file.filePath
-        });
+        let extracted: { text: string; success: boolean; error?: string };
+        try {
+          extracted = await invoke<{
+            text: string;
+            success: boolean;
+            error?: string;
+          }>('extract_text_from_any_file', {
+            filePath: file.filePath
+          });
+        } catch (e) {
+          extracted = {
+            text: '',
+            success: false,
+            error: e instanceof Error ? e.message : String(e)
+          };
+        }
 
-        if (!extracted.success || !extracted.text) {
+        const docType = detectDocType(
+          file.fileName,
+          extracted.text
+        );
+        if (!docType) {
+          if (!extracted.success || !extracted.text) {
+            const errMsg = extracted.error ?? 'extraction failed';
+            result.failed++;
+            clientFailed.count++;
+            result.failedFiles.push({ clientName, fileName: file.fileName, error: errMsg });
+            result.errors.push(`${clientName} — ${file.fileName}: ${errMsg}`);
+          }
+          continue;
+        }
+
+        // For DISC PDFs: try processDocument even when extract_text failed (image-based PDFs use OCR)
+        const isDiscPdf = docType === 'disc' && file.filePath.toLowerCase().endsWith('.pdf');
+        const textToUse = (extracted.success && extracted.text)
+          ? extracted.text
+          : (isDiscPdf ? '' : extracted.text);
+        if (!extracted.success && !isDiscPdf) {
           const errMsg = extracted.error ?? 'extraction failed';
           result.failed++;
           clientFailed.count++;
@@ -402,17 +431,11 @@ export async function bulkImportFolder(
           continue;
         }
 
-        const docType = detectDocType(
-          file.fileName,
-          extracted.text
-        );
-        if (!docType) continue;
-
         const r = await extractWithTimeout(
           () => processDocument(
             clientId,
             docType,
-            extracted.text,
+            textToUse,
             file.fileName,
             file.filePath
           ),
@@ -508,15 +531,26 @@ export async function bulkImportRetryFailed(
     }
 
     try {
-      const extracted = await invoke<{
-        text: string;
-        success: boolean;
-        error?: string;
-      }>('extract_text_from_any_file', {
-        filePath: row.file_path
-      });
+      let extracted: { text: string; success: boolean; error?: string };
+      try {
+        extracted = await invoke<{
+          text: string;
+          success: boolean;
+          error?: string;
+        }>('extract_text_from_any_file', {
+          filePath: row.file_path
+        });
+      } catch (e) {
+        extracted = {
+          text: '',
+          success: false,
+          error: e instanceof Error ? e.message : String(e)
+        };
+      }
 
-      if (!extracted.success || !extracted.text) {
+      const isDiscPdf = row.document_type === 'disc' && row.file_path.toLowerCase().endsWith('.pdf');
+      const textToUse = (extracted.success && extracted.text) ? extracted.text : (isDiscPdf ? '' : extracted.text);
+      if (!extracted.success && !isDiscPdf) {
         const errMsg = extracted.error ?? 'extraction failed';
         result.failed++;
         result.failedFiles.push({ clientName, fileName: row.file_name, error: errMsg });
@@ -528,7 +562,7 @@ export async function bulkImportRetryFailed(
         () => processDocument(
           row.client_id,
           row.document_type as 'disc' | 'you2' | 'fathom' | 'vision',
-          extracted.text,
+          textToUse,
           row.file_name,
           row.file_path
         ),

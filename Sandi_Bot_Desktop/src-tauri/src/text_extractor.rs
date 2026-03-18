@@ -6,6 +6,9 @@
 
 use std::io::Read;
 use std::path::Path;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 pub struct ExtractionResult {
     pub text: String,
@@ -142,10 +145,15 @@ fn extract_text_from_pdf_stream(stream: &str) -> String {
     result.trim().to_string()
 }
 
-fn run_tesseract_ocr(image_path: &std::path::Path) -> Result<String, String> {
-    let path_str = image_path.to_str().ok_or("Invalid path")?;
+/// Run Tesseract OCR on an image with configurable timeout (default 15s).
+fn run_tesseract_ocr_with_timeout(
+    image_path: &std::path::Path,
+    timeout_secs: u64,
+) -> Result<String, String> {
+    let path_str = image_path
+        .to_str()
+        .ok_or_else(|| "Invalid path: non-UTF8 characters".to_string())?;
     let tesseract_exe = if cfg!(target_os = "windows") {
-        // Try default install path if "tesseract" not in PATH
         let default = r"C:\Program Files\Tesseract-OCR\tesseract.exe";
         if std::path::Path::new(default).exists() {
             default
@@ -156,22 +164,40 @@ fn run_tesseract_ocr(image_path: &std::path::Path) -> Result<String, String> {
         "tesseract"
     };
 
-    let output = std::process::Command::new(tesseract_exe)
-        .arg(path_str)
-        .arg("stdout")
-        .arg("-l")
-        .arg("eng")
-        .output()
-        .map_err(|e| format!("Tesseract not found: {}", e))?;
+    let exe = tesseract_exe.to_string();
+    let path_owned = path_str.to_string();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let output = std::process::Command::new(&exe)
+            .arg(&path_owned)
+            .arg("stdout")
+            .arg("-l")
+            .arg("eng")
+            .output();
+        let _ = tx.send(output);
+    });
 
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(format!(
-            "Tesseract failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ))
+    match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
+        Ok(Ok(output)) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                Err(format!(
+                    "Tesseract failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ))
+            }
+        }
+        Ok(Err(e)) => Err(format!("Tesseract not found or failed to run: {}", e)),
+        Err(_) => Err(format!(
+            "OCR timeout after {} seconds — Tesseract may be slow on large images",
+            timeout_secs
+        )),
     }
+}
+
+fn run_tesseract_ocr(image_path: &std::path::Path) -> Result<String, String> {
+    run_tesseract_ocr_with_timeout(image_path, 15)
 }
 
 fn pdfium_library_path() -> std::path::PathBuf {
@@ -203,6 +229,12 @@ pub fn extract_pages_by_numbers(
     file_path: &str,
     page_numbers: Vec<u32>,
 ) -> ExtractionResult {
+    let filename = Path::new(file_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(file_path);
+    println!("[DISC] Starting extraction for: {}", filename);
+
     let path = Path::new(file_path);
     let ext = path
         .extension()
@@ -210,35 +242,84 @@ pub fn extract_pages_by_numbers(
         .unwrap_or("")
         .to_lowercase();
     if ext != "pdf" {
+        let msg = format!("extract_pages_by_numbers supports PDF only, got .{}", ext);
+        println!("[DISC] {}", msg);
+        return ExtractionResult::failure(&ext, msg);
+    }
+
+    // Verify file exists before attempting extraction
+    if !path.exists() {
+        let msg = format!("File not found at path: {}", path.display());
+        println!("[DISC] ERROR: {}", msg);
         return ExtractionResult::failure(
-            &ext,
-            "extract_pages_by_numbers supports PDF only".to_string(),
+            "pdf",
+            msg,
         );
     }
 
     // Try pdfium-render first
     match extract_with_pdfium(path, &page_numbers) {
-        Ok(text) if text.trim().len() > 100 => ExtractionResult {
-            text,
-            format: "pdf".to_string(),
-            success: true,
-            error: None,
-        },
-        _ => {
-            // Fallback to OCR for image-based PDFs
-            match extract_with_ocr(path, &page_numbers) {
-                Ok(text) => ExtractionResult {
+        Ok(text) => {
+            let len = text.trim().len();
+            println!("[DISC] pdfium returned {} chars", len);
+            if len > 100 {
+                println!("[DISC] Text above threshold, using pdfium result");
+                ExtractionResult {
                     text,
-                    format: "pdf_ocr".to_string(),
+                    format: "pdf".to_string(),
                     success: true,
                     error: None,
-                },
-                Err(e) => ExtractionResult {
-                    text: String::new(),
-                    format: "pdf".to_string(),
-                    success: false,
-                    error: Some(format!("Both pdfium and OCR failed: {}", e)),
-                },
+                }
+            } else {
+                println!("[DISC] Text below threshold ({}), triggering OCR fallback...", len);
+                match extract_with_ocr(path, &page_numbers) {
+                    Ok(ocr_text) => {
+                        let ocr_len = ocr_text.trim().len();
+                        println!("[DISC] OCR completed, returned {} chars", ocr_len);
+                        ExtractionResult {
+                            text: ocr_text,
+                            format: "pdf_ocr".to_string(),
+                            success: true,
+                            error: None,
+                        }
+                    }
+                    Err(e) => {
+                        println!("[DISC] OCR failed: {}", e);
+                        ExtractionResult {
+                            text: String::new(),
+                            format: "pdf".to_string(),
+                            success: false,
+                            error: Some(format!("Both pdfium and OCR failed: {}", e)),
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            println!("[DISC] pdfium failed: {}, triggering OCR fallback...", e);
+            match extract_with_ocr(path, &page_numbers) {
+                Ok(ocr_text) => {
+                    let ocr_len = ocr_text.trim().len();
+                    println!("[DISC] OCR completed, returned {} chars", ocr_len);
+                    ExtractionResult {
+                        text: ocr_text,
+                        format: "pdf_ocr".to_string(),
+                        success: true,
+                        error: None,
+                    }
+                }
+                Err(ocr_err) => {
+                    println!("[DISC] OCR failed: {}", ocr_err);
+                    ExtractionResult {
+                        text: String::new(),
+                        format: "pdf".to_string(),
+                        success: false,
+                        error: Some(format!(
+                            "PDFium failed: {}. OCR fallback failed: {}",
+                            e, ocr_err
+                        )),
+                    }
+                }
             }
         }
     }
@@ -254,12 +335,12 @@ fn extract_with_pdfium(
     let bindings = Pdfium::bind_to_library(
         Pdfium::pdfium_platform_library_name_at_path(&lib_path),
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("PDFium library load failed: {}", e))?;
 
     let pdfium = Pdfium::new(bindings);
     let doc = pdfium
         .load_pdf_from_file(path, None)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("PDF load failed (file may be corrupted or not a valid PDF): {}", e))?;
 
     let mut collected = String::new();
 
@@ -267,7 +348,10 @@ fn extract_with_pdfium(
         let idx = (page_num as usize).saturating_sub(1);
 
         if let Ok(page) = doc.pages().get(idx as u16) {
-            let text = page.text().map_err(|e| e.to_string())?.all();
+            let text = page
+                .text()
+                .map_err(|e| format!("Page {} text extraction failed: {}", page_num, e))?
+                .all();
 
             if !text.trim().is_empty() {
                 collected.push_str(&format!("\n--- PAGE {} ---\n{}", page_num, text));
@@ -285,12 +369,12 @@ fn extract_with_ocr(path: &Path, page_numbers: &[u32]) -> Result<String, String>
     let bindings = Pdfium::bind_to_library(
         Pdfium::pdfium_platform_library_name_at_path(&lib_path),
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("PDFium library load failed (OCR path): {}", e))?;
 
     let pdfium = Pdfium::new(bindings);
     let doc = pdfium
         .load_pdf_from_file(path, None)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("PDF load failed for OCR (file may be corrupted): {}", e))?;
 
     let mut collected = String::new();
 
@@ -304,16 +388,20 @@ fn extract_with_ocr(path: &Path, page_numbers: &[u32]) -> Result<String, String>
                         .set_target_width(2480)
                         .set_maximum_height(3508),
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| format!("Page {} render failed: {}", page_num, e))?;
 
             let temp_path = std::env::temp_dir().join(format!("disc_page_{}.png", page_num));
 
             bitmap
                 .as_image()
                 .save(&temp_path)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| format!("Failed to save temp image for page {}: {}", page_num, e))?;
 
-            let text = run_tesseract_ocr(&temp_path)?;
+            let tesseract_path = temp_path.to_string_lossy();
+            println!("[DISC] OCR command: tesseract {} stdout -l eng", tesseract_path);
+
+            let text = run_tesseract_ocr(&temp_path)
+                .map_err(|e| format!("Tesseract OCR failed for page {}: {}", page_num, e))?;
 
             let _ = std::fs::remove_file(&temp_path);
 

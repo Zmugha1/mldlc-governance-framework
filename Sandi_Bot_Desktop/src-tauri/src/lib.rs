@@ -41,12 +41,17 @@ async fn extract_pdf_pages(
     page_numbers: Vec<u32>,
 ) -> Result<serde_json::Value, String> {
     let result = text_extractor::extract_pages_by_numbers(&file_path, page_numbers);
-    Ok(serde_json::json!({
-        "text": result.text,
-        "format": result.format,
-        "success": result.success,
-        "error": result.error
-    }))
+    if result.success {
+        Ok(serde_json::json!({
+            "text": result.text,
+            "format": result.format,
+            "success": true,
+            "error": null
+        }))
+    } else {
+        let err_msg = result.error.unwrap_or_else(|| "Unknown extraction error".to_string());
+        Err(err_msg)
+    }
 }
 
 #[tauri::command]
@@ -73,9 +78,49 @@ fn debug_disc_pages(file_path: String) -> String {
     result.text
 }
 
+/// Test DISC extraction for a single file — returns verbose JSON with logs for debugging.
+#[tauri::command]
+fn test_disc_extraction(file_path: String) -> Result<serde_json::Value, String> {
+    let page_numbers = vec![23, 24, 25, 28, 34, 35, 36];
+    let result = text_extractor::extract_pages_by_numbers(&file_path, page_numbers.clone());
+
+    let scores = if result.success && !result.text.is_empty() {
+        let parsed = disc_parser::parse_disc_scores(&result.text);
+        serde_json::json!({
+            "adapted_d": parsed.adapted_d,
+            "adapted_i": parsed.adapted_i,
+            "adapted_s": parsed.adapted_s,
+            "adapted_c": parsed.adapted_c,
+            "natural_d": parsed.natural_d,
+            "natural_i": parsed.natural_i,
+            "natural_s": parsed.natural_s,
+            "natural_c": parsed.natural_c,
+            "found": parsed.found
+        })
+    } else {
+        serde_json::Value::Null
+    };
+
+    Ok(serde_json::json!({
+        "success": result.success,
+        "format": result.format,
+        "error": result.error,
+        "text_length": result.text.len(),
+        "text_preview": if result.text.len() > 500 {
+            format!("{}...", &result.text[..500])
+        } else {
+            result.text.clone()
+        },
+        "scores": scores,
+        "file_path": file_path,
+        "page_numbers": page_numbers
+    }))
+}
+
 #[tauri::command]
 fn parse_disc_scores_from_text(text: String) -> Result<serde_json::Value, String> {
     let scores = disc_parser::parse_disc_scores(&text);
+    println!("[DISC] Regex match result: {:?}", scores);
     Ok(serde_json::json!({
         "adapted_d": scores.adapted_d,
         "adapted_i": scores.adapted_i,
@@ -700,6 +745,7 @@ pub fn run() {
             extract_pdf_pages,
             check_tesseract,
             debug_disc_pages,
+            test_disc_extraction,
             parse_disc_scores_from_text,
             bulk_import_folder,
             pdf_parser::parse_pdf,

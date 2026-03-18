@@ -308,9 +308,13 @@ export async function extractDiscProfile(
         });
         if (pageResult.success && pageResult.text.trim().length > 50) {
           targetedText = pageResult.text;
+        } else if (pageResult.error) {
+          throw new Error(pageResult.error);
         }
-      } catch {
-        console.warn('Page extraction failed, using full text');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn('Page extraction failed:', msg);
+        throw new Error(msg);
       }
     }
 
@@ -540,7 +544,9 @@ STRESS SIGNALS come from the "Perceptions" page:
       ? error.message
       : typeof error === 'string'
         ? error
-        : JSON.stringify(error) ?? 'Unknown error';
+        : (error && typeof error === 'object' && 'message' in error)
+          ? String((error as { message: unknown }).message)
+          : JSON.stringify(error) ?? 'Unknown error';
     console.error('Extraction error full details:', error);
 
     // Image-based PDF — record as skipped with actionable message
