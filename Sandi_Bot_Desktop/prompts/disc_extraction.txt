@@ -6,25 +6,23 @@ style and 12 Driving Forces motivation profile.
 DISC SCORES — HIGHEST PRIORITY:
 Search for a line matching this exact pattern:
 "SIA: D-I-S-C (N)    SIN: D-I-S-C (N)"
-Example: "SIA: 38-18-78-75 (20)  SIN: 42-15-84-71 (20)"
+Example: SIA: XX-XX-XX-XX (N)  SIN: XX-XX-XX-XX (N) where XX are the actual scores from this document
 SIA = Adapted Style scores in D, I, S, C order
 SIN = Natural Style scores in D, I, S, C order
 Extract the four numbers from each.
 
 If SIA/SIN line not found, look for four numbers
 in sequence near "Adapted Style" and "Natural Style"
-labels or near "(38)(18)(78)(75)" patterns.
+labels or near parenthesized number patterns.
 
 STYLE LABEL:
-Find text containing "SUPPORTING COORDINATOR" or
-similar two-word style label near "Natural:" text.
-The TTI Wheel page shows:
-"Natural: (20) SUPPORTING COORDINATOR"
-Extract "SUPPORTING COORDINATOR" as primary_style_label.
+Find text containing a two-word style label near "Natural:" text.
+The TTI Wheel page shows: "Natural: (N) [STYLE LABEL]"
+Extract the two-word style label from this document as primary_style_label.
 
 STYLE COMBINATION:
 Take the two letters with highest Natural scores.
-Example: S=84, C=71 are highest → combination = "SC"
+Example: if S and C are the two highest Natural scores → combination = "SC"
 
 ASSESSMENT DATE:
 Find date near client name on cover page.
@@ -33,10 +31,7 @@ Format like "01.28.2026" — convert to "01/28/2026"
 DRIVING FORCES SCORES:
 Find page titled "Primary Driving Forces Cluster"
 Extract four forces with names and scores:
-Example: "Receptive" with score "65"
-"Selfless" with score "53"
-"Commanding" with score "53"
-"Harmonious" with score "50"
+Example: [Force name] with score [actual score from document]
 
 Find page titled "Situational Driving Forces Cluster"
 Extract four forces (forces 5-8) with scores.
@@ -50,19 +45,13 @@ COMMUNICATION DOS:
 Find page titled "Checklist for Communicating"
 Under heading "Ways to Communicate:"
 Extract all numbered items (usually 9-11 items)
-Example items:
-"Watch carefully for possible areas of early disagreement"
-"Be prepared with the facts and figures"
-"Provide a friendly environment"
+Extract the actual items from this client's report.
 
 COMMUNICATION DONTS:
 Find the "Continued" page after Checklist page
 Under heading "Ways NOT to Communicate:"
 Extract all numbered items (usually 10-12 items)
-Example items:
-"Be redundant"
-"Debate about facts and figures"
-"Manipulate or push him into agreeing"
+Extract the actual items from this client's report.
 
 DO NOT use the "Communication Tips" page.
 That page has four quadrants (Compliance,
@@ -75,14 +64,11 @@ Subtitle: "See Yourself As Others See You"
 
 Under "Under moderate pressure, tension, stress,
 or fatigue, others may see him as being:"
-Extract the trait words listed.
-Example: Nondemonstrative, Hesitant, 
-Unconcerned, Inflexible
+Extract the trait words listed from this document.
 
 Under "Under extreme pressure, stress, or fatigue,
 others may see him as being:"
-Extract the trait words listed.
-Example: Possessive, Stubborn, Detached, Insensitive
+Extract the trait words listed from this document.
 
 IDEAL ENVIRONMENT:
 Find page titled "Ideal Environment"

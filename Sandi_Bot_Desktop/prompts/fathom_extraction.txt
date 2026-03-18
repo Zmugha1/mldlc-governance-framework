@@ -46,7 +46,7 @@ Include who is responsible.
 
 SPOUSE MENTIONS:
 Every reference to spouse or partner.
-Include context. Example: "wife Hannah expressed
+Include context. Example: "[spouse name] expressed
 support for entrepreneurship path"
 
 ENGAGEMENT QUALITY:

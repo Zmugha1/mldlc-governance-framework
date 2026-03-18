@@ -32,9 +32,9 @@ Reference actual client data — vision, dangers,
 spouse situation, score.
 
 Example:
-"NURTURE: Andrew shows strong financial readiness
-(credit 850, 0-6 month timeline) but spouse
-alignment is unsure — resolve Hannah's concerns
+"NURTURE: Client shows strong financial readiness
+(credit score and timeline from their data) but spouse
+alignment is unsure — resolve spouse concerns
 before C3 franchise presentation."
 
 Never give generic recommendations.

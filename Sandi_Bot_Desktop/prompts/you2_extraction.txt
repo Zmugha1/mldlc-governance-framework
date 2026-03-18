@@ -12,12 +12,8 @@ It may be one paragraph or two separate lines
 starting with "Professionally" and "Personally"
 Concatenate all answer text into one string.
 
-Example answer:
-"Professionally I'll be working on something
-impactful to Seattle, real estate or otherwise.
-Personally I'll be less financially stressed
-month to month and able to spend quality time
-with my wife and child on the weekends."
+Example format: [Client's actual vision from their document]
+May be one paragraph or split into Professionally/Personally lines.
 
 TOP 3 DANGERS — CRITICAL RULE:
 Find the section titled "Top 3 Dangers & Goals"
@@ -29,9 +25,7 @@ Do NOT use the Yes/No checkbox list above.
 Clients frequently write freeform here even
 when all checkboxes are No.
 
-Example:
-Danger: Are my current skills transferable
-Goal: Identify roles where I can grow in place
+Example format: Danger: [client text]  Goal: [client text]
 
 TOP 3 STRENGTHS — CRITICAL RULE:
 Find section titled "Top 3 Strengths & Goals"
@@ -65,19 +59,15 @@ SPOUSE MINDSET:
 Find "Their mindset about business ownership
 as an option:"
 Extract the full paragraph that follows verbatim.
-Example:
-"Hannah values my happiness and our family
-stability. She's encouraged entrepreneurship
-if it would lead to more positive outcomes
-for my mental health."
+Example: [Client's spouse mindset verbatim from their document]
 
 CREDIT SCORE:
 Find "Estimated Credit Score:"
-Extract the number only. Example: 850
+Extract the number only. Example: [Client's actual credit score]
 
 NET WORTH:
 Find "Estimated Net Worth:"
-Extract exactly as written. Example: "50k - 250k"
+Extract exactly as written. Example: [Client's actual net worth range]
 Do not reformat or add symbols.
 
 LAUNCH TIMELINE:
@@ -137,7 +127,7 @@ ADDITIONAL STAKEHOLDERS:
 Find "Is there anyone else that would potentially
 have a role in your possible new business venture?"
 If Yes extract names and relationships.
-Example: David and Becka Tait - Parent
+Example: [Client's additional stakeholders from their document]
 Empty array if No or none listed.
 
 Return ONLY valid JSON. No explanation.
