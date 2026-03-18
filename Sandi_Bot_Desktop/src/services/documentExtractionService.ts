@@ -10,7 +10,7 @@ import type {
 } from '../types/extractions';
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
-const OLLAMA_MODEL = 'phi3:mini';
+const OLLAMA_MODEL = 'llama3.1:8b';
 
 async function loadPrompt(promptName: string): Promise<string> {
   return await invoke<string>('read_prompt_file', { name: promptName });
@@ -23,7 +23,7 @@ async function callOllama(
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    120000 // 2 minute timeout per document
+    300000 // 5 minute timeout per document
   );
 
   try {
@@ -33,11 +33,12 @@ async function callOllama(
       signal: controller.signal,
       body: JSON.stringify({
         model: OLLAMA_MODEL,
-        prompt: `${systemPrompt}\n\nDocument text:\n${userContent}`,
+        prompt: `${systemPrompt}\n\nDocument text:\n${userContent}\n\nRemember: respond with ONLY the JSON object. No other text.`,
         stream: false,
+        format: 'json',
         options: {
           temperature: 0.1,
-          num_predict: 2000
+          num_predict: 3000
         }
       })
     });
@@ -55,8 +56,7 @@ async function callOllama(
 
     if (!data.response) {
       throw new Error(
-        'Ollama returned empty response. ' +
-        'Model may still be loading.'
+        'Ollama returned empty response.'
       );
     }
 
@@ -67,8 +67,8 @@ async function callOllama(
     if (error instanceof Error &&
         error.name === 'AbortError') {
       throw new Error(
-        'Ollama timeout after 2 minutes. ' +
-        'Document may be too large for phi3:mini.'
+        'Ollama timeout after 5 minutes. ' +
+        'Document may be too large.'
       );
     }
     throw error;
@@ -761,9 +761,8 @@ export async function processDocument(
     DiscProfile | You2Profile | FathomSession | null
   >
 > {
-  // Truncate to fit phi3:mini context window
-  // ~4k tokens = ~16000 characters
-  const MAX_CHARS = 14000;
+  // Truncate to fit llama3.1:8b context window
+  const MAX_CHARS = 8000;
   const truncatedText = rawText.length > MAX_CHARS
     ? rawText.substring(0, MAX_CHARS) +
       '\n\n[Document truncated — extract from above only]'
