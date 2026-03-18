@@ -1,17 +1,30 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getDb, dbSelect, dbExecute } from './db';
-import { processDocument } from './documentExtractionService';
+import { processDocument, getExtractionStatus } from './documentExtractionService';
 import { rebuildClientProfile } from './profileBuilderService';
 import {
   FOLDER_TO_BUCKET,
   type OutcomeBucket
 } from './stageInferenceService';
 
+export interface ClientImportSummary {
+  clientName: string;
+  clientId: string;
+  bucket: string;
+  processed: number;
+  failed: number;
+  succeededTypes: string[];
+  missingDisc: boolean;
+  missingYou2: boolean;
+  missingFathom: boolean;
+}
+
 export interface BulkImportResult {
   processed: number;
   failed: number;
   clients_created: number;
   errors: string[];
+  clientSummaries: ClientImportSummary[];
 }
 
 export interface ImportProgress {
@@ -161,7 +174,8 @@ export async function bulkImportFolder(
     processed: 0,
     failed: 0,
     clients_created: 0,
-    errors: []
+    errors: [],
+    clientSummaries: []
   };
 
   type FileEntry = {
@@ -232,6 +246,10 @@ export async function bulkImportFolder(
     );
     if (created) result.clients_created++;
 
+    const clientProcessed = { count: 0 };
+    const clientFailed = { count: 0 };
+    const clientSucceededTypes = new Set<string>();
+
     // Separate You2/TUMAY files for concatenation
     const you2Files = files.filter(f => isYou2File(f.fileName));
     const otherFiles = files.filter(f => !isYou2File(f.fileName));
@@ -270,9 +288,13 @@ export async function bulkImportFolder(
           you2Files[0].fileName,
           you2Files[0].filePath
         );
-        if (r.success) result.processed++;
-        else {
+        if (r.success) {
+          result.processed++;
+          clientProcessed.count++;
+          clientSucceededTypes.add('you2');
+        } else {
           result.failed++;
+          clientFailed.count++;
           result.errors.push(`${clientName} You2: ${r.error ?? 'extraction failed'}`);
         }
       }
@@ -298,6 +320,7 @@ export async function bulkImportFolder(
 
         if (!extracted.success || !extracted.text) {
           result.failed++;
+          clientFailed.count++;
           result.errors.push(`${file.fileName}: ${extracted.error ?? 'extraction failed'}`);
           continue;
         }
@@ -316,13 +339,18 @@ export async function bulkImportFolder(
           file.filePath
         );
 
-        if (r.success) result.processed++;
-        else {
+        if (r.success) {
+          result.processed++;
+          clientProcessed.count++;
+          clientSucceededTypes.add(docType);
+        } else {
           result.failed++;
+          clientFailed.count++;
           result.errors.push(`${file.fileName}: ${r.error ?? 'extraction failed'}`);
         }
       } catch (e) {
         result.failed++;
+        clientFailed.count++;
         result.errors.push(
           `${file.fileName}: ${e instanceof Error ? e.message : 'error'}`
         );
@@ -331,6 +359,97 @@ export async function bulkImportFolder(
 
     // Rebuild profile after all files for this client
     await rebuildClientProfile(clientId);
+
+    // Get extraction status for completeness flags
+    const status = await getExtractionStatus(clientId);
+    const bucketLabel = files[0].bucket === 'active' ? 'Active' :
+      files[0].bucket === 'converted' ? 'WIN' :
+      files[0].bucket === 'paused' ? 'Paused' : 'Various';
+
+    result.clientSummaries.push({
+      clientName,
+      clientId,
+      bucket: bucketLabel,
+      processed: clientProcessed.count,
+      failed: clientFailed.count,
+      succeededTypes: Array.from(clientSucceededTypes),
+      missingDisc: status.disc !== 'complete',
+      missingYou2: status.you2 !== 'complete',
+      missingFathom: status.fathom !== 'complete',
+    });
+  }
+
+  return result;
+}
+
+export async function bulkImportRetryFailed(
+  onProgress?: (p: ImportProgress) => void
+): Promise<BulkImportResult> {
+  const failedRows = await dbSelect<Array<{
+    client_id: string;
+    document_type: string;
+    file_path: string;
+    file_name: string;
+  }>>(
+    `SELECT client_id, document_type, file_path, file_name
+     FROM document_extractions
+     WHERE extraction_status = 'failed'`
+  );
+
+  const result: BulkImportResult = {
+    processed: 0,
+    failed: 0,
+    clients_created: 0,
+    errors: [],
+    clientSummaries: []
+  };
+
+  const total = failedRows.length;
+  for (let i = 0; i < failedRows.length; i++) {
+    const row = failedRows[i];
+    onProgress?.({
+      total,
+      current: i + 1,
+      current_file: row.file_name,
+      current_client: row.client_id
+    });
+
+    try {
+      const extracted = await invoke<{
+        text: string;
+        success: boolean;
+        error?: string;
+      }>('extract_text_from_any_file', {
+        filePath: row.file_path
+      });
+
+      if (!extracted.success || !extracted.text) {
+        result.failed++;
+        result.errors.push(`${row.file_name}: ${extracted.error ?? 'extraction failed'}`);
+        continue;
+      }
+
+      const r = await processDocument(
+        row.client_id,
+        row.document_type as 'disc' | 'you2' | 'fathom' | 'vision',
+        extracted.text,
+        row.file_name,
+        row.file_path
+      );
+
+      if (r.success) {
+        result.processed++;
+        await rebuildClientProfile(row.client_id);
+      } else {
+        result.failed++;
+        result.errors.push(`${row.file_name}: ${r.error ?? 'extraction failed'}`);
+      }
+    } catch (e) {
+      result.failed++;
+      result.errors.push(
+        `${row.file_name}: ${e instanceof Error ? e.message : 'error'}`
+      );
+    }
   }
 
   return result;

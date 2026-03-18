@@ -32,7 +32,7 @@ import { Switch } from '@/components/ui/switch';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Progress } from '@/components/ui/progress';
 import { knowledgeGraph } from '@/data/sampleClients';
-import { bulkImportFolder, type BulkImportResult, type ImportProgress } from '@/services/bulkImportService';
+import { bulkImportFolder, bulkImportRetryFailed, type BulkImportResult, type ImportProgress } from '@/services/bulkImportService';
 import { getAllClients, getRankedClients, getPushClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
 import { getAuditLog, auditEntriesToActivityLogs } from '@/services/auditService';
 import { clientToDisplay } from '@/services/clientAdapter';
@@ -165,7 +165,36 @@ export default function AdminStreamliner() {
         processed: 0,
         failed: 0,
         clients_created: 0,
-        errors: [err instanceof Error ? err.message : String(err)]
+        errors: [err instanceof Error ? err.message : String(err)],
+        clientSummaries: []
+      });
+    } finally {
+      setImportRunning(false);
+      setImportProgress(null);
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    setImportRunning(true);
+    setImportProgress(null);
+    setImportResult(null);
+    try {
+      const result = await bulkImportRetryFailed((p) => setImportProgress(p));
+      setImportResult(result);
+      const [rawClients, auditEntries] = await Promise.all([
+        getAllClients(),
+        getAuditLog(100)
+      ]);
+      setClients(rawClients.map(clientToDisplay));
+      const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
+      setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
+    } catch (err) {
+      setImportResult({
+        processed: 0,
+        failed: 0,
+        clients_created: 0,
+        errors: [err instanceof Error ? err.message : String(err)],
+        clientSummaries: []
       });
     } finally {
       setImportRunning(false);
@@ -354,13 +383,22 @@ export default function AdminStreamliner() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button
-                onClick={handleBulkImport}
-                disabled={importRunning}
-              >
-                <FolderInput className="h-4 w-4 mr-2" />
-                Import All Client Files
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleBulkImport}
+                  disabled={importRunning}
+                >
+                  <FolderInput className="h-4 w-4 mr-2" />
+                  Import All Client Files
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleRetryFailed}
+                  disabled={importRunning}
+                >
+                  Retry Failed Only
+                </Button>
+              </div>
               {importRunning && importProgress && (
                 <div className="space-y-2">
                   <Progress
@@ -375,7 +413,7 @@ export default function AdminStreamliner() {
                 </div>
               )}
               {importResult && !importRunning && (
-                <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="space-y-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
                   <p className="font-medium text-green-700">
                     ✓ {importResult.clients_created} clients loaded, {importResult.processed} documents processed
                   </p>
@@ -383,6 +421,47 @@ export default function AdminStreamliner() {
                     <p className="text-sm text-amber-700">
                       {importResult.failed} file(s) failed
                     </p>
+                  )}
+                  {importResult.clientSummaries.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="font-medium text-slate-700">Per-client results (by bucket):</p>
+                      {['Active', 'WIN', 'Paused', 'Various'].map((bucket) => {
+                        const byBucket = importResult!.clientSummaries.filter((s) => s.bucket === bucket);
+                        if (byBucket.length === 0) return null;
+                        return (
+                          <div key={bucket} className="space-y-2">
+                            <p className="text-sm font-semibold text-slate-600">{bucket}</p>
+                            <div className="space-y-1">
+                              {byBucket.map((s) => (
+                                <div
+                                  key={s.clientId}
+                                  className="flex flex-wrap items-center gap-2 text-sm p-2 rounded bg-white border border-slate-100"
+                                >
+                                  <span className="font-medium">{s.clientName}</span>
+                                  <span className="text-slate-500">
+                                    {s.processed} processed, {s.failed} failed
+                                  </span>
+                                  {s.succeededTypes.length > 0 && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      {s.succeededTypes.join(', ')}
+                                    </Badge>
+                                  )}
+                                  {(s.missingDisc || s.missingYou2 || s.missingFathom) && (
+                                    <span className="text-amber-600 text-xs">
+                                      Missing: {[
+                                        s.missingDisc && 'DISC',
+                                        s.missingYou2 && 'You2',
+                                        s.missingFathom && 'Fathom'
+                                      ].filter(Boolean).join(', ')}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                   {importResult.errors.length > 0 && (
                     <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
