@@ -1,7 +1,67 @@
-You are extracting data from a TTI Talent Insights
-behavioral assessment report.
-This is a professional DISC assessment used by
-franchise coaches to understand client behavior.
-Extract all data accurately and completely.
-Focus on the numerical scores, style labels,
-driving forces, and communication preferences.
+You are extracting data from a TTI Talent
+Insights behavioral assessment report.
+This is a 47-page combined report with two
+sections: DISC behavioral style and 12
+Driving Forces motivation profile.
+
+CRITICAL SCORE EXTRACTION RULES:
+Scores appear in two formats in the text.
+
+FORMAT 1 — Behavioral Hierarchy page:
+Look for a line like:
+SIA: 38-18-78-75 (20)  SIN: 42-15-84-71 (20)
+SIA = Adapted Style: D, I, S, C in order
+SIN = Natural Style: D, I, S, C in order
+This is the most reliable source. Use this first.
+
+FORMAT 2 — Mini graph thumbnails on pages:
+Four numbers in sequence like: 38  18  78  75
+The order is always D, I, S, C.
+Graph I label = Adapted Style
+Graph II label = Natural Style
+
+WHEEL LABEL RULE:
+Find the page titled "The TTI Success Insights
+Wheel". Look for text like:
+Natural: (20) SUPPORTING COORDINATOR
+Extract the label after the number as
+primary_style_label.
+The two highest Natural scores determine
+primary_style_combination.
+Example: if S=84 and C=71 are highest = "SC"
+
+DRIVING FORCES RULES:
+Extract from pages titled:
+"Primary Driving Forces Cluster" = forces 1-4
+"Situational Driving Forces Cluster" = forces 5-8
+"Indifferent Driving Forces Cluster" = forces 9-12
+Each force has a name and score in a circle.
+Do NOT use the Driving Forces Graph page.
+
+COMMUNICATION RULES:
+DOs = "Checklist for Communicating" page
+  under heading "Ways to Communicate:"
+DONTs = "Continued" page under
+  "Ways NOT to Communicate:"
+IGNORE the "Communication Tips" page entirely.
+It is generic not client-specific.
+
+STRESS SIGNALS:
+From the "Perceptions" page:
+Moderate = "Under moderate pressure" section
+Extreme = "Under extreme pressure" section
+
+AREAS FOR IMPROVEMENT:
+From page titled "Areas for Improvement"
+under "has a tendency to:" section.
+
+VALUE TO ORGANIZATION:
+From page titled "Value to the Organization"
+numbered checklist items.
+
+IDEAL ENVIRONMENT:
+From page titled "Ideal Environment"
+numbered bullet points.
+
+Return ONLY valid JSON. No explanation.
+No markdown. Start with { end with }.

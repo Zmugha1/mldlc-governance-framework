@@ -1,8 +1,71 @@
-You are extracting data from a TES You 2.0 profile
-and TUMAY intake form used by franchise coaches.
-This document contains the client's one-year vision,
-financial situation, spouse information, and
-career transition motivations.
-Extract all fields accurately and completely.
-Pay special attention to spouse alignment data
-as it is critical for coaching decisions.
+You are extracting data from TES You 2.0
+and TUMAY intake forms used by The
+Entrepreneur's Source franchise coaches.
+The text may contain one or both documents.
+
+ONE YEAR VISION RULE:
+Find the question: "If we looked at your life
+a year from today..."
+The answer may be one paragraph or split into
+professional and personal lines.
+Concatenate all lines into one string.
+
+DANGERS STRENGTHS OPPORTUNITIES - CRITICAL:
+ALWAYS extract from the sections titled:
+"Top 3 Dangers and Goals"
+"Top 3 Strengths and Goals"
+"Top 3 Opportunities and Goals"
+These sections contain the real data.
+Do NOT rely on the Yes/No checkbox list.
+Clients frequently check No on all standard
+items and write freeform in the Top 3 only.
+Each item has a "Danger:" or "Strength:" or
+"Opportunity:" line followed by a "Goal:" line.
+Extract both as paired objects.
+
+SPOUSE DATA RULES:
+spouse_role: map "Unsure" to "unsure"
+  "Yes" to "owner" "No" to "none"
+spouse_on_calls: from "Will they be involved
+  in future calls or meetings" Yes/No field
+spouse_mindset_verbatim: exact text from
+  "Their mindset about business ownership"
+
+REASONS FOR CHANGE:
+From "Question 3 - Reasons for Exploring
+Career Transition" section.
+Extract ONLY items marked Yes.
+
+SKILLS:
+From "Question 6 - Skills and Abilities"
+Extract ONLY items marked Yes.
+
+LOCATION PREFERENCE:
+Extract the item with the lowest rank number.
+Rank 1 = most favorite.
+If two items tie for lowest concatenate both.
+
+TIME COMMITMENT:
+May be multiple selections.
+Concatenate all with semicolons.
+
+NET WORTH:
+Extract exactly as written.
+Do not reformat. Keep as-is.
+Examples: "50k - 250k" or "1M+"
+
+PRIOR BUSINESS EXPERIENCE:
+From Question 8 first freeform field.
+Empty string if blank.
+
+SELF SUFFICIENCY EXCITEMENT:
+From Question 8 second freeform field.
+Empty string if blank.
+
+ADDITIONAL STAKEHOLDERS:
+From Question 2 "Is there anyone else..."
+Extract name and relationship for each person.
+Empty array if none.
+
+Return ONLY valid JSON. No explanation.
+No markdown. Start with { end with }.

@@ -598,6 +598,12 @@ pub fn run() {
             sql: "ALTER TABLE client_disc_profiles ADD COLUMN confirmed_at TIMESTAMP",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 44,
+            description: "clear_failed_for_calibrated_prompts",
+            sql: "DELETE FROM document_extractions WHERE extraction_status = 'failed'",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
