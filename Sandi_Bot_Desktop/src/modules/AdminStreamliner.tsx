@@ -403,78 +403,6 @@ export default function AdminStreamliner() {
                 >
                   Retry Failed Only
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Dena_Sauer\\Dena Sauer - ttsi.pdf';
-                    const text = await invoke<string>('debug_disc_pages', { filePath: path });
-                    console.log('=== DEBUG DISC PAGES 23-25 ===');
-                    console.log(text);
-                  }}
-                >
-                  Debug DISC Pages
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Jeff_Dayton\\Jeff Dayton - ttsi.pdf';
-                    console.log('Testing DISC extraction for Jeff Dayton...');
-                    setTestDiscOutput('Running...');
-                    try {
-                      const result = await invoke<{
-                        success: boolean;
-                        format: string;
-                        error: string | null;
-                        text_length: number;
-                        text_preview: string;
-                        scores: Record<string, unknown> | null;
-                        file_path: string;
-                        page_numbers: number[];
-                      }>('test_disc_extraction', { filePath: path });
-                      const out = JSON.stringify(result, null, 2);
-                      console.log('=== TEST DISC EXTRACTION (verbose) ===', out);
-                      setTestDiscOutput(out);
-                    } catch (e) {
-                      const errMsg = e instanceof Error ? e.message : String(e);
-                      console.error('test_disc_extraction failed:', e);
-                      setTestDiscOutput(`Error: ${errMsg}`);
-                    }
-                  }}
-                >
-                  Test DISC (Jeff Dayton)
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Andrew_Tait\\Andrew Tait - ttsi.pdf';
-                    console.log('Testing DISC extraction for Andrew Tait...');
-                    setTestDiscOutput('Running...');
-                    try {
-                      const result = await invoke<{
-                        success: boolean;
-                        format: string;
-                        error: string | null;
-                        text_length: number;
-                        text_preview: string;
-                        scores: Record<string, unknown> | null;
-                        file_path: string;
-                        page_numbers: number[];
-                      }>('test_disc_extraction', { filePath: path });
-                      const out = JSON.stringify(result, null, 2);
-                      console.log('=== TEST DISC EXTRACTION (Andrew Tait) ===', out);
-                      setTestDiscOutput(out);
-                    } catch (e) {
-                      const errMsg = e instanceof Error ? e.message : String(e);
-                      console.error('test_disc_extraction failed:', e);
-                      setTestDiscOutput(`Error: ${errMsg}`);
-                    }
-                  }}
-                >
-                  Test DISC (Andrew Tait)
-                </Button>
               </div>
               {importRunning && importProgress && (
                 <div className="space-y-2">
@@ -487,21 +415,6 @@ export default function AdminStreamliner() {
                   <p className="text-sm text-slate-600">
                     Processing {importProgress.current_client} — {importProgress.current_file} ({importProgress.current} of {importProgress.total} files)
                   </p>
-                </div>
-              )}
-              {testDiscOutput && (
-                <div className="space-y-2 p-4 rounded-lg bg-slate-100 border border-slate-300">
-                  <p className="font-medium text-slate-700">Test DISC output:</p>
-                  <pre className="text-xs overflow-auto max-h-48 p-2 bg-white rounded border border-slate-200">
-                    {testDiscOutput}
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setTestDiscOutput(null)}
-                  >
-                    Dismiss
-                  </Button>
                 </div>
               )}
               {importResult && !importRunning && (
@@ -815,6 +728,130 @@ export default function AdminStreamliner() {
         {/* Settings Tab */}
         <TabsContent value="settings">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Diagnostic Tools — Developer Only */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Diagnostic Tools — Developer Only
+                </CardTitle>
+                <CardDescription>Test extraction on specific files</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Dena_Sauer\\Dena Sauer - ttsi.pdf';
+                      setTestDiscOutput('Running...');
+                      try {
+                        const text = await invoke<string>('debug_disc_pages', { filePath: path });
+                        console.log('=== DEBUG DISC PAGES 23-25 ===', text);
+                        setTestDiscOutput(text);
+                      } catch (e) {
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        setTestDiscOutput(`Error: ${errMsg}`);
+                      }
+                    }}
+                  >
+                    Debug DISC Pages
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Jeff_Dayton\\Jeff Dayton - ttsi.pdf';
+                      setTestDiscOutput('Running...');
+                      try {
+                        const result = await invoke<{
+                          success: boolean;
+                          format: string;
+                          error: string | null;
+                          text_length: number;
+                          text_preview: string;
+                          scores: Record<string, unknown> | null;
+                          file_path: string;
+                          page_numbers: number[];
+                        }>('test_disc_extraction', { filePath: path });
+                        setTestDiscOutput(JSON.stringify(result, null, 2));
+                      } catch (e) {
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        setTestDiscOutput(`Error: ${errMsg}`);
+                      }
+                    }}
+                  >
+                    Test DISC (Jeff Dayton)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Andrew_Tait\\Andrew Tait - ttsi.pdf';
+                      setTestDiscOutput('Running...');
+                      try {
+                        const result = await invoke<{
+                          success: boolean;
+                          format: string;
+                          error: string | null;
+                          text_length: number;
+                          text_preview: string;
+                          scores: Record<string, unknown> | null;
+                          file_path: string;
+                          page_numbers: number[];
+                        }>('test_disc_extraction', { filePath: path });
+                        setTestDiscOutput(JSON.stringify(result, null, 2));
+                      } catch (e) {
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        setTestDiscOutput(`Error: ${errMsg}`);
+                      }
+                    }}
+                  >
+                    Test DISC (Andrew Tait)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Vito_Sciscioli\\Vito Sciscioli - You2.pdf';
+                      setTestDiscOutput('Running...');
+                      try {
+                        const result = await invoke<{
+                          vision: string;
+                          top_3_dangers: Array<{ danger: string; goal: string }>;
+                          top_3_strengths: Array<{ strength: string; goal: string }>;
+                          top_3_opportunities: Array<{ opportunity: string; goal: string }>;
+                          success: boolean;
+                          error: string | null;
+                        }>('test_you2_extraction', { filePath: path });
+                        setTestDiscOutput(JSON.stringify(result, null, 2));
+                      } catch (e) {
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        setTestDiscOutput(`Error: ${errMsg}`);
+                      }
+                    }}
+                  >
+                    Test You2 (Vito Sciscioli)
+                  </Button>
+                </div>
+                {testDiscOutput && (
+                  <div className="space-y-2 p-4 rounded-lg bg-slate-100 border border-slate-300">
+                    <p className="font-medium text-slate-700">Diagnostic output:</p>
+                    <pre className="text-xs overflow-auto max-h-48 p-2 bg-white rounded border border-slate-200">
+                      {testDiscOutput}
+                    </pre>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTestDiscOutput(null)}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Notifications */}
             <Card>
               <CardHeader>

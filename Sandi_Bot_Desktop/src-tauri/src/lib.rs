@@ -3,6 +3,7 @@ mod file_watcher;
 mod backup;
 mod text_extractor;
 mod disc_parser;
+mod you2_parser;
 
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -76,6 +77,21 @@ fn check_tesseract() -> bool {
 fn debug_disc_pages(file_path: String) -> String {
     let result = text_extractor::extract_pages_by_numbers(&file_path, vec![23, 24, 25]);
     result.text
+}
+
+/// Test You2 extraction for a single file — extracts full text and runs deterministic vision + top 3.
+#[tauri::command]
+fn test_you2_extraction(file_path: String) -> Result<serde_json::Value, String> {
+    let result = text_extractor::extract_text(&file_path);
+    let extracted = you2_parser::extract_you2_vision_deterministic(&result.text);
+    Ok(serde_json::json!({
+        "vision": extracted.vision,
+        "top_3_dangers": extracted.top_3_dangers,
+        "top_3_strengths": extracted.top_3_strengths,
+        "top_3_opportunities": extracted.top_3_opportunities,
+        "success": result.success && extracted.found,
+        "error": result.error
+    }))
 }
 
 /// Test DISC extraction for a single file — returns verbose JSON with logs for debugging.
@@ -752,6 +768,7 @@ pub fn run() {
             check_tesseract,
             debug_disc_pages,
             test_disc_extraction,
+            test_you2_extraction,
             parse_disc_scores_from_text,
             bulk_import_folder,
             pdf_parser::parse_pdf,
