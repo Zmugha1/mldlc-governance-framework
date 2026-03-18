@@ -290,7 +290,7 @@ export async function extractDiscProfile(
   filePath: string
 ): Promise<ExtractionResult<DiscProfile>> {
   try {
-    // PASS 1: Page-targeted extraction — pages 25, 28, 34, 35, 36
+    // PASS 1: Page-targeted extraction — pages 23-25, 28, 34, 35, 36 (covers TTI standard + Executive)
     let targetedText = rawText;
     const isPdf = filePath.toLowerCase().endsWith('.pdf');
 
@@ -302,7 +302,7 @@ export async function extractDiscProfile(
           error?: string;
         }>('extract_pdf_pages', {
           filePath,
-          pageNumbers: [25, 28, 34, 35, 36],
+          pageNumbers: [23, 24, 25, 28, 34, 35, 36],
         });
         if (pageResult.success && pageResult.text.trim().length > 50) {
           targetedText = pageResult.text;
