@@ -323,6 +323,9 @@ export async function bulkImportFolder(
       }
 
       if (combinedText.trim().length > 50) {
+        if (you2Files.some((f) => f.fileName.includes('TUMAY'))) {
+          result.skipped++;
+        } else {
         const alreadyComplete = await isExtractionComplete(clientId, you2Files[0].fileName);
         if (alreadyComplete) {
           result.skipped++;
@@ -358,6 +361,7 @@ export async function bulkImportFolder(
           console.error(`Failed to process ${you2Files[0].fileName}:`, e);
         }
         }
+        }
       }
     }
 
@@ -371,6 +375,10 @@ export async function bulkImportFolder(
       });
 
       try {
+        if (file.fileName.includes('TUMAY')) {
+          result.skipped++;
+          continue;
+        }
         const alreadyComplete = await isExtractionComplete(clientId, file.fileName);
         if (alreadyComplete) {
           result.skipped++;
@@ -493,6 +501,11 @@ export async function bulkImportRetryFailed(
       current_file: row.file_name,
       current_client: clientName
     });
+
+    if (row.file_name.includes('TUMAY')) {
+      result.skipped++;
+      continue;
+    }
 
     try {
       const extracted = await invoke<{

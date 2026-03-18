@@ -178,7 +178,7 @@ async function callOllama(
   formatSchema?: object
 ): Promise<string> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 300000);
+  const timeoutId = setTimeout(() => controller.abort(), 240000); // 4 minutes
 
   try {
     const requestBody: Record<string, unknown> = {
@@ -200,7 +200,7 @@ async function callOllama(
       body: JSON.stringify(requestBody),
     });
 
-    clearTimeout(timeout);
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`Ollama request failed: ${response.status} ${response.statusText}`);
@@ -212,9 +212,11 @@ async function callOllama(
     }
     return data.response;
   } catch (error) {
-    clearTimeout(timeout);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Ollama timeout after 5 minutes.');
+    clearTimeout(timeoutId);
+    const isAbort = error instanceof Error && error.name === 'AbortError';
+    const isAbortByName = error && typeof error === 'object' && 'name' in error && (error as { name: string }).name === 'AbortError';
+    if (isAbort || isAbortByName) {
+      throw new Error('Ollama timeout after 4 minutes');
     }
     throw error;
   }
