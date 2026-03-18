@@ -127,6 +127,7 @@ export default function AdminStreamliner() {
   const [importRunning, setImportRunning] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
+  const [testDiscOutput, setTestDiscOutput] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -419,6 +420,8 @@ export default function AdminStreamliner() {
                   size="sm"
                   onClick={async () => {
                     const path = 'C:\\Users\\zumah\\SandiBot\\clients\\Active\\Jeff_Dayton\\Jeff Dayton - ttsi.pdf';
+                    console.log('Testing DISC extraction for Jeff Dayton...');
+                    setTestDiscOutput('Running...');
                     try {
                       const result = await invoke<{
                         success: boolean;
@@ -430,10 +433,13 @@ export default function AdminStreamliner() {
                         file_path: string;
                         page_numbers: number[];
                       }>('test_disc_extraction', { filePath: path });
-                      console.log('=== TEST DISC EXTRACTION (verbose) ===');
-                      console.log(JSON.stringify(result, null, 2));
+                      const out = JSON.stringify(result, null, 2);
+                      console.log('=== TEST DISC EXTRACTION (verbose) ===', out);
+                      setTestDiscOutput(out);
                     } catch (e) {
+                      const errMsg = e instanceof Error ? e.message : String(e);
                       console.error('test_disc_extraction failed:', e);
+                      setTestDiscOutput(`Error: ${errMsg}`);
                     }
                   }}
                 >
@@ -451,6 +457,21 @@ export default function AdminStreamliner() {
                   <p className="text-sm text-slate-600">
                     Processing {importProgress.current_client} — {importProgress.current_file} ({importProgress.current} of {importProgress.total} files)
                   </p>
+                </div>
+              )}
+              {testDiscOutput && (
+                <div className="space-y-2 p-4 rounded-lg bg-slate-100 border border-slate-300">
+                  <p className="font-medium text-slate-700">Test DISC output:</p>
+                  <pre className="text-xs overflow-auto max-h-48 p-2 bg-white rounded border border-slate-200">
+                    {testDiscOutput}
+                  </pre>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setTestDiscOutput(null)}
+                  >
+                    Dismiss
+                  </Button>
                 </div>
               )}
               {importResult && !importRunning && (
