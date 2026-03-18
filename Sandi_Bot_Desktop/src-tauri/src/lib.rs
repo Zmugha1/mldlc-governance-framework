@@ -50,6 +50,30 @@ async fn extract_pdf_pages(
 }
 
 #[tauri::command]
+fn check_tesseract() -> bool {
+    let tesseract_exe = if cfg!(target_os = "windows") {
+        let default = r"C:\Program Files\Tesseract-OCR\tesseract.exe";
+        if std::path::Path::new(default).exists() {
+            default
+        } else {
+            "tesseract"
+        }
+    } else {
+        "tesseract"
+    };
+    std::process::Command::new(tesseract_exe)
+        .arg("--version")
+        .output()
+        .is_ok()
+}
+
+#[tauri::command]
+fn debug_disc_pages(file_path: String) -> String {
+    let result = text_extractor::extract_pages_by_numbers(&file_path, vec![23, 24, 25]);
+    result.text
+}
+
+#[tauri::command]
 fn parse_disc_scores_from_text(text: String) -> Result<serde_json::Value, String> {
     let scores = disc_parser::parse_disc_scores(&text);
     Ok(serde_json::json!({
@@ -674,6 +698,8 @@ pub fn run() {
             process_document,
             extract_text_from_any_file,
             extract_pdf_pages,
+            check_tesseract,
+            debug_disc_pages,
             parse_disc_scores_from_text,
             bulk_import_folder,
             pdf_parser::parse_pdf,

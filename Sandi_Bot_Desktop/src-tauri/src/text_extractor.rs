@@ -1,3 +1,9 @@
+// Requires pdfium.dll in the same directory as the executable on Windows.
+// Download from: https://github.com/bblanchon/pdfium-binaries/releases
+// File: pdfium-win-x64.tgz → extract pdfium.dll
+// Place at: src-tauri/pdfium.dll
+// For development: place pdfium.dll in src-tauri/ directory.
+
 use std::io::Read;
 use std::path::Path;
 
@@ -136,6 +142,63 @@ fn extract_text_from_pdf_stream(stream: &str) -> String {
     result.trim().to_string()
 }
 
+fn run_tesseract_ocr(image_path: &std::path::Path) -> Result<String, String> {
+    let path_str = image_path.to_str().ok_or("Invalid path")?;
+    let tesseract_exe = if cfg!(target_os = "windows") {
+        // Try default install path if "tesseract" not in PATH
+        let default = r"C:\Program Files\Tesseract-OCR\tesseract.exe";
+        if std::path::Path::new(default).exists() {
+            default
+        } else {
+            "tesseract"
+        }
+    } else {
+        "tesseract"
+    };
+
+    let output = std::process::Command::new(tesseract_exe)
+        .arg(path_str)
+        .arg("stdout")
+        .arg("-l")
+        .arg("eng")
+        .output()
+        .map_err(|e| format!("Tesseract not found: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(format!(
+            "Tesseract failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+fn pdfium_library_path() -> std::path::PathBuf {
+    // Try executable directory first (bundled app, or dev with copied dll)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let dll = dir.join("pdfium.dll");
+            if dll.exists() {
+                return dir.to_path_buf();
+            }
+        }
+    }
+    // Try current directory
+    if let Ok(cwd) = std::env::current_dir() {
+        let dll = cwd.join("pdfium.dll");
+        if dll.exists() {
+            return cwd.clone();
+        }
+        // Try src-tauri for dev
+        let src_tauri = cwd.join("src-tauri").join("pdfium.dll");
+        if src_tauri.exists() {
+            return cwd.join("src-tauri");
+        }
+    }
+    std::path::PathBuf::from(".")
+}
+
 pub fn extract_pages_by_numbers(
     file_path: &str,
     page_numbers: Vec<u32>,
@@ -153,38 +216,117 @@ pub fn extract_pages_by_numbers(
         );
     }
 
-    match lopdf::Document::load(file_path) {
-        Err(e) => ExtractionResult::failure("pdf", e.to_string()),
-        Ok(doc) => {
-            let pages = doc.get_pages();
-            let mut text = String::new();
-
-            for page_num in &page_numbers {
-                if let Some(&page_id) = pages.get(page_num) {
-                    if let Ok(content) = doc.get_page_content(page_id) {
-                        let raw = String::from_utf8_lossy(&content);
-                        let extracted = extract_text_from_pdf_stream(&raw);
-                        if !extracted.is_empty() {
-                            text.push_str(&format!("\n--- PAGE {} ---\n", page_num));
-                            text.push_str(&extracted);
-                        }
-                    }
-                }
-            }
-
-            if text.trim().len() > 10 {
-                ExtractionResult::success(text, "pdf")
-            } else {
-                ExtractionResult::failure(
-                    "pdf",
-                    format!(
-                        "No extractable text on pages {:?}. PDF may be image-based.",
-                        page_numbers
-                    ),
-                )
+    // Try pdfium-render first
+    match extract_with_pdfium(path, &page_numbers) {
+        Ok(text) if text.trim().len() > 50 => ExtractionResult {
+            text,
+            format: "pdf".to_string(),
+            success: true,
+            error: None,
+        },
+        _ => {
+            // Fallback to OCR for image-based PDFs
+            match extract_with_ocr(path, &page_numbers) {
+                Ok(text) => ExtractionResult {
+                    text,
+                    format: "pdf_ocr".to_string(),
+                    success: true,
+                    error: None,
+                },
+                Err(e) => ExtractionResult {
+                    text: String::new(),
+                    format: "pdf".to_string(),
+                    success: false,
+                    error: Some(format!("Both pdfium and OCR failed: {}", e)),
+                },
             }
         }
     }
+}
+
+fn extract_with_pdfium(
+    path: &Path,
+    page_numbers: &[u32],
+) -> Result<String, String> {
+    use pdfium_render::prelude::*;
+
+    let lib_path = pdfium_library_path();
+    let bindings = Pdfium::bind_to_library(
+        Pdfium::pdfium_platform_library_name_at_path(&lib_path),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let pdfium = Pdfium::new(bindings);
+    let doc = pdfium
+        .load_pdf_from_file(path, None)
+        .map_err(|e| e.to_string())?;
+
+    let mut collected = String::new();
+
+    for &page_num in page_numbers {
+        let idx = (page_num as usize).saturating_sub(1);
+
+        if let Ok(page) = doc.pages().get(idx as u16) {
+            let text = page.text().map_err(|e| e.to_string())?.all();
+
+            if !text.trim().is_empty() {
+                collected.push_str(&format!("\n--- PAGE {} ---\n{}", page_num, text));
+            }
+        }
+    }
+
+    Ok(collected)
+}
+
+fn extract_with_ocr(path: &Path, page_numbers: &[u32]) -> Result<String, String> {
+    use pdfium_render::prelude::*;
+
+    let lib_path = pdfium_library_path();
+    let bindings = Pdfium::bind_to_library(
+        Pdfium::pdfium_platform_library_name_at_path(&lib_path),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let pdfium = Pdfium::new(bindings);
+    let doc = pdfium
+        .load_pdf_from_file(path, None)
+        .map_err(|e| e.to_string())?;
+
+    let mut collected = String::new();
+
+    for &page_num in page_numbers {
+        let idx = (page_num as usize).saturating_sub(1);
+
+        if let Ok(page) = doc.pages().get(idx as u16) {
+            let bitmap = page
+                .render_with_config(
+                    &PdfRenderConfig::new()
+                        .set_target_width(2480)
+                        .set_maximum_height(3508),
+                )
+                .map_err(|e| e.to_string())?;
+
+            let temp_path = std::env::temp_dir().join(format!("disc_page_{}.png", page_num));
+
+            bitmap
+                .as_image()
+                .save(&temp_path)
+                .map_err(|e| e.to_string())?;
+
+            let text = run_tesseract_ocr(&temp_path)?;
+
+            let _ = std::fs::remove_file(&temp_path);
+
+            if !text.trim().is_empty() {
+                collected.push_str(&format!(
+                    "\n--- PAGE {} (OCR) ---\n{}",
+                    page_num, text
+                ));
+            }
+        }
+    }
+
+    Ok(collected)
 }
 
 fn extract_plain_text(file_path: &str) -> ExtractionResult {
