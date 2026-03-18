@@ -2,6 +2,7 @@ mod pdf_parser;
 mod file_watcher;
 mod backup;
 mod text_extractor;
+mod disc_parser;
 
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -31,6 +32,36 @@ async fn extract_text_from_any_file(file_path: String) -> Result<serde_json::Val
         "format": result.format,
         "success": result.success,
         "error": result.error
+    }))
+}
+
+#[tauri::command]
+async fn extract_pdf_pages(
+    file_path: String,
+    page_numbers: Vec<u32>,
+) -> Result<serde_json::Value, String> {
+    let result = text_extractor::extract_pages_by_numbers(&file_path, page_numbers);
+    Ok(serde_json::json!({
+        "text": result.text,
+        "format": result.format,
+        "success": result.success,
+        "error": result.error
+    }))
+}
+
+#[tauri::command]
+fn parse_disc_scores_from_text(text: String) -> Result<serde_json::Value, String> {
+    let scores = disc_parser::parse_disc_scores(&text);
+    Ok(serde_json::json!({
+        "adapted_d": scores.adapted_d,
+        "adapted_i": scores.adapted_i,
+        "adapted_s": scores.adapted_s,
+        "adapted_c": scores.adapted_c,
+        "natural_d": scores.natural_d,
+        "natural_i": scores.natural_i,
+        "natural_s": scores.natural_s,
+        "natural_c": scores.natural_c,
+        "found": scores.found
     }))
 }
 
@@ -616,6 +647,12 @@ pub fn run() {
             sql: "DELETE FROM client_you2_profiles; DELETE FROM client_disc_profiles; DELETE FROM document_extractions WHERE extraction_status IN ('complete', 'failed')",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 47,
+            description: "clear_failed_for_page_targeted_extraction",
+            sql: "DELETE FROM document_extractions WHERE extraction_status = 'failed'",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -636,6 +673,8 @@ pub fn run() {
             watch_client_folders,
             process_document,
             extract_text_from_any_file,
+            extract_pdf_pages,
+            parse_disc_scores_from_text,
             bulk_import_folder,
             pdf_parser::parse_pdf,
             file_watcher::watch_folder,

@@ -136,6 +136,57 @@ fn extract_text_from_pdf_stream(stream: &str) -> String {
     result.trim().to_string()
 }
 
+pub fn extract_pages_by_numbers(
+    file_path: &str,
+    page_numbers: Vec<u32>,
+) -> ExtractionResult {
+    let path = Path::new(file_path);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext != "pdf" {
+        return ExtractionResult::failure(
+            &ext,
+            "extract_pages_by_numbers supports PDF only".to_string(),
+        );
+    }
+
+    match lopdf::Document::load(file_path) {
+        Err(e) => ExtractionResult::failure("pdf", e.to_string()),
+        Ok(doc) => {
+            let pages = doc.get_pages();
+            let mut text = String::new();
+
+            for page_num in &page_numbers {
+                if let Some(&page_id) = pages.get(page_num) {
+                    if let Ok(content) = doc.get_page_content(page_id) {
+                        let raw = String::from_utf8_lossy(&content);
+                        let extracted = extract_text_from_pdf_stream(&raw);
+                        if !extracted.is_empty() {
+                            text.push_str(&format!("\n--- PAGE {} ---\n", page_num));
+                            text.push_str(&extracted);
+                        }
+                    }
+                }
+            }
+
+            if text.trim().len() > 10 {
+                ExtractionResult::success(text, "pdf")
+            } else {
+                ExtractionResult::failure(
+                    "pdf",
+                    format!(
+                        "No extractable text on pages {:?}. PDF may be image-based.",
+                        page_numbers
+                    ),
+                )
+            }
+        }
+    }
+}
+
 fn extract_plain_text(file_path: &str) -> ExtractionResult {
     match std::fs::read_to_string(file_path) {
         Ok(text) => ExtractionResult::success(text, "txt"),

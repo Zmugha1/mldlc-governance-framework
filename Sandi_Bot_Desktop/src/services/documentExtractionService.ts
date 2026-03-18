@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { getDb, dbExecute, dbSelect } from './db';
+import { dbExecute, dbSelect } from './db';
 import type {
   DiscProfile,
   You2Profile,
@@ -10,7 +10,163 @@ import type {
 } from '../types/extractions';
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
-const OLLAMA_MODEL = 'llama3.1:8b';
+const OLLAMA_MODEL = 'qwen2.5:7b';
+
+const DISC_FORMAT_SCHEMA = {
+  type: 'object',
+  properties: {
+    client_name: { type: 'string' },
+    assessment_date: { type: 'string' },
+    adapted_scores: {
+      type: 'object',
+      properties: {
+        D: { type: 'number', minimum: 0, maximum: 100 },
+        I: { type: 'number', minimum: 0, maximum: 100 },
+        S: { type: 'number', minimum: 0, maximum: 100 },
+        C: { type: 'number', minimum: 0, maximum: 100 },
+      },
+    },
+    natural_scores: {
+      type: 'object',
+      properties: {
+        D: { type: 'number', minimum: 0, maximum: 100 },
+        I: { type: 'number', minimum: 0, maximum: 100 },
+        S: { type: 'number', minimum: 0, maximum: 100 },
+        C: { type: 'number', minimum: 0, maximum: 100 },
+      },
+    },
+    primary_style_label: { type: 'string' },
+    primary_style_combination: { type: 'string' },
+    driving_forces_primary: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          score: { type: 'number' },
+          rank: { type: 'number' },
+        },
+      },
+    },
+    driving_forces_situational: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          score: { type: 'number' },
+        },
+      },
+    },
+    driving_forces_indifferent: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          score: { type: 'number' },
+        },
+      },
+    },
+    communication_dos: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    communication_donts: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    stress_signals_moderate: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    stress_signals_extreme: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    ideal_environment: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    value_to_organization: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    areas_for_improvement: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+  },
+  required: ['client_name', 'natural_scores', 'adapted_scores'],
+};
+
+const YOU2_FORMAT_SCHEMA = {
+  type: 'object',
+  properties: {
+    client_name: { type: 'string' },
+    one_year_vision: { type: 'string' },
+    spouse_name: { type: 'string' },
+    spouse_role: {
+      type: 'string',
+      enum: ['owner', 'employee', 'unsure', 'none'],
+    },
+    spouse_on_calls: {
+      type: 'string',
+      enum: ['yes', 'no'],
+    },
+    spouse_mindset_verbatim: { type: 'string' },
+    financial_net_worth_range: { type: 'string' },
+    credit_score: { type: 'number' },
+    launch_timeline: { type: 'string' },
+    time_commitment: { type: 'string' },
+    dangers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          danger: { type: 'string' },
+          goal: { type: 'string' },
+        },
+      },
+    },
+    strengths: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          strength: { type: 'string' },
+          goal: { type: 'string' },
+        },
+      },
+    },
+    opportunities: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          opportunity: { type: 'string' },
+          goal: { type: 'string' },
+        },
+      },
+    },
+    areas_of_interest: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    reasons_for_change: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    location_preference: { type: 'string' },
+    skills: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    prior_business_experience: { type: 'string' },
+    self_sufficiency_excitement: { type: 'string' },
+  },
+  required: ['client_name', 'one_year_vision'],
+};
 
 async function loadPrompt(promptName: string): Promise<string> {
   return await invoke<string>('read_prompt_file', { name: promptName });
@@ -18,59 +174,47 @@ async function loadPrompt(promptName: string): Promise<string> {
 
 async function callOllama(
   systemPrompt: string,
-  userContent: string
+  userContent: string,
+  formatSchema?: object
 ): Promise<string> {
   const controller = new AbortController();
-  // qwen2.5:14b needs more time than phi3
-  const timeout = setTimeout(
-    () => controller.abort(),
-    300000 // 5 minute timeout
-  );
+  const timeout = setTimeout(() => controller.abort(), 300000);
 
   try {
+    const requestBody: Record<string, unknown> = {
+      model: OLLAMA_MODEL,
+      prompt: `${systemPrompt}\n\nDocument text:\n${userContent}\n\nIMPORTANT: Your response must be ONLY a valid JSON object. No explanation. No preamble. No markdown. Start with { and end with }.`,
+      stream: false,
+      format: formatSchema ?? 'json',
+      options: {
+        temperature: 0,
+        seed: 42,
+        num_predict: 4000,
+      },
+    };
+
     const response = await fetch(OLLAMA_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
-      body: JSON.stringify({
-        model: OLLAMA_MODEL,
-        prompt: `${systemPrompt}\n\nDocument text:\n${userContent}\n\nIMPORTANT: Your response must be ONLY a valid JSON object. No explanation. No preamble. No markdown. Start with { and end with }.`,
-        stream: false,
-        format: 'json',
-        options: {
-          temperature: 0,
-          num_predict: 4000
-        }
-      })
+      body: JSON.stringify(requestBody),
     });
 
     clearTimeout(timeout);
 
     if (!response.ok) {
-      throw new Error(
-        `Ollama request failed: ${response.status} ` +
-        `${response.statusText}`
-      );
+      throw new Error(`Ollama request failed: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
-
     if (!data.response) {
-      throw new Error(
-        'Ollama returned empty response.'
-      );
+      throw new Error('Ollama returned empty response.');
     }
-
     return data.response;
-
   } catch (error) {
     clearTimeout(timeout);
-    if (error instanceof Error &&
-        error.name === 'AbortError') {
-      throw new Error(
-        'Ollama timeout after 5 minutes. ' +
-        'Document may be too large for local model.'
-      );
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Ollama timeout after 5 minutes.');
     }
     throw error;
   }
@@ -146,8 +290,61 @@ export async function extractDiscProfile(
   filePath: string
 ): Promise<ExtractionResult<DiscProfile>> {
   try {
-    const prompt = await loadPrompt('disc_extraction');
+    // PASS 1: Page-targeted extraction — pages 25, 28, 34, 35, 36
+    let targetedText = rawText;
+    const isPdf = filePath.toLowerCase().endsWith('.pdf');
 
+    if (isPdf) {
+      try {
+        const pageResult = await invoke<{
+          text: string;
+          success: boolean;
+          error?: string;
+        }>('extract_pdf_pages', {
+          filePath,
+          pageNumbers: [25, 28, 34, 35, 36],
+        });
+        if (pageResult.success && pageResult.text.trim().length > 50) {
+          targetedText = pageResult.text;
+        }
+      } catch {
+        console.warn('Page extraction failed, using full text');
+      }
+    }
+
+    // Deterministic score parsing
+    let deterministicScores: {
+      adapted_d: number | null;
+      adapted_i: number | null;
+      adapted_s: number | null;
+      adapted_c: number | null;
+      natural_d: number | null;
+      natural_i: number | null;
+      natural_s: number | null;
+      natural_c: number | null;
+      found: boolean;
+    } = {
+      adapted_d: null,
+      adapted_i: null,
+      adapted_s: null,
+      adapted_c: null,
+      natural_d: null,
+      natural_i: null,
+      natural_s: null,
+      natural_c: null,
+      found: false,
+    };
+
+    try {
+      deterministicScores = await invoke('parse_disc_scores_from_text', {
+        text: targetedText,
+      });
+    } catch {
+      // Parser failed, continue with LLM only
+    }
+
+    // PASS 2: LLM for narrative fields
+    const prompt = await loadPrompt('disc_extraction');
     const systemPrompt = `${prompt}
 
 You are extracting data from a TTI Talent Insights report.
@@ -156,64 +353,38 @@ Return ONLY valid JSON. No explanation. No markdown. JSON only.
 CRITICAL SCORE EXTRACTION RULES:
 Scores appear in TWO formats in the raw text:
 FORMAT 1 — Behavioral Hierarchy page bottom line:
-  SIA: 38-18-78-75 (20)  SIN: 42-15-84-71 (20)
+  SIA: D-I-S-C (N)  SIN: D-I-S-C (N)
   SIA = Adapted Style scores D-I-S-C
   SIN = Natural Style scores D-I-S-C
 FORMAT 2 — Mini-graph thumbnails on content pages:
   Four numbers in sequence below bar charts
-  e.g.: 38  18  78  75
 Use FORMAT 1 if found. It is the most reliable.
 
 CRITICAL WHEEL LABEL RULE:
 The style label appears on the TTI Wheel page as:
-  Natural: ● (20) SUPPORTING COORDINATOR
+  Natural: (N) [STYLE LABEL]
 Extract the Natural style label as primary_style_label.
-Extract the two highest Natural scores as combination
-e.g. if S=84 and C=71 are highest → "SC"
+Extract the two highest Natural scores as combination.
 
 CRITICAL DRIVING FORCES RULES:
 Extract from pages titled:
   "Primary Driving Forces Cluster" (forces 1-4)
   "Situational Driving Forces Cluster" (forces 5-8)
   "Indifferent Driving Forces Cluster" (forces 9-12)
-Each force has a name, score in a circle, and rank number.
-Do NOT use the Driving Forces Graph page — it
-does not extract cleanly from PDF text.
+Do NOT use the Driving Forces Graph page.
 
 CRITICAL COMMUNICATION RULES:
 DOs come from "Checklist for Communicating" page
   under the heading "Ways to Communicate:"
 DONTs come from the "Continued" page
   under the heading "Ways NOT to Communicate:"
-IGNORE the page titled "Communication Tips" —
-  it is a generic 4-quadrant page, not client-specific.
+IGNORE the page titled "Communication Tips" page.
 
 STRESS SIGNALS come from the "Perceptions" page:
   Moderate = "Under moderate pressure...others may see"
-  Extreme = "Under extreme pressure...others may see"
+  Extreme = "Under extreme pressure...others may see"`;
 
-Schema:
-{
-  "client_name": "string",
-  "assessment_date": "string",
-  "adapted_scores": { "D": number, "I": number, "S": number, "C": number },
-  "natural_scores": { "D": number, "I": number, "S": number, "C": number },
-  "primary_style_label": "string",
-  "primary_style_combination": "string",
-  "driving_forces_primary": [{ "name": "string", "score": number, "rank": number }],
-  "driving_forces_situational": [{ "name": "string", "score": number }],
-  "driving_forces_indifferent": [{ "name": "string", "score": number }],
-  "motivation_summary": "string",
-  "communication_dos": ["string"],
-  "communication_donts": ["string"],
-  "stress_signals_moderate": ["string"],
-  "stress_signals_extreme": ["string"],
-  "ideal_environment": ["string"],
-  "value_to_organization": ["string"],
-  "areas_for_improvement": ["string"]
-}`;
-
-    const rawResponse = await callOllama(systemPrompt, rawText);
+    const rawResponse = await callOllama(systemPrompt, targetedText, DISC_FORMAT_SCHEMA);
     const profile = parseExtractionResponse<DiscProfile>(rawResponse);
 
     if (!profile) {
@@ -232,6 +403,26 @@ Schema:
         error: 'JSON parse failed',
         extraction_status: 'failed',
       };
+    }
+
+    // Override LLM scores with deterministic parser results when found
+    if (deterministicScores.found) {
+      if (deterministicScores.natural_d !== null) {
+        profile.natural_scores = {
+          D: deterministicScores.natural_d ?? 0,
+          I: deterministicScores.natural_i ?? 0,
+          S: deterministicScores.natural_s ?? 0,
+          C: deterministicScores.natural_c ?? 0,
+        };
+      }
+      if (deterministicScores.adapted_d !== null) {
+        profile.adapted_scores = {
+          D: deterministicScores.adapted_d ?? 0,
+          I: deterministicScores.adapted_i ?? 0,
+          S: deterministicScores.adapted_s ?? 0,
+          C: deterministicScores.adapted_c ?? 0,
+        };
+      }
     }
 
     // VALIDATE required fields before storing
@@ -497,7 +688,7 @@ Schema:
   "additional_stakeholders": [{ "name": "string", "relationship": "string" }]
 }`;
 
-    const rawResponse = await callOllama(systemPrompt, rawText);
+    const rawResponse = await callOllama(systemPrompt, rawText, YOU2_FORMAT_SCHEMA);
     const profile = parseExtractionResponse<You2Profile>(rawResponse);
 
     if (!profile) {
