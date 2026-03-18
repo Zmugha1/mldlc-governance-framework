@@ -11,11 +11,15 @@ import {
   Upload,
   FolderOpen,
   FileText,
-  Plus
+  Plus,
+  Check,
+  ClipboardList
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -28,7 +32,18 @@ import type { Client } from '@/types';
 import { getAllClients, createClient, updateClient, deleteClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { calculateReadinessScore } from '@/services/coachingService';
+import {
+  getAllClientsForReview,
+  getClientYou2ForReview,
+  getClientDiscForReview,
+  confirmYou2Data,
+  saveDiscData,
+  type You2ReviewData,
+  type DiscReviewData,
+} from '@/services/extractionReviewService';
 import { cn } from '@/lib/utils';
+
+const CONFIRMED_BY = 'Zubia';
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
 
@@ -361,7 +376,714 @@ function ClientDetailModal({
   );
 }
 
+function StatusBadge({
+  status,
+  label,
+}: {
+  status: 'complete' | 'pending' | 'confirmed' | 'manual';
+  label: string;
+}) {
+  if (status === 'confirmed') {
+    return (
+      <Badge className="bg-green-600 text-white">
+        <Check className="h-3 w-3 mr-1" />
+        Confirmed
+      </Badge>
+    );
+  }
+  if (status === 'manual') {
+    return (
+      <Badge className="bg-amber-600 text-white">
+        <Check className="h-3 w-3 mr-1" />
+        Manual
+      </Badge>
+    );
+  }
+  if (status === 'complete') {
+    return (
+      <Badge className="bg-blue-600 text-white">
+        <Check className="h-3 w-3 mr-1" />
+        Complete
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="border-amber-500 text-amber-700">
+      <AlertCircle className="h-3 w-3 mr-1" />
+      Pending
+    </Badge>
+  );
+}
+
+function DataReviewModal({
+  clientId,
+  clientName,
+  isOpen,
+  onClose,
+  onSaved,
+}: {
+  clientId: string;
+  clientName: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [you2Data, setYou2Data] = useState<You2ReviewData | null>(null);
+  const [discData, setDiscData] = useState<DiscReviewData | null>(null);
+  const [you2Edits, setYou2Edits] = useState<Partial<You2ReviewData>>({});
+  const [discEdits, setDiscEdits] = useState<Partial<DiscReviewData>>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !clientId) return;
+    setLoading(true);
+    Promise.all([
+      getClientYou2ForReview(clientId),
+      getClientDiscForReview(clientId),
+    ])
+      .then(([you2, disc]) => {
+        setYou2Data(you2 ?? null);
+        setDiscData(disc ?? null);
+        setYou2Edits(you2 ?? {});
+        setDiscEdits(disc ?? {});
+      })
+      .finally(() => setLoading(false));
+  }, [isOpen, clientId]);
+
+  const handleConfirmYou2 = async () => {
+    setSaving(true);
+    try {
+      await confirmYou2Data(clientId, you2Edits, CONFIRMED_BY);
+      onSaved();
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirmDisc = async (isManual: boolean) => {
+    setSaving(true);
+    try {
+      await saveDiscData(clientId, discEdits, CONFIRMED_BY, isManual);
+      onSaved();
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const formatForEdit = (arr: unknown): string => {
+    if (Array.isArray(arr)) return arr.map(String).join('\n');
+    if (typeof arr === 'string') {
+      try {
+        const parsed = JSON.parse(arr);
+        return Array.isArray(parsed) ? parsed.join('\n') : arr;
+      } catch {
+        return arr;
+      }
+    }
+    return '';
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5" />
+            Data Review — {clientName}
+          </DialogTitle>
+        </DialogHeader>
+
+        {loading ? (
+          <SkeletonCard lines={6} lineHeight={16} />
+        ) : (
+          <div className="space-y-6">
+            {/* You2 section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">You 2.0</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {you2Data ? (
+                  <>
+                    <div>
+                      <Label>One year vision</Label>
+                      <Textarea
+                        value={you2Edits.one_year_vision ?? you2Data.one_year_vision ?? ''}
+                        onChange={(e) =>
+                          setYou2Edits((p) => ({ ...p, one_year_vision: e.target.value }))
+                        }
+                        rows={4}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Spouse name</Label>
+                        <Input
+                          value={you2Edits.spouse_name ?? you2Data.spouse_name ?? ''}
+                          onChange={(e) =>
+                            setYou2Edits((p) => ({ ...p, spouse_name: e.target.value }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Spouse role</Label>
+                        <Input
+                          value={you2Edits.spouse_role ?? you2Data.spouse_role ?? ''}
+                          onChange={(e) =>
+                            setYou2Edits((p) => ({ ...p, spouse_role: e.target.value }))
+                          }
+                          className="mt-1"
+                          placeholder="owner|employee|unsure|none"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Label>Spouse mindset</Label>
+                        <Textarea
+                          value={you2Edits.spouse_mindset ?? you2Data.spouse_mindset ?? ''}
+                          onChange={(e) =>
+                            setYou2Edits((p) => ({ ...p, spouse_mindset: e.target.value }))
+                          }
+                          rows={2}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Credit score</Label>
+                        <Input
+                          type="number"
+                          value={you2Edits.credit_score ?? you2Data.credit_score ?? ''}
+                          onChange={(e) =>
+                            setYou2Edits((p) => ({
+                              ...p,
+                              credit_score: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Net worth range</Label>
+                        <Input
+                          value={
+                            you2Edits.financial_net_worth_range ??
+                            you2Data.financial_net_worth_range ??
+                            ''
+                          }
+                          onChange={(e) =>
+                            setYou2Edits((p) => ({
+                              ...p,
+                              financial_net_worth_range: e.target.value,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Label>Launch timeline</Label>
+                        <Input
+                          value={you2Edits.launch_timeline ?? you2Data.launch_timeline ?? ''}
+                          onChange={(e) =>
+                            setYou2Edits((p) => ({ ...p, launch_timeline: e.target.value }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Dangers (one per line)</Label>
+                      <Textarea
+                        value={formatForEdit(
+                          you2Edits.dangers ?? you2Data.dangers ?? '[]'
+                        )}
+                        onChange={(e) =>
+                          setYou2Edits((p) => ({
+                            ...p,
+                            dangers: JSON.stringify(
+                              e.target.value.split('\n').filter(Boolean)
+                            ),
+                          }))
+                        }
+                        rows={3}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Strengths (one per line)</Label>
+                      <Textarea
+                        value={formatForEdit(
+                          you2Edits.strengths ?? you2Data.strengths ?? '[]'
+                        )}
+                        onChange={(e) =>
+                          setYou2Edits((p) => ({
+                            ...p,
+                            strengths: JSON.stringify(
+                              e.target.value.split('\n').filter(Boolean)
+                            ),
+                          }))
+                        }
+                        rows={3}
+                        className="mt-1"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleConfirmYou2}
+                      disabled={saving}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Check className="h-4 w-4 mr-2" />
+                      Confirm You2
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-slate-500 text-sm">No You 2.0 data yet.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* DISC section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">DISC</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {discData || discEdits.natural_d !== undefined ? (
+                  <>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div>
+                        <Label>Natural D</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={
+                            discEdits.natural_d ?? discData?.natural_d ?? ''
+                          }
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              natural_d: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Natural I</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={
+                            discEdits.natural_i ?? discData?.natural_i ?? ''
+                          }
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              natural_i: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Natural S</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={
+                            discEdits.natural_s ?? discData?.natural_s ?? ''
+                          }
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              natural_s: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Natural C</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={
+                            discEdits.natural_c ?? discData?.natural_c ?? ''
+                          }
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              natural_c: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div>
+                        <Label>Adapted D</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={
+                            discEdits.adapted_d ?? discData?.adapted_d ?? ''
+                          }
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              adapted_d: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Adapted I</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={
+                            discEdits.adapted_i ?? discData?.adapted_i ?? ''
+                          }
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              adapted_i: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Adapted S</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={
+                            discEdits.adapted_s ?? discData?.adapted_s ?? ''
+                          }
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              adapted_s: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Adapted C</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={
+                            discEdits.adapted_c ?? discData?.adapted_c ?? ''
+                          }
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              adapted_c: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Style label</Label>
+                      <Input
+                        value={
+                          discEdits.primary_style_label ??
+                          discData?.primary_style_label ??
+                          ''
+                        }
+                        onChange={(e) =>
+                          setDiscEdits((p) => ({
+                            ...p,
+                            primary_style_label: e.target.value,
+                          }))
+                        }
+                        className="mt-1"
+                        placeholder="e.g. SUPPORTING COORDINATOR"
+                      />
+                    </div>
+                    <div>
+                      <Label>Style combination</Label>
+                      <Input
+                        value={
+                          discEdits.primary_style_combination ??
+                          discData?.primary_style_combination ??
+                          ''
+                        }
+                        onChange={(e) =>
+                          setDiscEdits((p) => ({
+                            ...p,
+                            primary_style_combination: e.target.value,
+                          }))
+                        }
+                        className="mt-1"
+                        placeholder="e.g. SC"
+                      />
+                    </div>
+                    <div>
+                      <Label>Communication DOs</Label>
+                      <Textarea
+                        value={formatForEdit(
+                          discEdits.communication_dos ??
+                            discData?.communication_dos ??
+                            '[]'
+                        )}
+                        onChange={(e) =>
+                          setDiscEdits((p) => ({
+                            ...p,
+                            communication_dos: JSON.stringify(
+                              e.target.value.split('\n').filter(Boolean)
+                            ),
+                          }))
+                        }
+                        rows={2}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Communication DON&apos;Ts</Label>
+                      <Textarea
+                        value={formatForEdit(
+                          discEdits.communication_donts ??
+                            discData?.communication_donts ??
+                            '[]'
+                        )}
+                        onChange={(e) =>
+                          setDiscEdits((p) => ({
+                            ...p,
+                            communication_donts: JSON.stringify(
+                              e.target.value.split('\n').filter(Boolean)
+                            ),
+                          }))
+                        }
+                        rows={2}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleConfirmDisc(false)}
+                        disabled={saving}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Check className="h-4 w-4 mr-2" />
+                        Confirm DISC
+                      </Button>
+                      {!discData && (
+                        <Button
+                          onClick={() => handleConfirmDisc(true)}
+                          disabled={saving}
+                          variant="outline"
+                        >
+                          Enter Manually
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-slate-500 text-sm mb-4">
+                      No DISC data yet. Enter manually from the TTI report.
+                    </p>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div>
+                        <Label>Natural D</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={discEdits.natural_d ?? ''}
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              natural_d: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Natural I</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={discEdits.natural_i ?? ''}
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              natural_i: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Natural S</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={discEdits.natural_s ?? ''}
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              natural_s: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Natural C</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={discEdits.natural_c ?? ''}
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              natural_c: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div>
+                        <Label>Adapted D</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={discEdits.adapted_d ?? ''}
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              adapted_d: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Adapted I</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={discEdits.adapted_i ?? ''}
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              adapted_i: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Adapted S</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={discEdits.adapted_s ?? ''}
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              adapted_s: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Adapted C</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={discEdits.adapted_c ?? ''}
+                          onChange={(e) =>
+                            setDiscEdits((p) => ({
+                              ...p,
+                              adapted_c: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Style label</Label>
+                      <Input
+                        value={discEdits.primary_style_label ?? ''}
+                        onChange={(e) =>
+                          setDiscEdits((p) => ({
+                            ...p,
+                            primary_style_label: e.target.value,
+                          }))
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Style combination</Label>
+                      <Input
+                        value={discEdits.primary_style_combination ?? ''}
+                        onChange={(e) =>
+                          setDiscEdits((p) => ({
+                            ...p,
+                            primary_style_combination: e.target.value,
+                          }))
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <Button
+                      onClick={() => handleConfirmDisc(true)}
+                      disabled={saving}
+                      className="bg-amber-600 hover:bg-amber-700"
+                    >
+                      Enter Manually
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ClientIntelligence() {
+  const [mainTab, setMainTab] = useState<'clients' | 'review'>('clients');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStage, setSelectedStage] = useState<string>('all');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -373,6 +1095,20 @@ export default function ClientIntelligence() {
   const [error, setError] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [createName, setCreateName] = useState('');
+  const [reviewClients, setReviewClients] = useState<
+    Array<{
+      id: string;
+      name: string;
+      outcome_bucket: string;
+      you2_status: 'complete' | 'pending' | 'confirmed';
+      disc_status: 'complete' | 'pending' | 'confirmed' | 'manual';
+    }>
+  >([]);
+  const [selectedReviewClient, setSelectedReviewClient] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
   const loadClients = () => {
     setLoading(true);
@@ -389,6 +1125,16 @@ export default function ClientIntelligence() {
   useEffect(() => {
     loadClients();
   }, []);
+
+  const loadReviewClients = () => {
+    getAllClientsForReview()
+      .then((r) => setReviewClients(r.clients))
+      .catch((err) => console.error('Failed to load review list:', err));
+  };
+
+  useEffect(() => {
+    if (mainTab === 'review') loadReviewClients();
+  }, [mainTab]);
 
   const handleFilesUploaded = async (files: UploadedFile[]) => {
     const parsedDocs = files
@@ -482,6 +1228,16 @@ export default function ClientIntelligence() {
 
   return (
     <div className="space-y-6">
+      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'clients' | 'review')}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="clients">Clients</TabsTrigger>
+          <TabsTrigger value="review" className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Data Review
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="clients" className="space-y-6 mt-0">
       {uploadMessage && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
           <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
@@ -727,6 +1483,66 @@ export default function ClientIntelligence() {
           </div>
         </DialogContent>
       </Dialog>
+
+        </TabsContent>
+
+        <TabsContent value="review" className="mt-0">
+          <Card>
+            <CardHeader>
+              <CardTitle>Extraction Review — Human in the Loop</CardTitle>
+              <p className="text-sm text-slate-500">
+                Review extracted data, correct errors, and manually enter DISC scores for failed extractions.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b">
+                    <tr>
+                      <th className="text-left p-3 font-medium">Client Name</th>
+                      <th className="text-left p-3 font-medium">Bucket</th>
+                      <th className="text-left p-3 font-medium">You2</th>
+                      <th className="text-left p-3 font-medium">DISC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviewClients.map((c) => (
+                      <tr
+                        key={c.id}
+                        className="border-b last:border-0 hover:bg-slate-50 cursor-pointer"
+                        onClick={() => {
+                          setSelectedReviewClient({ id: c.id, name: c.name });
+                          setReviewModalOpen(true);
+                        }}
+                      >
+                        <td className="p-3 font-medium">{c.name}</td>
+                        <td className="p-3 text-slate-600">{c.outcome_bucket}</td>
+                        <td className="p-3">
+                          <StatusBadge status={c.you2_status} label="You2" />
+                        </td>
+                        <td className="p-3">
+                          <StatusBadge status={c.disc_status} label="DISC" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <DataReviewModal
+        clientId={selectedReviewClient?.id ?? ''}
+        clientName={selectedReviewClient?.name ?? ''}
+        isOpen={reviewModalOpen}
+        onClose={() => {
+          setReviewModalOpen(false);
+          setSelectedReviewClient(null);
+        }}
+        onSaved={loadReviewClients}
+      />
     </div>
   );
 }

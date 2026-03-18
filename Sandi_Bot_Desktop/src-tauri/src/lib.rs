@@ -556,6 +556,48 @@ pub fn run() {
             sql: "DELETE FROM document_extractions WHERE extraction_status = 'failed'",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 37,
+            description: "add_you2_confirmed",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN you2_confirmed INTEGER DEFAULT 0",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 38,
+            description: "add_you2_confirmed_by",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN confirmed_by TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 39,
+            description: "add_you2_confirmed_at",
+            sql: "ALTER TABLE client_you2_profiles ADD COLUMN confirmed_at TIMESTAMP",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 40,
+            description: "add_disc_confirmed",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN disc_confirmed INTEGER DEFAULT 0",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 41,
+            description: "add_disc_manually_entered",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN manually_entered INTEGER DEFAULT 0",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 42,
+            description: "add_disc_confirmed_by",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN confirmed_by TEXT",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 43,
+            description: "add_disc_confirmed_at",
+            sql: "ALTER TABLE client_disc_profiles ADD COLUMN confirmed_at TIMESTAMP",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
