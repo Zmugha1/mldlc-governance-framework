@@ -10,7 +10,7 @@ import type {
 } from '../types/extractions';
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
-const OLLAMA_MODEL = 'qwen2.5:7b';
+const OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_k_m';
 
 const DISC_FORMAT_SCHEMA = {
   type: 'object',
