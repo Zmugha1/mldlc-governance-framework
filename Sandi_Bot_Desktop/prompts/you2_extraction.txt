@@ -1,71 +1,169 @@
-You are extracting data from TES You 2.0
-and TUMAY intake forms used by The
-Entrepreneur's Source franchise coaches.
-The text may contain one or both documents.
+You are extracting data from TES You 2.0 profile
+and TUMAY intake forms. The Entrepreneur's Source
+uses these forms with prospective franchise clients.
+The text may contain one or both documents combined.
 
-ONE YEAR VISION RULE:
-Find the question: "If we looked at your life
-a year from today..."
-The answer may be one paragraph or split into
-professional and personal lines.
-Concatenate all lines into one string.
+ONE YEAR VISION:
+Find the question that starts with:
+"If we looked at your life a year from today,
+what has to have happened during that period"
+The answer follows immediately.
+It may be one paragraph or two separate lines
+starting with "Professionally" and "Personally"
+Concatenate all answer text into one string.
 
-DANGERS STRENGTHS OPPORTUNITIES - CRITICAL:
-ALWAYS extract from the sections titled:
-"Top 3 Dangers and Goals"
-"Top 3 Strengths and Goals"
-"Top 3 Opportunities and Goals"
-These sections contain the real data.
-Do NOT rely on the Yes/No checkbox list.
-Clients frequently check No on all standard
-items and write freeform in the Top 3 only.
-Each item has a "Danger:" or "Strength:" or
-"Opportunity:" line followed by a "Goal:" line.
-Extract both as paired objects.
+Example answer:
+"Professionally I'll be working on something
+impactful to Seattle, real estate or otherwise.
+Personally I'll be less financially stressed
+month to month and able to spend quality time
+with my wife and child on the weekends."
 
-SPOUSE DATA RULES:
-spouse_role: map "Unsure" to "unsure"
-  "Yes" to "owner" "No" to "none"
-spouse_on_calls: from "Will they be involved
-  in future calls or meetings" Yes/No field
-spouse_mindset_verbatim: exact text from
-  "Their mindset about business ownership"
+TOP 3 DANGERS — CRITICAL RULE:
+Find the section titled "Top 3 Dangers & Goals"
+Each entry has TWO lines:
+Line 1: "Danger: [danger text]"
+Line 2: "Goal: [goal text]"
+Extract both lines as a paired object.
+Do NOT use the Yes/No checkbox list above.
+Clients frequently write freeform here even
+when all checkboxes are No.
 
-REASONS FOR CHANGE:
-From "Question 3 - Reasons for Exploring
-Career Transition" section.
-Extract ONLY items marked Yes.
+Example:
+Danger: Are my current skills transferable
+Goal: Identify roles where I can grow in place
 
-SKILLS:
-From "Question 6 - Skills and Abilities"
-Extract ONLY items marked Yes.
+TOP 3 STRENGTHS — CRITICAL RULE:
+Find section titled "Top 3 Strengths & Goals"
+Same format: "Strength:" line + "Goal:" line
+Extract as paired objects.
 
-LOCATION PREFERENCE:
-Extract the item with the lowest rank number.
-Rank 1 = most favorite.
-If two items tie for lowest concatenate both.
+TOP 3 OPPORTUNITIES — CRITICAL RULE:
+Find section titled "Top 3 Opportunities & Goals"
+Same format: "Opportunity:" line + "Goal:" line
+Extract as paired objects.
 
-TIME COMMITMENT:
-May be multiple selections.
-Concatenate all with semicolons.
+SPOUSE NAME:
+Find "Question 2 - Who Else?"
+"If you have a spouse or significant other,
+what is their name?"
+Extract the name that follows.
+
+SPOUSE ROLE:
+Find "Will your spouse...have a role
+(ownership and/or employment)..."
+Answer is Yes, No, or Unsure.
+Map: Yes → "owner", No → "none", Unsure → "unsure"
+
+SPOUSE ON CALLS:
+Find "Will they be involved in future calls
+or meetings?"
+Answer is Yes or No.
+Map to "yes" or "no"
+
+SPOUSE MINDSET:
+Find "Their mindset about business ownership
+as an option:"
+Extract the full paragraph that follows verbatim.
+Example:
+"Hannah values my happiness and our family
+stability. She's encouraged entrepreneurship
+if it would lead to more positive outcomes
+for my mental health."
+
+CREDIT SCORE:
+Find "Estimated Credit Score:"
+Extract the number only. Example: 850
 
 NET WORTH:
-Extract exactly as written.
-Do not reformat. Keep as-is.
-Examples: "50k - 250k" or "1M+"
+Find "Estimated Net Worth:"
+Extract exactly as written. Example: "50k - 250k"
+Do not reformat or add symbols.
+
+LAUNCH TIMELINE:
+Find "If you were to choose self-sufficiency,
+what would be your ideal launch date?"
+Or find "Selected: 0 - 6 months" pattern.
+Extract the timeline text.
+
+TIME COMMITMENT:
+Find "Selected:" near time commitment options.
+May include multiple selections separated by @
+Example: "Full-Time - Owner Operated@Semi-Absentee
+at Launch@Semi-Absentee after 2 years"
+Convert @ separators to semicolons.
+
+REASONS FOR CHANGE:
+Find "Question 3 - Reasons for Exploring
+Career Transition"
+Extract ONLY items where value is "Yes"
+Common items:
+"I'm tired of the corporate world"
+"I want more independence"
+"Improving my lifestyle is important"
+"I'd like to increase my income"
+"I want to increase my wealth & equity"
+"I'd like to own my own business"
+"I want to make a difference in my community"
+"I desire more flexibility"
+
+SKILLS:
+Find "Question 6 - Skills and Abilities"
+Extract ONLY items where value is "Yes"
+
+AREAS OF INTEREST:
+Find "Question 11 - Areas of Interest"
+Extract ONLY items where value is "Yes"
+
+LOCATION PREFERENCE:
+Find "Question 4 - Ideal Location / Environment"
+Rankings are 1 (most favorite) to 6 (least)
+Extract the option with rank number 1.
+If no rank 1 exists use the lowest rank number.
+If tied concatenate both with " / "
 
 PRIOR BUSINESS EXPERIENCE:
-From Question 8 first freeform field.
-Empty string if blank.
+Find "Question 8 - Self-Sufficiency as an Option"
+First freeform answer field.
+Extract full text. Empty string if blank.
 
 SELF SUFFICIENCY EXCITEMENT:
-From Question 8 second freeform field.
-Empty string if blank.
+Find "As you explore Your Career 2.0,
+what excites you about exploring
+self-sufficiency as an option?"
+Extract full text. Empty string if blank.
 
 ADDITIONAL STAKEHOLDERS:
-From Question 2 "Is there anyone else..."
-Extract name and relationship for each person.
-Empty array if none.
+Find "Is there anyone else that would potentially
+have a role in your possible new business venture?"
+If Yes extract names and relationships.
+Example: David and Becka Tait - Parent
+Empty array if No or none listed.
 
 Return ONLY valid JSON. No explanation.
-No markdown. Start with { end with }.
+No markdown. Start with { end with }
+
+{
+  "client_name": "string",
+  "one_year_vision": "string",
+  "spouse_name": "string",
+  "spouse_role": "owner|employee|unsure|none",
+  "spouse_on_calls": "yes|no",
+  "spouse_mindset_verbatim": "string",
+  "financial_net_worth_range": "string",
+  "credit_score": number,
+  "launch_timeline": "string",
+  "time_commitment": "string",
+  "dangers": [{"danger": "string", "goal": "string"}],
+  "strengths": [{"strength": "string", "goal": "string"}],
+  "opportunities": [{"opportunity": "string", "goal": "string"}],
+  "areas_of_interest": ["string"],
+  "reasons_for_change": ["string"],
+  "location_preference": "string",
+  "skills": ["string"],
+  "prior_business_experience": "string",
+  "self_sufficiency_excitement": "string",
+  "additional_stakeholders": [
+    {"name": "string", "relationship": "string"}
+  ]
+}

@@ -1,67 +1,139 @@
-You are extracting data from a TTI Talent
-Insights behavioral assessment report.
-This is a 47-page combined report with two
-sections: DISC behavioral style and 12
-Driving Forces motivation profile.
+You are extracting structured data from a
+TTI Talent Insights Executive report.
+This is a 47-page PDF combining DISC behavioral
+style and 12 Driving Forces motivation profile.
 
-CRITICAL SCORE EXTRACTION RULES:
-Scores appear in two formats in the text.
+DISC SCORES — HIGHEST PRIORITY:
+Search for a line matching this exact pattern:
+"SIA: D-I-S-C (N)    SIN: D-I-S-C (N)"
+Example: "SIA: 38-18-78-75 (20)  SIN: 42-15-84-71 (20)"
+SIA = Adapted Style scores in D, I, S, C order
+SIN = Natural Style scores in D, I, S, C order
+Extract the four numbers from each.
 
-FORMAT 1 — Behavioral Hierarchy page:
-Look for a line like:
-SIA: 38-18-78-75 (20)  SIN: 42-15-84-71 (20)
-SIA = Adapted Style: D, I, S, C in order
-SIN = Natural Style: D, I, S, C in order
-This is the most reliable source. Use this first.
+If SIA/SIN line not found, look for four numbers
+in sequence near "Adapted Style" and "Natural Style"
+labels or near "(38)(18)(78)(75)" patterns.
 
-FORMAT 2 — Mini graph thumbnails on pages:
-Four numbers in sequence like: 38  18  78  75
-The order is always D, I, S, C.
-Graph I label = Adapted Style
-Graph II label = Natural Style
+STYLE LABEL:
+Find text containing "SUPPORTING COORDINATOR" or
+similar two-word style label near "Natural:" text.
+The TTI Wheel page shows:
+"Natural: (20) SUPPORTING COORDINATOR"
+Extract "SUPPORTING COORDINATOR" as primary_style_label.
 
-WHEEL LABEL RULE:
-Find the page titled "The TTI Success Insights
-Wheel". Look for text like:
-Natural: (20) SUPPORTING COORDINATOR
-Extract the label after the number as
-primary_style_label.
-The two highest Natural scores determine
-primary_style_combination.
-Example: if S=84 and C=71 are highest = "SC"
+STYLE COMBINATION:
+Take the two letters with highest Natural scores.
+Example: S=84, C=71 are highest → combination = "SC"
 
-DRIVING FORCES RULES:
-Extract from pages titled:
-"Primary Driving Forces Cluster" = forces 1-4
-"Situational Driving Forces Cluster" = forces 5-8
-"Indifferent Driving Forces Cluster" = forces 9-12
-Each force has a name and score in a circle.
-Do NOT use the Driving Forces Graph page.
+ASSESSMENT DATE:
+Find date near client name on cover page.
+Format like "01.28.2026" — convert to "01/28/2026"
 
-COMMUNICATION RULES:
-DOs = "Checklist for Communicating" page
-  under heading "Ways to Communicate:"
-DONTs = "Continued" page under
-  "Ways NOT to Communicate:"
-IGNORE the "Communication Tips" page entirely.
-It is generic not client-specific.
+DRIVING FORCES SCORES:
+Find page titled "Primary Driving Forces Cluster"
+Extract four forces with names and scores:
+Example: "Receptive" with score "65"
+"Selfless" with score "53"
+"Commanding" with score "53"
+"Harmonious" with score "50"
+
+Find page titled "Situational Driving Forces Cluster"
+Extract four forces (forces 5-8) with scores.
+
+Find page titled "Indifferent Driving Forces Cluster"
+Extract four forces (forces 9-12) with scores.
+
+Do NOT extract from "Driving Forces Graph" page.
+
+COMMUNICATION DOS:
+Find page titled "Checklist for Communicating"
+Under heading "Ways to Communicate:"
+Extract all numbered items (usually 9-11 items)
+Example items:
+"Watch carefully for possible areas of early disagreement"
+"Be prepared with the facts and figures"
+"Provide a friendly environment"
+
+COMMUNICATION DONTS:
+Find the "Continued" page after Checklist page
+Under heading "Ways NOT to Communicate:"
+Extract all numbered items (usually 10-12 items)
+Example items:
+"Be redundant"
+"Debate about facts and figures"
+"Manipulate or push him into agreeing"
+
+DO NOT use the "Communication Tips" page.
+That page has four quadrants (Compliance,
+Dominance, Steadiness, Influence) and is
+generic — not specific to this client.
 
 STRESS SIGNALS:
-From the "Perceptions" page:
-Moderate = "Under moderate pressure" section
-Extreme = "Under extreme pressure" section
+Find page titled "Perceptions"
+Subtitle: "See Yourself As Others See You"
 
-AREAS FOR IMPROVEMENT:
-From page titled "Areas for Improvement"
-under "has a tendency to:" section.
+Under "Under moderate pressure, tension, stress,
+or fatigue, others may see him as being:"
+Extract the trait words listed.
+Example: Nondemonstrative, Hesitant, 
+Unconcerned, Inflexible
 
-VALUE TO ORGANIZATION:
-From page titled "Value to the Organization"
-numbered checklist items.
+Under "Under extreme pressure, stress, or fatigue,
+others may see him as being:"
+Extract the trait words listed.
+Example: Possessive, Stubborn, Detached, Insensitive
 
 IDEAL ENVIRONMENT:
-From page titled "Ideal Environment"
-numbered bullet points.
+Find page titled "Ideal Environment"
+Extract all numbered bullet points (usually 12)
 
-Return ONLY valid JSON. No explanation.
-No markdown. Start with { end with }.
+VALUE TO ORGANIZATION:
+Find page titled "Value to the Organization"
+Extract all numbered checkmark items (usually 9)
+
+AREAS FOR IMPROVEMENT:
+Find page titled "Areas for Improvement"
+Under "has a tendency to:"
+Extract all numbered checkmark items (usually 7)
+
+MOTIVATION SUMMARY:
+From "Driving Characteristics" pages
+Write 2-3 sentence summary of what motivates
+this person based on their driving forces.
+
+Return ONLY valid JSON matching this schema.
+No explanation. No markdown. No preamble.
+Start response with { and end with }
+
+{
+  "client_name": "string",
+  "assessment_date": "string",
+  "adapted_scores": {
+    "D": number, "I": number,
+    "S": number, "C": number
+  },
+  "natural_scores": {
+    "D": number, "I": number,
+    "S": number, "C": number
+  },
+  "primary_style_label": "string",
+  "primary_style_combination": "string",
+  "driving_forces_primary": [
+    {"name": "string", "score": number, "rank": number}
+  ],
+  "driving_forces_situational": [
+    {"name": "string", "score": number}
+  ],
+  "driving_forces_indifferent": [
+    {"name": "string", "score": number}
+  ],
+  "motivation_summary": "string",
+  "communication_dos": ["string"],
+  "communication_donts": ["string"],
+  "stress_signals_moderate": ["string"],
+  "stress_signals_extreme": ["string"],
+  "ideal_environment": ["string"],
+  "value_to_organization": ["string"],
+  "areas_for_improvement": ["string"]
+}

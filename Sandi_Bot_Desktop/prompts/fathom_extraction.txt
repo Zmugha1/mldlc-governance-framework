@@ -1,50 +1,75 @@
-You are extracting data from a franchise
-coaching session transcript or conversation
-summary. Called Convo or Fathom in TES system.
+You are extracting data from a TES franchise
+coaching conversation transcript or summary.
+Called "Convo" or "Fathom" in TES system.
+
+These documents summarize coaching calls between
+Sandi Stahl (franchise coach) and a prospective
+franchise client.
 
 SESSION DATE:
-Extract from document header or filename.
+Look for a date in the document header or
+first paragraph. Format as "YYYY-MM-DD"
 
-STAGE INFERENCE RULES:
-IC = initial contact no DISC yet
-C1 = DISC report discussed
-C2 = vehicles and funding discussed
-C3 = three franchise possibilities presented
-C4 = validation calls scheduled
-C5 = business purchase completed
+SESSION NUMBER:
+Look for "Session 1" or "Call 1" or similar.
+Default to 1 if not specified.
+
+DURATION:
+Look for minutes in header. Default 0 if not found.
+
+PIPELINE STAGE:
+Infer from topics discussed:
+IC = no DISC mentioned, first contact only
+C1 = DISC report reviewed in this session
+C2 = funding vehicles investment discussed
+C3 = specific franchise options presented
+C4 = validation calls with franchisors
+C5 = decision made purchase completed
+
+KEY TOPICS:
+List the main subjects discussed.
+Be specific. Example: "DISC SC style discussion"
+not just "personality"
 
 OBJECTIONS:
-Any hesitation concern or pushback from client.
+Any hesitation concern or pushback.
+Quote exact phrases when possible.
+Example: "concerned about leaving stable income"
 
 COMMITMENTS:
-Things client agreed to do by next session.
+What did the client agree to do?
+Example: "complete You 2.0 form before next call"
 
 NEXT STEPS:
-Explicitly stated next actions for either party.
+Explicitly stated future actions.
+Include who is responsible.
 
 SPOUSE MENTIONS:
-Any reference to spouse or partner.
-Include context of the mention.
+Every reference to spouse or partner.
+Include context. Example: "wife Hannah expressed
+support for entrepreneurship path"
 
 ENGAGEMENT QUALITY:
-high = client asked questions and made commitments
-medium = client engaged but noncommittal
-low = monosyllabic responses or deflection
+high = asked specific questions, made commitments,
+showed excitement about specific opportunities
+medium = engaged and responsive but noncommittal
+low = short answers, deflecting, no commitments
 
-PINK FLAG SIGNALS to detect:
-- Avoidance or deflection of direct questions
-- Spouse concern raised but not resolved
-- Financial hesitation without specific numbers
-- "I need to think about it" without clear timeline
-- Inconsistency with prior session commitments
-- Reluctance to schedule next step
+PINK FLAG SIGNALS:
+Be specific. Examples:
+"Said needs to think about it with no timeline"
+"Mentioned spouse has not been told yet"
+"Financial concern about retirement funds"
+"Has not completed homework from last session"
 
-POSITIVE SIGNALS to detect:
-- Specific questions about franchise operations
-- Naming a franchise they want to learn more about
-- Natural close language: "when I start" not "if"
-- Spouse mentioned positively or engaged
-- Committed to validation calls without prompting
+POSITIVE SIGNALS:
+Be specific. Examples:
+"Asked detailed questions about specific franchise"
+"Used language when I start not if I start"
+"Volunteered information about savings available"
+
+SESSION SUMMARY:
+2-3 sentence summary of the call.
 
 Return ONLY valid JSON. No explanation.
-No markdown. Start with { end with }.
+No markdown. Start with { end with }

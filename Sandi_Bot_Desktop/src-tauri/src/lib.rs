@@ -604,6 +604,12 @@ pub fn run() {
             sql: "DELETE FROM document_extractions WHERE extraction_status = 'failed'",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 45,
+            description: "clear_failed_for_calibrated_prompts_v2",
+            sql: "DELETE FROM document_extractions WHERE extraction_status = 'failed'",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
