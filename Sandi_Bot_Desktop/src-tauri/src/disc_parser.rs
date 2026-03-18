@@ -77,6 +77,25 @@ pub fn parse_disc_scores(text: &str) -> DiscScores {
         return scores;
     }
 
+    // Pattern 4: Looser SIA/SIN with spaces, slashes, or colons as separators
+    let pattern4 = Regex::new(
+        r"(?i)SIA[: ]+\s*(\d+)[\-/](\d+)[\-/](\d+)[\-/](\d+).*?SIN[: ]+\s*(\d+)[\-/](\d+)[\-/](\d+)[\-/](\d+)"
+    ).unwrap();
+
+    if let Some(caps) = pattern4.captures(text) {
+        return DiscScores {
+            adapted_d: caps[1].parse().ok(),
+            adapted_i: caps[2].parse().ok(),
+            adapted_s: caps[3].parse().ok(),
+            adapted_c: caps[4].parse().ok(),
+            natural_d: caps[5].parse().ok(),
+            natural_i: caps[6].parse().ok(),
+            natural_s: caps[7].parse().ok(),
+            natural_c: caps[8].parse().ok(),
+            found: true,
+        };
+    }
+
     DiscScores {
         adapted_d: None,
         adapted_i: None,
