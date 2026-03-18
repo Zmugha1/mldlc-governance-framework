@@ -3612,6 +3612,7 @@ dependencies = [
  "calamine",
  "chrono",
  "csv",
+ "image",
  "lopdf 0.32.0",
  "notify",
  "pdf-extract",
