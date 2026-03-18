@@ -234,6 +234,55 @@ Schema:
       };
     }
 
+    // VALIDATE required fields before storing
+    const adaptedScores = profile.adapted_scores ||
+      (profile as Record<string, unknown>).adaptedScores ||
+      { D: 0, I: 0, S: 0, C: 0 };
+
+    const naturalScores = profile.natural_scores ||
+      (profile as Record<string, unknown>).naturalScores ||
+      { D: 0, I: 0, S: 0, C: 0 };
+
+    const primaryLabel = profile.primary_style_label ||
+      (profile as Record<string, unknown>).primaryStyleLabel ||
+      (profile as Record<string, unknown>).style_label || '';
+
+    const primaryCombo = profile.primary_style_combination ||
+      (profile as Record<string, unknown>).primaryStyleCombination ||
+      (profile as Record<string, unknown>).style_combination || '';
+
+    const drivingForcesPrimary =
+      profile.driving_forces_primary ||
+      (profile as Record<string, unknown>).drivingForcesPrimary || [];
+
+    const communicationDos =
+      profile.communication_dos ||
+      (profile as Record<string, unknown>).communicationDos || [];
+
+    const communicationDonts =
+      profile.communication_donts ||
+      (profile as Record<string, unknown>).communicationDonts || [];
+
+    const stressModerate =
+      profile.stress_signals_moderate ||
+      (profile as Record<string, unknown>).stressSignalsModerate || [];
+
+    const stressExtreme =
+      profile.stress_signals_extreme ||
+      (profile as Record<string, unknown>).stressSignalsExtreme || [];
+
+    const idealEnvironment =
+      profile.ideal_environment ||
+      (profile as Record<string, unknown>).idealEnvironment || [];
+
+    const valueToOrg =
+      profile.value_to_organization ||
+      (profile as Record<string, unknown>).valueToOrganization || [];
+
+    const areasForImprovement =
+      profile.areas_for_improvement ||
+      (profile as Record<string, unknown>).areasForImprovement || [];
+
     await dbExecute(
       `INSERT OR REPLACE INTO client_disc_profiles
        (client_id, adapted_d, adapted_i, adapted_s, adapted_c,
@@ -247,29 +296,35 @@ Schema:
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,CURRENT_TIMESTAMP)`,
       [
         clientId,
-        profile.adapted_scores.D,
-        profile.adapted_scores.I,
-        profile.adapted_scores.S,
-        profile.adapted_scores.C,
-        profile.natural_scores.D,
-        profile.natural_scores.I,
-        profile.natural_scores.S,
-        profile.natural_scores.C,
-        profile.primary_style_label,
-        profile.primary_style_combination,
-        JSON.stringify(profile.driving_forces_primary),
-        JSON.stringify(profile.driving_forces_situational),
-        JSON.stringify(profile.driving_forces_indifferent),
-        JSON.stringify(profile.communication_dos),
-        JSON.stringify(profile.communication_donts),
+        (adaptedScores as { D?: number }).D ?? 0,
+        (adaptedScores as { I?: number }).I ?? 0,
+        (adaptedScores as { S?: number }).S ?? 0,
+        (adaptedScores as { C?: number }).C ?? 0,
+        (naturalScores as { D?: number }).D ?? 0,
+        (naturalScores as { I?: number }).I ?? 0,
+        (naturalScores as { S?: number }).S ?? 0,
+        (naturalScores as { C?: number }).C ?? 0,
+        primaryLabel,
+        primaryCombo,
+        JSON.stringify(drivingForcesPrimary),
+        JSON.stringify(
+          profile.driving_forces_situational ||
+          (profile as Record<string, unknown>).drivingForcesSituational || []
+        ),
+        JSON.stringify(
+          profile.driving_forces_indifferent ||
+          (profile as Record<string, unknown>).drivingForcesIndifferent || []
+        ),
+        JSON.stringify(communicationDos),
+        JSON.stringify(communicationDonts),
         JSON.stringify({
-          moderate: profile.stress_signals_moderate,
-          extreme: profile.stress_signals_extreme,
+          moderate: stressModerate,
+          extreme: stressExtreme,
         }),
-        JSON.stringify(profile.ideal_environment),
-        JSON.stringify(profile.value_to_organization),
-        JSON.stringify(profile.areas_for_improvement),
-        profile.assessment_date,
+        JSON.stringify(idealEnvironment),
+        JSON.stringify(valueToOrg),
+        JSON.stringify(areasForImprovement),
+        profile.assessment_date || '',
       ]
     );
 
@@ -780,8 +835,8 @@ export async function processDocument(
     DiscProfile | You2Profile | FathomSession | null
   >
 > {
-  // Truncate to fit qwen2.5:14b 8k context window
-  const MAX_CHARS = 6000;
+  // Truncate to fit model context — shorter = faster, fewer timeouts
+  const MAX_CHARS = 4000;
   const truncatedText = rawText.length > MAX_CHARS
     ? rawText.substring(0, MAX_CHARS) +
       '\n\n[Document truncated — extract from above only]'
