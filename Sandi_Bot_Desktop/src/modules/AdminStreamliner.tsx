@@ -164,8 +164,10 @@ export default function AdminStreamliner() {
       setImportResult({
         processed: 0,
         failed: 0,
+        skipped: 0,
         clients_created: 0,
         errors: [err instanceof Error ? err.message : String(err)],
+        failedFiles: [],
         clientSummaries: []
       });
     } finally {
@@ -192,8 +194,10 @@ export default function AdminStreamliner() {
       setImportResult({
         processed: 0,
         failed: 0,
+        skipped: 0,
         clients_created: 0,
         errors: [err instanceof Error ? err.message : String(err)],
+        failedFiles: [],
         clientSummaries: []
       });
     } finally {
@@ -408,70 +412,50 @@ export default function AdminStreamliner() {
                     className="h-2"
                   />
                   <p className="text-sm text-slate-600">
-                    Processing {importProgress.current_client} ({importProgress.current} of {importProgress.total} files)
+                    Processing {importProgress.current_client} — {importProgress.current_file} ({importProgress.current} of {importProgress.total} files)
                   </p>
                 </div>
               )}
               {importResult && !importRunning && (
                 <div className="space-y-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
                   <p className="font-medium text-green-700">
-                    ✓ {importResult.clients_created} clients loaded, {importResult.processed} documents processed
+                    ✓ {importResult.processed} documents processed successfully
+                    {importResult.skipped > 0 && `, ${importResult.skipped} skipped (already complete)`}
+                    {importResult.clients_created > 0 && `, ${importResult.clients_created} new clients`}
                   </p>
-                  {importResult.failed > 0 && (
-                    <p className="text-sm text-amber-700">
-                      {importResult.failed} file(s) failed
-                    </p>
-                  )}
                   {importResult.clientSummaries.length > 0 && (
-                    <div className="space-y-3">
-                      <p className="font-medium text-slate-700">Per-client results (by bucket):</p>
-                      {['Active', 'WIN', 'Paused', 'Various'].map((bucket) => {
-                        const byBucket = importResult!.clientSummaries.filter((s) => s.bucket === bucket);
-                        if (byBucket.length === 0) return null;
-                        return (
-                          <div key={bucket} className="space-y-2">
-                            <p className="text-sm font-semibold text-slate-600">{bucket}</p>
-                            <div className="space-y-1">
-                              {byBucket.map((s) => (
-                                <div
-                                  key={s.clientId}
-                                  className="flex flex-wrap items-center gap-2 text-sm p-2 rounded bg-white border border-slate-100"
-                                >
-                                  <span className="font-medium">{s.clientName}</span>
-                                  <span className="text-slate-500">
-                                    {s.processed} processed, {s.failed} failed
-                                  </span>
-                                  {s.succeededTypes.length > 0 && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      {s.succeededTypes.join(', ')}
-                                    </Badge>
-                                  )}
-                                  {(s.missingDisc || s.missingYou2 || s.missingFathom) && (
-                                    <span className="text-amber-600 text-xs">
-                                      Missing: {[
-                                        s.missingDisc && 'DISC',
-                                        s.missingYou2 && 'You2',
-                                        s.missingFathom && 'Fathom'
-                                      ].filter(Boolean).join(', ')}
-                                    </span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="space-y-2">
+                      <p className="font-medium text-slate-700">Per client:</p>
+                      <ul className="text-sm space-y-1">
+                        {importResult.clientSummaries.map((s) => {
+                          const parts: string[] = [];
+                          parts.push(s.succeededTypes.includes('you2') ? 'You2 ✓' : s.missingYou2 ? 'You2 pending' : '');
+                          parts.push(s.succeededTypes.includes('disc') ? 'DISC ✓' : s.missingDisc ? 'DISC pending' : '');
+                          parts.push(s.succeededTypes.includes('fathom') ? 'Fathom ✓' : s.missingFathom ? 'Fathom pending' : '');
+                          const line = parts.filter(Boolean).join(', ');
+                          return (
+                            <li key={s.clientId} className="flex items-center gap-2">
+                              <span className="font-medium">{s.clientName}:</span>
+                              <span className="text-slate-600">{line || '—'}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     </div>
                   )}
-                  {importResult.errors.length > 0 && (
-                    <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-                      {importResult.errors.slice(0, 10).map((e, i) => (
-                        <li key={i}>{e}</li>
-                      ))}
-                      {importResult.errors.length > 10 && (
-                        <li>...and {importResult.errors.length - 10} more</li>
-                      )}
-                    </ul>
+                  {importResult.failed > 0 && importResult.failedFiles && importResult.failedFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="font-medium text-amber-700">
+                        ✗ {importResult.failed} documents failed:
+                      </p>
+                      <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
+                        {importResult.failedFiles.map((f, i) => (
+                          <li key={i}>
+                            {f.clientName} — {f.fileName}: {f.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
               )}

@@ -1,11 +1,33 @@
 import { invoke } from '@tauri-apps/api/core';
-import { getDb, dbSelect, dbExecute } from './db';
+import { dbSelect, dbExecute } from './db';
 import { processDocument, getExtractionStatus } from './documentExtractionService';
 import { rebuildClientProfile } from './profileBuilderService';
 import {
   FOLDER_TO_BUCKET,
   type OutcomeBucket
 } from './stageInferenceService';
+const EXTRACTION_TIMEOUT = 240000; // 4 minutes per file
+
+async function extractWithTimeout<T>(
+  extractFn: () => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  return Promise.race([
+    extractFn(),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Extraction timeout after ${timeoutMs / 60000} minutes`)),
+        timeoutMs
+      )
+    )
+  ]);
+}
+
+export interface FailedFile {
+  clientName: string;
+  fileName: string;
+  error: string;
+}
 
 export interface ClientImportSummary {
   clientName: string;
@@ -22,8 +44,10 @@ export interface ClientImportSummary {
 export interface BulkImportResult {
   processed: number;
   failed: number;
+  skipped: number;
   clients_created: number;
   errors: string[];
+  failedFiles: FailedFile[];
   clientSummaries: ClientImportSummary[];
 }
 
@@ -166,6 +190,18 @@ async function findOrCreateClient(
   return { id: newId, created: true };
 }
 
+async function isExtractionComplete(
+  clientId: string,
+  fileName: string
+): Promise<boolean> {
+  const rows = await dbSelect<Array<{ extraction_status: string }>>(
+    `SELECT extraction_status FROM document_extractions
+     WHERE client_id = $1 AND file_name = $2 AND extraction_status = 'complete'`,
+    [clientId, fileName]
+  );
+  return rows.length > 0;
+}
+
 export async function bulkImportFolder(
   basePath: string,
   onProgress?: (p: ImportProgress) => void
@@ -173,8 +209,10 @@ export async function bulkImportFolder(
   const result: BulkImportResult = {
     processed: 0,
     failed: 0,
+    skipped: 0,
     clients_created: 0,
     errors: [],
+    failedFiles: [],
     clientSummaries: []
   };
 
@@ -276,26 +314,49 @@ export async function bulkImportFolder(
             combinedText += '\n\n' + extracted.text;
           }
         } catch (e) {
-          result.errors.push(`${file.fileName}: text extraction failed`);
+          const errMsg = e instanceof Error ? e.message : 'text extraction failed';
+          result.failedFiles.push({ clientName, fileName: file.fileName, error: errMsg });
+          result.failed++;
+          clientFailed.count++;
+          result.errors.push(`${clientName} — ${file.fileName}: ${errMsg}`);
         }
       }
 
       if (combinedText.trim().length > 50) {
-        const r = await processDocument(
-          clientId,
-          'you2',
-          combinedText.trim(),
-          you2Files[0].fileName,
-          you2Files[0].filePath
-        );
-        if (r.success) {
-          result.processed++;
-          clientProcessed.count++;
-          clientSucceededTypes.add('you2');
+        const alreadyComplete = await isExtractionComplete(clientId, you2Files[0].fileName);
+        if (alreadyComplete) {
+          result.skipped++;
         } else {
+        try {
+          const r = await extractWithTimeout(
+            () => processDocument(
+              clientId,
+              'you2',
+              combinedText.trim(),
+              you2Files[0].fileName,
+              you2Files[0].filePath
+            ),
+            EXTRACTION_TIMEOUT
+          );
+          if (r.success) {
+            result.processed++;
+            clientProcessed.count++;
+            clientSucceededTypes.add('you2');
+          } else {
+            result.failed++;
+            clientFailed.count++;
+            const errMsg = r.error ?? 'extraction failed';
+            result.failedFiles.push({ clientName, fileName: you2Files[0].fileName, error: errMsg });
+            result.errors.push(`${clientName} — ${you2Files[0].fileName}: ${errMsg}`);
+          }
+        } catch (e) {
+          const errMsg = e instanceof Error ? e.message : 'Unknown error';
           result.failed++;
           clientFailed.count++;
-          result.errors.push(`${clientName} You2: ${r.error ?? 'extraction failed'}`);
+          result.failedFiles.push({ clientName, fileName: you2Files[0].fileName, error: errMsg });
+          result.errors.push(`${clientName} — ${you2Files[0].fileName}: ${errMsg}`);
+          console.error(`Failed to process ${you2Files[0].fileName}:`, e);
+        }
         }
       }
     }
@@ -310,6 +371,12 @@ export async function bulkImportFolder(
       });
 
       try {
+        const alreadyComplete = await isExtractionComplete(clientId, file.fileName);
+        if (alreadyComplete) {
+          result.skipped++;
+          continue;
+        }
+
         const extracted = await invoke<{
           text: string;
           success: boolean;
@@ -319,9 +386,11 @@ export async function bulkImportFolder(
         });
 
         if (!extracted.success || !extracted.text) {
+          const errMsg = extracted.error ?? 'extraction failed';
           result.failed++;
           clientFailed.count++;
-          result.errors.push(`${file.fileName}: ${extracted.error ?? 'extraction failed'}`);
+          result.failedFiles.push({ clientName, fileName: file.fileName, error: errMsg });
+          result.errors.push(`${clientName} — ${file.fileName}: ${errMsg}`);
           continue;
         }
 
@@ -331,12 +400,15 @@ export async function bulkImportFolder(
         );
         if (!docType) continue;
 
-        const r = await processDocument(
-          clientId,
-          docType,
-          extracted.text,
-          file.fileName,
-          file.filePath
+        const r = await extractWithTimeout(
+          () => processDocument(
+            clientId,
+            docType,
+            extracted.text,
+            file.fileName,
+            file.filePath
+          ),
+          EXTRACTION_TIMEOUT
         );
 
         if (r.success) {
@@ -344,16 +416,19 @@ export async function bulkImportFolder(
           clientProcessed.count++;
           clientSucceededTypes.add(docType);
         } else {
+          const errMsg = r.error ?? 'extraction failed';
           result.failed++;
           clientFailed.count++;
-          result.errors.push(`${file.fileName}: ${r.error ?? 'extraction failed'}`);
+          result.failedFiles.push({ clientName, fileName: file.fileName, error: errMsg });
+          result.errors.push(`${clientName} — ${file.fileName}: ${errMsg}`);
         }
       } catch (e) {
+        const errMsg = e instanceof Error ? e.message : 'Unknown error';
         result.failed++;
         clientFailed.count++;
-        result.errors.push(
-          `${file.fileName}: ${e instanceof Error ? e.message : 'error'}`
-        );
+        result.failedFiles.push({ clientName, fileName: file.fileName, error: errMsg });
+        result.errors.push(`${clientName} — ${file.fileName}: ${errMsg}`);
+        console.error(`Failed to process ${file.fileName}:`, e);
       }
     }
 
@@ -387,31 +462,36 @@ export async function bulkImportRetryFailed(
 ): Promise<BulkImportResult> {
   const failedRows = await dbSelect<Array<{
     client_id: string;
+    client_name: string;
     document_type: string;
     file_path: string;
     file_name: string;
   }>>(
-    `SELECT client_id, document_type, file_path, file_name
-     FROM document_extractions
-     WHERE extraction_status = 'failed'`
+    `SELECT e.client_id, c.name as client_name, e.document_type, e.file_path, e.file_name
+     FROM document_extractions e
+     LEFT JOIN clients c ON c.id = e.client_id
+     WHERE e.extraction_status = 'failed'`
   );
 
   const result: BulkImportResult = {
     processed: 0,
     failed: 0,
+    skipped: 0,
     clients_created: 0,
     errors: [],
+    failedFiles: [],
     clientSummaries: []
   };
 
   const total = failedRows.length;
   for (let i = 0; i < failedRows.length; i++) {
     const row = failedRows[i];
+    const clientName = row.client_name ?? row.client_id;
     onProgress?.({
       total,
       current: i + 1,
       current_file: row.file_name,
-      current_client: row.client_id
+      current_client: clientName
     });
 
     try {
@@ -424,31 +504,39 @@ export async function bulkImportRetryFailed(
       });
 
       if (!extracted.success || !extracted.text) {
+        const errMsg = extracted.error ?? 'extraction failed';
         result.failed++;
-        result.errors.push(`${row.file_name}: ${extracted.error ?? 'extraction failed'}`);
+        result.failedFiles.push({ clientName, fileName: row.file_name, error: errMsg });
+        result.errors.push(`${clientName} — ${row.file_name}: ${errMsg}`);
         continue;
       }
 
-      const r = await processDocument(
-        row.client_id,
-        row.document_type as 'disc' | 'you2' | 'fathom' | 'vision',
-        extracted.text,
-        row.file_name,
-        row.file_path
+      const r = await extractWithTimeout(
+        () => processDocument(
+          row.client_id,
+          row.document_type as 'disc' | 'you2' | 'fathom' | 'vision',
+          extracted.text,
+          row.file_name,
+          row.file_path
+        ),
+        EXTRACTION_TIMEOUT
       );
 
       if (r.success) {
         result.processed++;
         await rebuildClientProfile(row.client_id);
       } else {
+        const errMsg = r.error ?? 'extraction failed';
         result.failed++;
-        result.errors.push(`${row.file_name}: ${r.error ?? 'extraction failed'}`);
+        result.failedFiles.push({ clientName, fileName: row.file_name, error: errMsg });
+        result.errors.push(`${clientName} — ${row.file_name}: ${errMsg}`);
       }
     } catch (e) {
+      const errMsg = e instanceof Error ? e.message : 'Unknown error';
       result.failed++;
-      result.errors.push(
-        `${row.file_name}: ${e instanceof Error ? e.message : 'error'}`
-      );
+      result.failedFiles.push({ clientName, fileName: row.file_name, error: errMsg });
+      result.errors.push(`${clientName} — ${row.file_name}: ${errMsg}`);
+      console.error(`Failed to process ${row.file_name}:`, e);
     }
   }
 
