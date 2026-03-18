@@ -595,10 +595,173 @@ STRESS SIGNALS come from the "Perceptions" page:
 }
 
 // ─────────────────────────────────────
+// YOU 2.0 DETERMINISTIC EXTRACTION (PASS 1)
+// Vision + Top 3 sections — no LLM needed
+// ─────────────────────────────────────
+
+export interface You2DeterministicResult {
+  one_year_vision: string;
+  dangers: Array<{ danger: string; goal: string }>;
+  strengths: Array<{ strength: string; goal: string }>;
+  opportunities: Array<{ opportunity: string; goal: string }>;
+  found: boolean;
+}
+
+export function extractYou2VisionDeterministic(text: string): You2DeterministicResult {
+  const result: You2DeterministicResult = {
+    one_year_vision: '',
+    dangers: [],
+    strengths: [],
+    opportunities: [],
+    found: false,
+  };
+
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return result;
+
+  // Vision: text between first line (client name) and "Dangers" section
+  const dangersIdx = lines.findIndex(
+    (l) => /^dangers\b/i.test(l) || /^top\s*3\s*dangers/i.test(l)
+  );
+  if (dangersIdx > 1) {
+    result.one_year_vision = lines
+      .slice(1, dangersIdx)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Extract paired Danger:/Goal: blocks
+  const extractDangerGoal = (arr: string[]): Array<{ danger: string; goal: string }> => {
+    const pairs: Array<{ danger: string; goal: string }> = [];
+    let current: { danger: string; goal: string } | null = null;
+    for (const line of arr) {
+      const dangerMatch = line.match(/^danger:\s*(.+)$/i);
+      const goalMatch = line.match(/^goal:\s*(.+)$/i);
+      if (dangerMatch) {
+        if (current) pairs.push(current);
+        current = { danger: dangerMatch[1].trim(), goal: '' };
+      } else if (goalMatch && current) {
+        current.goal = goalMatch[1].trim();
+        pairs.push(current);
+        current = null;
+      }
+    }
+    if (current) pairs.push(current);
+    return pairs.slice(0, 3);
+  };
+
+  // Extract paired Strength:/Goal: blocks
+  const extractStrengthGoal = (arr: string[]): Array<{ strength: string; goal: string }> => {
+    const pairs: Array<{ strength: string; goal: string }> = [];
+    let current: { strength: string; goal: string } | null = null;
+    for (const line of arr) {
+      const strengthMatch = line.match(/^strength:\s*(.+)$/i);
+      const goalMatch = line.match(/^goal:\s*(.+)$/i);
+      if (strengthMatch) {
+        if (current) pairs.push(current);
+        current = { strength: strengthMatch[1].trim(), goal: '' };
+      } else if (goalMatch && current) {
+        current.goal = goalMatch[1].trim();
+        pairs.push(current);
+        current = null;
+      }
+    }
+    if (current) pairs.push(current);
+    return pairs.slice(0, 3);
+  };
+
+  // Extract paired Opportunity:/Goal: blocks
+  const extractOpportunityGoal = (arr: string[]): Array<{ opportunity: string; goal: string }> => {
+    const pairs: Array<{ opportunity: string; goal: string }> = [];
+    let current: { opportunity: string; goal: string } | null = null;
+    for (const line of arr) {
+      const oppMatch = line.match(/^opportunity:\s*(.+)$/i);
+      const goalMatch = line.match(/^goal:\s*(.+)$/i);
+      if (oppMatch) {
+        if (current) pairs.push(current);
+        current = { opportunity: oppMatch[1].trim(), goal: '' };
+      } else if (goalMatch && current) {
+        current.goal = goalMatch[1].trim();
+        pairs.push(current);
+        current = null;
+      }
+    }
+    if (current) pairs.push(current);
+    return pairs.slice(0, 3);
+  };
+
+  result.dangers = extractDangerGoal(lines);
+  result.strengths = extractStrengthGoal(lines);
+  result.opportunities = extractOpportunityGoal(lines);
+
+  result.found =
+    result.one_year_vision.length > 20 ||
+    result.dangers.length > 0 ||
+    result.strengths.length > 0 ||
+    result.opportunities.length > 0;
+
+  return result;
+}
+
+// ─────────────────────────────────────
 // YOU 2.0 EXTRACTION
 // Calibrated for TES You 2.0 + TUMAY format
 // Expects concatenated text from BOTH files
+// Two-pass: deterministic first, LLM only if vision empty
 // ─────────────────────────────────────
+
+const YOU2_LLM_TIMEOUT_MS = 120000; // 2 minutes — short doc, skip if corrupted
+
+async function callOllamaYou2(
+  systemPrompt: string,
+  userContent: string,
+  formatSchema?: object
+): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), YOU2_LLM_TIMEOUT_MS);
+
+  try {
+    const requestBody: Record<string, unknown> = {
+      model: OLLAMA_MODEL,
+      prompt: `${systemPrompt}\n\nDocument text:\n${userContent}\n\nIMPORTANT: Your response must be ONLY a valid JSON object. No explanation. No preamble. No markdown. Start with { and end with }.`,
+      stream: false,
+      format: formatSchema ?? 'json',
+      options: {
+        temperature: 0,
+        seed: 42,
+        num_predict: 4000,
+      },
+    };
+
+    const response = await fetch(OLLAMA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify(requestBody),
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`Ollama request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (!data.response) {
+      throw new Error('Ollama returned empty response.');
+    }
+    return data.response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    const isAbort = error instanceof Error && error.name === 'AbortError';
+    const isAbortByName = error && typeof error === 'object' && 'name' in error && (error as { name: string }).name === 'AbortError';
+    if (isAbort || isAbortByName) {
+      throw new Error('You2 extraction timeout after 2 minutes');
+    }
+    throw error;
+  }
+}
 
 export async function extractYou2Profile(
   clientId: string,
@@ -607,9 +770,43 @@ export async function extractYou2Profile(
   filePath: string
 ): Promise<ExtractionResult<You2Profile>> {
   try {
-    const prompt = await loadPrompt('you2_extraction');
+    // PASS 1 — Deterministic extraction (vision + top 3)
+    const deterministic = extractYou2VisionDeterministic(rawText);
 
-    const systemPrompt = `${prompt}
+    let profile: You2Profile | null = null;
+
+    if (deterministic.one_year_vision && deterministic.one_year_vision.length > 20) {
+      // Deterministic found vision — use it, skip LLM for core fields
+      const firstLine = rawText.split(/\r?\n/)[0]?.trim() || '';
+      profile = {
+        client_name: firstLine || 'Unknown',
+        one_year_vision: deterministic.one_year_vision,
+        spouse_name: '',
+        spouse_role: 'none',
+        spouse_on_calls: 'no',
+        spouse_mindset_verbatim: '',
+        financial_net_worth_range: '',
+        credit_score: 0,
+        launch_timeline: '',
+        time_commitment: '',
+        dangers: deterministic.dangers.length > 0 ? deterministic.dangers : [],
+        strengths: deterministic.strengths.length > 0 ? deterministic.strengths : [],
+        opportunities: deterministic.opportunities.length > 0 ? deterministic.opportunities : [],
+        areas_of_interest: [],
+        reasons_for_change: [],
+        location_preference: '',
+        skills: [],
+        prior_business_experience: '',
+        self_sufficiency_excitement: '',
+        additional_stakeholders: [],
+      };
+    }
+
+    // PASS 2 — LLM only if deterministic returned empty vision
+    if (!profile) {
+      const prompt = await loadPrompt('you2_extraction');
+
+      const systemPrompt = `${prompt}
 
 You are extracting data from TES You 2.0 and TUMAY intake forms.
 The text may be from one or both documents concatenated.
@@ -696,8 +893,19 @@ Schema:
   "additional_stakeholders": [{ "name": "string", "relationship": "string" }]
 }`;
 
-    const rawResponse = await callOllama(systemPrompt, rawText, YOU2_FORMAT_SCHEMA);
-    const profile = parseExtractionResponse<You2Profile>(rawResponse);
+      const rawResponse = await callOllamaYou2(systemPrompt, rawText, YOU2_FORMAT_SCHEMA);
+      profile = parseExtractionResponse<You2Profile>(rawResponse);
+
+      // Override with deterministic top 3 if LLM missed them
+      if (profile && deterministic.found) {
+        if (deterministic.dangers.length > 0) profile.dangers = deterministic.dangers;
+        if (deterministic.strengths.length > 0) profile.strengths = deterministic.strengths;
+        if (deterministic.opportunities.length > 0) profile.opportunities = deterministic.opportunities;
+        if (deterministic.one_year_vision && !profile.one_year_vision) {
+          profile.one_year_vision = deterministic.one_year_vision;
+        }
+      }
+    }
 
     if (!profile) {
       await recordExtraction(
