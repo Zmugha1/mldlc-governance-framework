@@ -198,14 +198,37 @@ async function findOrCreateClient(
   return { id: newId, created: true };
 }
 
-async function isExtractionComplete(
-  clientId: string,
-  fileName: string
-): Promise<boolean> {
+/** Skip only when profile data actually exists — not just extraction records. */
+async function hasYou2Profile(clientId: string): Promise<boolean> {
+  const rows = await dbSelect<Array<{ count: number }>>(
+    `SELECT COUNT(*) as count FROM client_you2_profiles WHERE client_id = $1`,
+    [clientId]
+  );
+  return (rows[0]?.count ?? 0) > 0;
+}
+
+async function hasDiscProfile(clientId: string): Promise<boolean> {
+  const rows = await dbSelect<Array<{ count: number }>>(
+    `SELECT COUNT(*) as count FROM client_disc_profiles WHERE client_id = $1`,
+    [clientId]
+  );
+  return (rows[0]?.count ?? 0) > 0;
+}
+
+async function hasFathomSession(clientId: string): Promise<boolean> {
+  const rows = await dbSelect<Array<{ count: number }>>(
+    `SELECT COUNT(*) as count FROM coaching_sessions WHERE client_id = $1`,
+    [clientId]
+  );
+  return (rows[0]?.count ?? 0) > 0;
+}
+
+/** Vision has no profile table — check extraction record. */
+async function hasVisionComplete(clientId: string): Promise<boolean> {
   const rows = await dbSelect<Array<{ extraction_status: string }>>(
     `SELECT extraction_status FROM document_extractions
-     WHERE client_id = $1 AND file_name = $2 AND extraction_status = 'complete'`,
-    [clientId, fileName]
+     WHERE client_id = $1 AND document_type = 'vision' AND extraction_status = 'complete'`,
+    [clientId]
   );
   return rows.length > 0;
 }
@@ -334,8 +357,8 @@ export async function bulkImportFolder(
         if (you2Files.some((f) => f.fileName.toLowerCase().includes('tumay'))) {
           result.skipped++;
         } else {
-        const alreadyComplete = await isExtractionComplete(clientId, you2Files[0].fileName);
-        if (alreadyComplete) {
+        const hasProfile = await hasYou2Profile(clientId);
+        if (hasProfile) {
           result.skipped++;
         } else {
         try {
@@ -387,11 +410,6 @@ export async function bulkImportFolder(
           result.skipped++;
           continue;
         }
-        const alreadyComplete = await isExtractionComplete(clientId, file.fileName);
-        if (alreadyComplete) {
-          result.skipped++;
-          continue;
-        }
 
         let extracted: { text: string; success: boolean; error?: string };
         try {
@@ -422,6 +440,16 @@ export async function bulkImportFolder(
             result.failedFiles.push({ clientName, fileName: file.fileName, error: errMsg });
             result.errors.push(`${clientName} — ${file.fileName}: ${errMsg}`);
           }
+          continue;
+        }
+
+        // Skip only when profile/session data actually exists
+        const hasProfile = docType === 'you2' ? await hasYou2Profile(clientId)
+          : docType === 'disc' ? await hasDiscProfile(clientId)
+          : docType === 'fathom' ? await hasFathomSession(clientId)
+          : await hasVisionComplete(clientId);
+        if (hasProfile) {
+          result.skipped++;
           continue;
         }
 
