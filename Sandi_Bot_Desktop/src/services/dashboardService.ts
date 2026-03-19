@@ -25,12 +25,17 @@ function getDominantFromScores(
 }
 
 export function deriveStyleLabel(
-  d: number,
-  i: number,
-  s: number,
-  c: number
+  d: number | null | undefined,
+  i: number | null | undefined,
+  s: number | null | undefined,
+  c: number | null | undefined
 ): string {
-  const scores = { D: d, I: i, S: s, C: c };
+  const scores = {
+    D: Number(d ?? 0),
+    I: Number(i ?? 0),
+    S: Number(s ?? 0),
+    C: Number(c ?? 0),
+  };
   const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   const top = sorted[0][0];
   const second = sorted[1][0];
@@ -56,36 +61,52 @@ export function deriveStyleLabel(
 }
 
 export async function getDiscStyleBreakdown(): Promise<DiscDistributionEntry[]> {
-  const rows = await dbSelect<Array<{
-    client_id: string;
-    natural_d: number;
-    natural_i: number;
-    natural_s: number;
-    natural_c: number;
-  }>>(
-    `SELECT client_id, natural_d, natural_i, natural_s, natural_c
-     FROM client_disc_profiles
-     WHERE natural_d IS NOT NULL OR natural_i IS NOT NULL
-        OR natural_s IS NOT NULL OR natural_c IS NOT NULL`
-  );
-
-  const counts = { D: 0, I: 0, S: 0, C: 0 };
-  for (const r of rows) {
-    const dominant = getDominantFromScores(
-      r.natural_d ?? 0,
-      r.natural_i ?? 0,
-      r.natural_s ?? 0,
-      r.natural_c ?? 0
+  try {
+    const rows = await dbSelect<Array<{
+      client_id: string;
+      natural_d: number;
+      natural_i: number;
+      natural_s: number;
+      natural_c: number;
+    }>>(
+      `SELECT client_id, natural_d, natural_i, natural_s, natural_c
+       FROM client_disc_profiles
+       WHERE natural_d IS NOT NULL OR natural_i IS NOT NULL
+          OR natural_s IS NOT NULL OR natural_c IS NOT NULL`
     );
-    if (dominant in counts) counts[dominant as keyof typeof counts]++;
-  }
 
-  return [
-    { name: 'D', value: counts.D, color: discColors.D },
-    { name: 'I', value: counts.I, color: discColors.I },
-    { name: 'S', value: counts.S, color: discColors.S },
-    { name: 'C', value: counts.C, color: discColors.C },
-  ];
+    const counts = { D: 0, I: 0, S: 0, C: 0 };
+    for (const r of rows) {
+      const scores = {
+        D: Number(r.natural_d ?? 0),
+        I: Number(r.natural_i ?? 0),
+        S: Number(r.natural_s ?? 0),
+        C: Number(r.natural_c ?? 0),
+      };
+      const dominant = getDominantFromScores(
+        scores.D,
+        scores.I,
+        scores.S,
+        scores.C
+      );
+      if (dominant in counts) counts[dominant as keyof typeof counts]++;
+    }
+
+    return [
+      { name: 'D', value: counts.D, color: discColors.D },
+      { name: 'I', value: counts.I, color: discColors.I },
+      { name: 'S', value: counts.S, color: discColors.S },
+      { name: 'C', value: counts.C, color: discColors.C },
+    ];
+  } catch (err) {
+    console.error('getDiscStyleBreakdown failed:', err);
+    return [
+      { name: 'D', value: 0, color: discColors.D },
+      { name: 'I', value: 0, color: discColors.I },
+      { name: 'S', value: 0, color: discColors.S },
+      { name: 'C', value: 0, color: discColors.C },
+    ];
+  }
 }
 
 export interface DiscProfileEnrichment {
@@ -94,30 +115,35 @@ export interface DiscProfileEnrichment {
 }
 
 export async function getDiscProfilesMap(): Promise<Map<string, DiscProfileEnrichment>> {
-  const rows = await dbSelect<Array<{
-    client_id: string;
-    natural_d: number;
-    natural_i: number;
-    natural_s: number;
-    natural_c: number;
-    primary_style_label: string | null;
-  }>>(
+  try {
+    const rows = await dbSelect<Array<{
+      client_id: string;
+      natural_d: number;
+      natural_i: number;
+      natural_s: number;
+      natural_c: number;
+      primary_style_label: string | null;
+    }>>(
     `SELECT client_id, natural_d, natural_i, natural_s, natural_c,
             primary_style_label
      FROM client_disc_profiles`
-  );
+    );
 
-  const map = new Map<string, DiscProfileEnrichment>();
-  for (const r of rows) {
-    const d = r.natural_d ?? 0;
-    const i = r.natural_i ?? 0;
-    const s = r.natural_s ?? 0;
-    const c = r.natural_c ?? 0;
+    const map = new Map<string, DiscProfileEnrichment>();
+    for (const r of rows) {
+    const d = Number(r.natural_d ?? 0);
+    const i = Number(r.natural_i ?? 0);
+    const s = Number(r.natural_s ?? 0);
+    const c = Number(r.natural_c ?? 0);
     const style = getDominantFromScores(d, i, s, c);
     const label =
       r.primary_style_label?.trim() ||
       deriveStyleLabel(d, i, s, c);
-    map.set(r.client_id, { style, label });
+      map.set(r.client_id, { style, label });
+    }
+    return map;
+  } catch (err) {
+    console.error('getDiscProfilesMap failed:', err);
+    return new Map();
   }
-  return map;
 }

@@ -154,7 +154,7 @@ export default function ExecutiveDashboard() {
         setDiscDistribution(d);
       })
       .catch((err) => {
-        console.error(err);
+        console.error('Dashboard load failed:', err);
         setError(String(err?.message ?? err ?? 'Failed to load dashboard'));
       })
       .finally(() => setLoading(false));

@@ -35,11 +35,22 @@ export interface ClientDisplayOptions {
 
 /** Convert flat Client to display format for UI components that expect avatar, disc.style, etc. */
 export function clientToDisplay(client: Client, options?: ClientDisplayOptions | DiscEnrichment) {
-  const discEnrichment = options && 'style' in options ? options : options?.disc;
-  const readinessScoreOverride = options && 'readinessScore' in options ? (options as ClientDisplayOptions).readinessScore : undefined;
+  const opts = options != null && typeof options === 'object' ? options : undefined;
+  const discEnrichment =
+    opts && typeof opts === 'object' && opts !== null && 'style' in opts
+      ? (opts as DiscEnrichment)
+      : (opts as ClientDisplayOptions | undefined)?.disc;
+  const readinessScoreOverride =
+    opts && typeof opts === 'object' && opts !== null && 'readinessScore' in opts
+      ? (opts as ClientDisplayOptions).readinessScore
+      : undefined;
 
-  const discStyle = (discEnrichment?.style ?? client.disc_style ?? 'I') as 'D' | 'I' | 'S' | 'C';
-  const discLabel = discEnrichment?.label ?? `DISC style: ${client.disc_style || 'Pending'}`;
+  const disc =
+    discEnrichment != null && typeof discEnrichment === 'object' && 'style' in discEnrichment
+      ? discEnrichment
+      : undefined;
+  const discStyle = (disc?.style ?? client.disc_style ?? 'I') as 'D' | 'I' | 'S' | 'C';
+  const discLabel = disc?.label ?? `DISC style: ${client.disc_style || 'Pending'}`;
   const displayStage = normalizeDisplayStage(client.inferred_stage ?? client.stage);
   const base = {
     ...client,

@@ -106,27 +106,29 @@ function normalizeStage(stage: string): PipelineStage {
 }
 
 function calculateReadinessScore(
-  comp: Completeness,
+  comp: Completeness | null | undefined,
   _stage: PipelineStage
 ): number {
+  if (!comp) return 0;
   let score = 0;
   let max = 0;
 
   max += 25;
-  if (comp.has_disc) score += 25;
+  if (comp?.has_disc) score += 25;
 
   max += 25;
-  if (comp.has_you2) score += 25;
+  if (comp?.has_you2) score += 25;
 
   max += 25;
-  if (comp.fathom_count >= 1) score += 10;
-  if (comp.fathom_count >= 2) score += 10;
-  if (comp.fathom_count >= 3) score += 5;
+  const fathomCount = comp?.fathom_count ?? 0;
+  if (fathomCount >= 1) score += 10;
+  if (fathomCount >= 2) score += 10;
+  if (fathomCount >= 3) score += 5;
 
   max += 25;
-  if (comp.has_vision) score += 25;
+  if (comp?.has_vision) score += 25;
 
-  return Math.round((score / max) * 100);
+  return max > 0 ? Math.round((score / max) * 100) : 0;
 }
 
 async function getCompleteness(clientId: string): Promise<Completeness> {
@@ -174,46 +176,47 @@ async function getCompleteness(clientId: string): Promise<Completeness> {
   };
 }
 
-function buildWhyHere(stage: PipelineStage, comp: Completeness): string[] {
+function buildWhyHere(stage: PipelineStage, comp: Completeness | null | undefined): string[] {
   const reasons: string[] = [];
+  const fc = comp?.fathom_count ?? 0;
 
   switch (stage) {
     case 'IC':
       reasons.push('Just entered the pipeline');
-      if (!comp.has_disc) {
+      if (!comp?.has_disc) {
         reasons.push('DISC assessment not yet complete');
       }
       break;
     case 'C1':
-      if (comp.has_disc) {
+      if (comp?.has_disc) {
         reasons.push('DISC assessment complete');
       }
-      if (!comp.has_you2) {
+      if (!comp?.has_you2) {
         reasons.push('You 2.0 profile pending');
       } else {
         reasons.push('You 2.0 profile complete');
       }
-      if (comp.fathom_count === 0) {
+      if (fc === 0) {
         reasons.push('No coaching sessions yet');
       } else {
-        reasons.push(`${comp.fathom_count} session(s) completed`);
+        reasons.push(`${fc} session(s) completed`);
       }
       break;
     case 'C2':
       reasons.push('DISC and You 2.0 complete');
-      reasons.push(`${comp.fathom_count} coaching session(s)`);
-      if (!comp.has_vision) {
+      reasons.push(`${fc} coaching session(s)`);
+      if (!comp?.has_vision) {
         reasons.push('Vision statement pending');
       }
       break;
     case 'C3':
       reasons.push('Full profile complete');
-      reasons.push(`${comp.fathom_count} sessions completed`);
+      reasons.push(`${fc} sessions completed`);
       reasons.push('Ready for franchise presentation');
       break;
     case 'C4':
       reasons.push('Franchise possibilities presented');
-      reasons.push(`${comp.fathom_count} sessions completed`);
+      reasons.push(`${fc} sessions completed`);
       break;
     case 'C5':
       reasons.push('Client selected a franchise');
@@ -226,18 +229,19 @@ function buildWhyHere(stage: PipelineStage, comp: Completeness): string[] {
 
 function buildWhatIsNeeded(
   stage: PipelineStage,
-  comp: Completeness,
+  comp: Completeness | null | undefined,
   pinkFlags: string[]
 ): string[] {
   const needed = [...ADVANCEMENT_REQUIREMENTS[stage]];
+  const fc = comp?.fathom_count ?? 0;
 
   const filtered = needed.filter(item => {
-    if (item.includes('DISC') && comp.has_disc) return false;
-    if (item.includes('You 2.0') && comp.has_you2) return false;
-    if (item.includes('vision') && comp.has_vision) return false;
-    if (item.includes('2 Fathom') && comp.fathom_count >= 2) return false;
-    if (item.includes('3 sessions') && comp.fathom_count >= 3) return false;
-    if (item.includes('4 sessions') && comp.fathom_count >= 4) return false;
+    if (item.includes('DISC') && comp?.has_disc) return false;
+    if (item.includes('You 2.0') && comp?.has_you2) return false;
+    if (item.includes('vision') && comp?.has_vision) return false;
+    if (item.includes('2 Fathom') && fc >= 2) return false;
+    if (item.includes('3 sessions') && fc >= 3) return false;
+    if (item.includes('4 sessions') && fc >= 4) return false;
     return true;
   });
 
@@ -252,7 +256,7 @@ function buildWhatIsNeeded(
 
 function calculateRecommendation(
   stage: PipelineStage,
-  comp: Completeness,
+  comp: Completeness | null | undefined,
   readinessScore: number,
   pinkFlags: string[],
   whatIsNeeded: string[]
@@ -268,7 +272,7 @@ function calculateRecommendation(
     };
   }
 
-  if (!comp.spouse_aligned && comp.has_you2) {
+  if (!comp?.spouse_aligned && comp?.has_you2) {
     return {
       rec: 'PAUSE',
       reason: 'PAUSE — Spouse alignment not confirmed'
@@ -277,7 +281,7 @@ function calculateRecommendation(
 
   const qualifiesForPush =
     (readyToAdvance && readinessScore >= 50) ||
-    (comp.has_disc && comp.has_you2 && comp.fathom_count >= 2);
+    (comp?.has_disc && comp?.has_you2 && (comp?.fathom_count ?? 0) >= 2);
 
   if (qualifiesForPush) {
     const next = STAGE_NEXT[stage];
@@ -312,7 +316,8 @@ export async function getStageReadiness(
     }
   } catch { /* no pink flags */ }
 
-  const stage = normalizeStage(client.inferred_stage ?? 'IC');
+  const rawStage = client?.inferred_stage ?? 'IC';
+  const stage = normalizeStage(rawStage);
 
   const whyHere = buildWhyHere(stage, comp);
 
@@ -353,17 +358,22 @@ export async function getStageReadiness(
 }
 
 export async function getAllStageReadiness(): Promise<StageReadiness[]> {
-  const clients = await dbSelect<Array<{ id: string }>>(
-    `SELECT id FROM clients
-     WHERE outcome_bucket = 'active'
-     ORDER BY name`
-  );
+  try {
+    const clients = await dbSelect<Array<{ id: string }>>(
+      `SELECT id FROM clients
+       WHERE outcome_bucket = 'active'
+       ORDER BY name`
+    );
 
-  const results = await Promise.all(
-    clients.map(c => getStageReadiness(c.id))
-  );
+    const results = await Promise.all(
+      clients.map(c => getStageReadiness(c.id))
+    );
 
-  return results.filter((r): r is StageReadiness => r !== null);
+    return results.filter((r): r is StageReadiness => r !== null);
+  } catch (err) {
+    console.error('getAllStageReadiness failed:', err);
+    return [];
+  }
 }
 
 export async function moveClientStage(

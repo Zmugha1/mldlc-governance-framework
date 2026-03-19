@@ -142,49 +142,71 @@ export async function deleteClient(id: string): Promise<void> {
   await dbExecute(`DELETE FROM clients WHERE id = $1`, [id]);
 }
 
+const DEFAULT_DASHBOARD_STATS: DashboardStats = {
+  totalClients: 0,
+  activeConversations: 0,
+  avgReadinessScore: 0,
+  conversionRate: 0,
+  callsThisWeek: 0,
+  timeSavedHours: 0,
+  pushCount: 0,
+  nurtureCount: 0,
+  pauseCount: 0,
+};
+
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const clients = await getAllClients();
-  const allReadiness = await getAllStageReadiness();
+  try {
+    const clients = await getAllClients();
+    let allReadiness: Awaited<ReturnType<typeof getAllStageReadiness>> = [];
+    try {
+      allReadiness = await getAllStageReadiness();
+    } catch (err) {
+      console.error('getAllStageReadiness failed:', err);
+    }
 
-  const totalClients = clients.length;
-  const activeConversations = clients.filter(
-    (c) => c.outcome === 'ACTIVE' || !c.outcome
-  ).length;
+    const totalClients = clients.length;
+    const activeConversations = clients.filter(
+      (c) => c.outcome === 'ACTIVE' || !c.outcome
+    ).length;
 
-  const avgReadiness =
-    clients.length > 0
-      ? clients.reduce(
-          (sum, c) =>
-            sum +
-            (c.readiness_identity +
-              c.readiness_commitment +
-              c.readiness_financial +
-              c.readiness_execution) /
-              4,
-          0
-        ) / clients.length
-      : 0;
+    const avgReadiness =
+      clients.length > 0
+        ? clients.reduce(
+            (sum, c) =>
+              sum +
+              (c.readiness_identity +
+                c.readiness_commitment +
+                c.readiness_financial +
+                c.readiness_execution) /
+                4,
+            0
+          ) / clients.length
+        : 0;
 
-  const converted = clients.filter((c) => c.outcome === 'CONVERTED').length;
+    const converted = clients.filter((c) => c.outcome === 'CONVERTED').length;
 
-  const conversionRate =
-    totalClients > 0 ? Math.round((converted / totalClients) * 100) : 0;
+    const conversionRate =
+      totalClients > 0 ? Math.round((converted / totalClients) * 100) : 0;
 
-  const pushCount = allReadiness.filter((r) => r.recommendation === 'PUSH').length;
-  const nurtureCount = allReadiness.filter((r) => r.recommendation === 'NURTURE').length;
-  const pauseCount = allReadiness.filter((r) => r.recommendation === 'PAUSE').length;
+    const pushCount = allReadiness.filter((r) => r.recommendation === 'PUSH').length;
+    const nurtureCount = allReadiness.filter((r) => r.recommendation === 'NURTURE').length;
+    const pauseCount = allReadiness.filter((r) => r.recommendation === 'PAUSE').length;
 
-  return {
-    totalClients,
-    activeConversations,
-    avgReadinessScore: Math.round(avgReadiness * 10) / 10,
-    conversionRate,
-    callsThisWeek: 0,
-    timeSavedHours: Math.round(totalClients * 0.5 * 10) / 10,
-    pushCount,
-    nurtureCount,
-    pauseCount,
-  };
+    return {
+      totalClients,
+      activeConversations,
+      avgReadinessScore: Math.round(avgReadiness * 10) / 10,
+      conversionRate,
+      callsThisWeek: 0,
+      timeSavedHours: Math.round(totalClients * 0.5 * 10) / 10,
+      pushCount,
+      nurtureCount,
+      pauseCount,
+    };
+  } catch (err) {
+    console.error('getDashboardStats failed:', err);
+    return DEFAULT_DASHBOARD_STATS;
+  }
 }
 
 /** Clients sorted by confidence descending (highest first) */
