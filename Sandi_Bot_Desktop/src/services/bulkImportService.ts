@@ -160,14 +160,15 @@ function detectDocType(
   return null;
 }
 
-function isYou2File(fileName: string): boolean {
-  const lower = fileName.toLowerCase();
-  return lower.includes('tumay') ||
-         lower.includes('you2') ||
-         lower.includes('you2.0') ||
-         lower.includes('you 2') ||
-         lower.includes('you_2');
-}
+const isYou2File = (name: string): boolean => {
+  const n = name.toLowerCase();
+  return (n.includes('you') && (n.includes('2') || n.includes('two'))) ||
+    n.includes('you2') ||
+    n.includes('you 2') ||
+    n.includes('you2.0') ||
+    n.includes('tumay') ||
+    n.includes('you_2');
+};
 
 async function findOrCreateClient(
   clientName: string,
@@ -284,6 +285,9 @@ export async function bulkImportFolder(
       } catch {
         continue;
       }
+
+      console.log('[SCAN] Client folder:', clientPath);
+      console.log('[SCAN] Files found:', files.join(', '));
 
       for (const file of files) {
         const ext = '.' + (file.split('.').pop()?.toLowerCase() ?? '');
@@ -432,6 +436,7 @@ export async function bulkImportFolder(
           file.fileName,
           extracted.text
         );
+        console.log('[DETECT] File:', file.fileName, '→ type:', docType ?? 'NO MATCH');
         if (!docType) {
           if (!extracted.success || !extracted.text) {
             const errMsg = extracted.error ?? 'extraction failed';
