@@ -753,8 +753,15 @@ pub fn run() {
         },
         Migration {
             version: 48,
-            description: "clear_failed_you2_for_two_pass_extraction",
-            sql: "DELETE FROM document_extractions WHERE document_type = 'you2' AND extraction_status = 'failed'",
+            description: "add_clear_scoring_columns_to_coaching_sessions",
+            sql: "ALTER TABLE coaching_sessions ADD COLUMN clear_curiosity INTEGER DEFAULT 3;
+                  ALTER TABLE coaching_sessions ADD COLUMN clear_locating INTEGER DEFAULT 3;
+                  ALTER TABLE coaching_sessions ADD COLUMN clear_engagement INTEGER DEFAULT 3;
+                  ALTER TABLE coaching_sessions ADD COLUMN clear_accountability INTEGER DEFAULT 3;
+                  ALTER TABLE coaching_sessions ADD COLUMN clear_reflection INTEGER DEFAULT 3;
+                  ALTER TABLE coaching_sessions ADD COLUMN clear_notes TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN overall_clear_score REAL;
+                  ALTER TABLE coaching_sessions ADD COLUMN call_duration TEXT;",
             kind: MigrationKind::Up,
         },
     ];
