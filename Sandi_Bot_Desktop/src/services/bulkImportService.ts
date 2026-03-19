@@ -279,6 +279,7 @@ export async function bulkImportFolder(
 
       let files: string[] = [];
       try {
+        console.log('[PATH CHECK] Calling list_directory_files with path:', clientPath);
         files = await invoke<string[]>('list_directory_files', {
           path: clientPath
         });
