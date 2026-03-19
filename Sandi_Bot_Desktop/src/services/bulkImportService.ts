@@ -96,22 +96,29 @@ function detectDocType(
 ): 'disc' | 'you2' | 'fathom' | 'vision' | null {
   const lower = fileName.toLowerCase();
 
-  // Filename-based detection first
+  // Filename-based detection first — all case-insensitive
+  // DISC: ttsi, tti-success-insights (Nathan Stiers), talent insight
   if (lower.includes('ttsi') ||
+      lower.includes('tti-success-insights') ||
       lower.includes('disc') ||
       lower.includes('talent insight')) return 'disc';
 
+  // You2: tumay, you2, you2.0 (Andrew Tait), you 2, you_2
   if (lower.includes('tumay')) return 'you2';
-
   if (lower.includes('you2') ||
+      lower.includes('you2.0') ||
       lower.includes('you 2') ||
       lower.includes('you_2')) return 'you2';
 
+  // Vision: vision statement, vision stmt (Nathan Stiers)
   if (lower.includes('vision')) return 'vision';
 
+  // Fathom/Convo: Convo.pdf, convo.pdf, ConvC5.pdf (Stan Stabner), conversation
   if (lower.includes('fathom') ||
       lower.includes('transcript') ||
       lower.includes('convo') ||
+      lower.includes('convc5') ||
+      lower.includes('conversation') ||
       lower.includes('conv') ||
       lower.includes('session') ||
       lower.includes('call') ||
@@ -157,6 +164,7 @@ function isYou2File(fileName: string): boolean {
   const lower = fileName.toLowerCase();
   return lower.includes('tumay') ||
          lower.includes('you2') ||
+         lower.includes('you2.0') ||
          lower.includes('you 2') ||
          lower.includes('you_2');
 }
@@ -323,7 +331,7 @@ export async function bulkImportFolder(
       }
 
       if (combinedText.trim().length > 50) {
-        if (you2Files.some((f) => f.fileName.includes('TUMAY'))) {
+        if (you2Files.some((f) => f.fileName.toLowerCase().includes('tumay'))) {
           result.skipped++;
         } else {
         const alreadyComplete = await isExtractionComplete(clientId, you2Files[0].fileName);
@@ -375,7 +383,7 @@ export async function bulkImportFolder(
       });
 
       try {
-        if (file.fileName.includes('TUMAY')) {
+        if (file.fileName.toLowerCase().includes('tumay')) {
           result.skipped++;
           continue;
         }
@@ -525,7 +533,7 @@ export async function bulkImportRetryFailed(
       current_client: clientName
     });
 
-    if (row.file_name.includes('TUMAY')) {
+    if (row.file_name.toLowerCase().includes('tumay')) {
       result.skipped++;
       continue;
     }
