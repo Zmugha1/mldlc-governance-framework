@@ -34,30 +34,35 @@ export function deriveStyleLabel(
     D: Number(d ?? 0),
     I: Number(i ?? 0),
     S: Number(s ?? 0),
-    C: Number(c ?? 0),
+    C: Number(c ?? 0)
   };
-  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const sorted = Object.entries(scores)
+    .sort((a, b) => b[1] - a[1]);
   const top = sorted[0][0];
   const second = sorted[1][0];
 
   const labels: Record<string, string> = {
+    DS: 'Driving Supporter',
+    DI: 'Driving Influencer',
+    DC: 'Driving Analyzer',
+    ID: 'Influencing Driver',
+    IS: 'Influencing Supporter',
+    IC: 'Influencing Analyzer',
+    SD: 'Supporting Driver',
+    SI: 'Supporting Influencer',
+    SC: 'Supporting Analyzer',
+    CD: 'Analyzing Driver',
+    CI: 'Analyzing Influencer',
+    CS: 'Analyzing Supporter',
     D: 'Driver',
     I: 'Influencer',
     S: 'Supporter',
     C: 'Analyzer',
-    DI: 'Driving Influencer',
-    DS: 'Driving Supporter',
-    ID: 'Influencing Driver',
-    IS: 'Influencing Supporter',
-    SD: 'Supporting Driver',
-    SI: 'Supporting Influencer',
-    SC: 'Supporting Analyzer',
-    CS: 'Analyzing Supporter',
-    CD: 'Analyzing Driver',
-    CI: 'Analyzing Influencer',
   };
 
-  return labels[`${top}${second}`] ?? labels[top] ?? `High ${top}`;
+  return labels[`${top}${second}`]
+    ?? labels[top]
+    ?? `High ${top}`;
 }
 
 export async function getDiscStyleBreakdown(): Promise<DiscDistributionEntry[]> {
@@ -81,14 +86,10 @@ export async function getDiscStyleBreakdown(): Promise<DiscDistributionEntry[]> 
         D: Number(r.natural_d ?? 0),
         I: Number(r.natural_i ?? 0),
         S: Number(r.natural_s ?? 0),
-        C: Number(r.natural_c ?? 0),
+        C: Number(r.natural_c ?? 0)
       };
-      const dominant = getDominantFromScores(
-        scores.D,
-        scores.I,
-        scores.S,
-        scores.C
-      );
+      const dominant = Object.entries(scores)
+        .sort((a, b) => b[1] - a[1])[0][0];
       if (dominant in counts) counts[dominant as keyof typeof counts]++;
     }
 
@@ -137,7 +138,7 @@ export async function getDiscProfilesMap(): Promise<Map<string, DiscProfileEnric
     const c = Number(r.natural_c ?? 0);
     const style = getDominantFromScores(d, i, s, c);
     const label =
-      r.primary_style_label?.trim() ||
+      r.primary_style_label?.trim() ??
       deriveStyleLabel(d, i, s, c);
       map.set(r.client_id, { style, label });
     }

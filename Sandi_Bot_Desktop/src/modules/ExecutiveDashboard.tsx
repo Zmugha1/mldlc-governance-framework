@@ -141,23 +141,26 @@ export default function ExecutiveDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([
-      getDashboardStats(),
-      getAllClients(),
-      getDiscStyleBreakdown(),
-    ])
-      .then(([s, c, d]) => {
+    const loadDashboard = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [s, c, d] = await Promise.all([
+          getDashboardStats(),
+          getAllClients(),
+          getDiscStyleBreakdown(),
+        ]);
         setStats(s);
         setClients(c);
         setDiscDistribution(d);
-      })
-      .catch((err) => {
-        console.error('Dashboard load failed:', err);
+      } catch (err) {
+        console.error('Dashboard load:', err);
         setError(String(err?.message ?? err ?? 'Failed to load dashboard'));
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDashboard();
   }, []);
 
   const recommendationData = useMemo(() => {

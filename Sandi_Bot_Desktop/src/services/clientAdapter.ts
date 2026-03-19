@@ -46,7 +46,7 @@ export function clientToDisplay(client: Client, options?: ClientDisplayOptions |
       : undefined;
 
   const disc =
-    discEnrichment != null && typeof discEnrichment === 'object' && 'style' in discEnrichment
+    discEnrichment !== null && typeof discEnrichment === 'object' && 'style' in discEnrichment
       ? discEnrichment
       : undefined;
   const discStyle = (disc?.style ?? client.disc_style ?? 'I') as 'D' | 'I' | 'S' | 'C';

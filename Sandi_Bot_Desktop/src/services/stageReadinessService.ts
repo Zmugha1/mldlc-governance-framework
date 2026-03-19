@@ -97,38 +97,28 @@ async function getClientData(clientId: string): Promise<ClientData | null> {
   return rows[0] ?? null;
 }
 
-function normalizeStage(stage: string): PipelineStage {
-  const valid: PipelineStage[] = ['IC', 'C1', 'C2', 'C3', 'C4', 'C5'];
-  if (valid.includes(stage as PipelineStage)) {
+function normalizeStage(
+  stage: string | null | undefined
+): PipelineStage {
+  const valid = ['IC', 'C1', 'C2', 'C3', 'C4', 'C5'];
+  if (stage && valid.includes(stage)) {
     return stage as PipelineStage;
   }
   return 'IC';
 }
 
 function calculateReadinessScore(
-  comp: Completeness | null | undefined,
-  _stage: PipelineStage
+  comp: Completeness
 ): number {
   if (!comp) return 0;
   let score = 0;
-  let max = 0;
-
-  max += 25;
   if (comp?.has_disc) score += 25;
-
-  max += 25;
   if (comp?.has_you2) score += 25;
-
-  max += 25;
-  const fathomCount = comp?.fathom_count ?? 0;
-  if (fathomCount >= 1) score += 10;
-  if (fathomCount >= 2) score += 10;
-  if (fathomCount >= 3) score += 5;
-
-  max += 25;
+  if ((comp?.fathom_count ?? 0) >= 1) score += 10;
+  if ((comp?.fathom_count ?? 0) >= 2) score += 10;
+  if ((comp?.fathom_count ?? 0) >= 3) score += 5;
   if (comp?.has_vision) score += 25;
-
-  return max > 0 ? Math.round((score / max) * 100) : 0;
+  return score;
 }
 
 async function getCompleteness(clientId: string): Promise<Completeness> {
@@ -256,7 +246,7 @@ function buildWhatIsNeeded(
 
 function calculateRecommendation(
   stage: PipelineStage,
-  comp: Completeness | null | undefined,
+  comp: Completeness,
   readinessScore: number,
   pinkFlags: string[],
   whatIsNeeded: string[]
@@ -280,8 +270,9 @@ function calculateRecommendation(
   }
 
   const qualifiesForPush =
-    (readyToAdvance && readinessScore >= 50) ||
-    (comp?.has_disc && comp?.has_you2 && (comp?.fathom_count ?? 0) >= 2);
+    (readinessScore >= 50 && readyToAdvance)
+    || (comp.has_disc && comp.has_you2
+      && comp.fathom_count >= 1);
 
   if (qualifiesForPush) {
     const next = STAGE_NEXT[stage];
@@ -316,14 +307,13 @@ export async function getStageReadiness(
     }
   } catch { /* no pink flags */ }
 
-  const rawStage = client?.inferred_stage ?? 'IC';
-  const stage = normalizeStage(rawStage);
+  const stage = normalizeStage(client?.inferred_stage);
 
   const whyHere = buildWhyHere(stage, comp);
 
   const whatIsNeeded = buildWhatIsNeeded(stage, comp, pinkFlags);
 
-  const readinessScore = calculateReadinessScore(comp, stage);
+  const readinessScore = calculateReadinessScore(comp);
 
   const readyToAdvance =
     whatIsNeeded.length === 1 &&
