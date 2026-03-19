@@ -97,6 +97,38 @@ async function getClientData(clientId: string): Promise<ClientData | null> {
   return rows[0] ?? null;
 }
 
+function normalizeStage(stage: string): PipelineStage {
+  const valid: PipelineStage[] = ['IC', 'C1', 'C2', 'C3', 'C4', 'C5'];
+  if (valid.includes(stage as PipelineStage)) {
+    return stage as PipelineStage;
+  }
+  return 'IC';
+}
+
+function calculateReadinessScore(
+  comp: Completeness,
+  _stage: PipelineStage
+): number {
+  let score = 0;
+  let max = 0;
+
+  max += 25;
+  if (comp.has_disc) score += 25;
+
+  max += 25;
+  if (comp.has_you2) score += 25;
+
+  max += 25;
+  if (comp.fathom_count >= 1) score += 10;
+  if (comp.fathom_count >= 2) score += 10;
+  if (comp.fathom_count >= 3) score += 5;
+
+  max += 25;
+  if (comp.has_vision) score += 25;
+
+  return Math.round((score / max) * 100);
+}
+
 async function getCompleteness(clientId: string): Promise<Completeness> {
   const disc = await dbSelect<Array<{ count: number }>>(
     `SELECT COUNT(*) as count
@@ -243,7 +275,11 @@ function calculateRecommendation(
     };
   }
 
-  if (readyToAdvance && readinessScore >= 60) {
+  const qualifiesForPush =
+    (readyToAdvance && readinessScore >= 50) ||
+    (comp.has_disc && comp.has_you2 && comp.fathom_count >= 2);
+
+  if (qualifiesForPush) {
     const next = STAGE_NEXT[stage];
     return {
       rec: 'PUSH',
@@ -276,11 +312,13 @@ export async function getStageReadiness(
     }
   } catch { /* no pink flags */ }
 
-  const stage = (client.inferred_stage ?? 'IC') as PipelineStage;
+  const stage = normalizeStage(client.inferred_stage ?? 'IC');
 
   const whyHere = buildWhyHere(stage, comp);
 
   const whatIsNeeded = buildWhatIsNeeded(stage, comp, pinkFlags);
+
+  const readinessScore = calculateReadinessScore(comp, stage);
 
   const readyToAdvance =
     whatIsNeeded.length === 1 &&
@@ -289,7 +327,7 @@ export async function getStageReadiness(
   const { rec, reason } = calculateRecommendation(
     stage,
     comp,
-    client.readiness_score ?? 0,
+    readinessScore,
     pinkFlags,
     whatIsNeeded
   );
@@ -304,7 +342,7 @@ export async function getStageReadiness(
     outcome_bucket: client.outcome_bucket ?? 'active',
     recommendation: rec,
     recommendation_reason: reason,
-    readiness_score: client.readiness_score ?? 0,
+    readiness_score: readinessScore,
     why_here: whyHere,
     ready_to_advance: readyToAdvance,
     what_is_needed: whatIsNeeded,

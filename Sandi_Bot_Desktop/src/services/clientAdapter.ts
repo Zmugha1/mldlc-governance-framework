@@ -1,20 +1,53 @@
 import type { Client } from '../types';
 import { discColors } from '@/data/sampleClients';
 
+const STAGE_TO_DISPLAY: Record<string, string> = {
+  IC: 'Initial Contact',
+  C1: 'Seeker Connection',
+  C2: 'Seeker Clarification',
+  C3: 'Possibilities',
+  C4: 'Client Career 2.0',
+  C5: 'Business Purchase',
+  'Initial Contact': 'Initial Contact',
+  'Seeker Connection': 'Seeker Connection',
+  'Seeker Clarification': 'Seeker Clarification',
+  'Possibilities': 'Possibilities',
+  'Coach Client Collaboration': 'Possibilities',
+  'Client Career 2.0': 'Client Career 2.0',
+  'Business Purchase': 'Business Purchase',
+};
+
+/** Map raw stage (IC, C1, Validation, etc.) to display stage for stageConfig lookup */
+export function normalizeDisplayStage(stage: string | undefined): string {
+  const s = (stage ?? '').trim();
+  return STAGE_TO_DISPLAY[s] ?? 'Initial Contact';
+}
+
+export interface DiscEnrichment {
+  style: 'D' | 'I' | 'S' | 'C';
+  label: string;
+}
+
+export interface ClientDisplayOptions {
+  disc?: DiscEnrichment;
+  readinessScore?: number;
+}
+
 /** Convert flat Client to display format for UI components that expect avatar, disc.style, etc. */
-export function clientToDisplay(client: Client) {
-  const readinessAvg =
-    (client.readiness_identity +
-      client.readiness_commitment +
-      client.readiness_financial +
-      client.readiness_execution) /
-    4;
-  return {
+export function clientToDisplay(client: Client, options?: ClientDisplayOptions | DiscEnrichment) {
+  const discEnrichment = options && 'style' in options ? options : options?.disc;
+  const readinessScoreOverride = options && 'readinessScore' in options ? (options as ClientDisplayOptions).readinessScore : undefined;
+
+  const discStyle = (discEnrichment?.style ?? client.disc_style ?? 'I') as 'D' | 'I' | 'S' | 'C';
+  const discLabel = discEnrichment?.label ?? `DISC style: ${client.disc_style || 'Pending'}`;
+  const displayStage = normalizeDisplayStage(client.inferred_stage ?? client.stage);
+  const base = {
     ...client,
+    stage: displayStage,
     avatar: client.name.charAt(0).toUpperCase(),
     disc: {
-      style: (client.disc_style || 'I') as 'D' | 'I' | 'S' | 'C',
-      description: `DISC style: ${client.disc_style || 'Pending'}`,
+      style: discStyle,
+      description: discLabel,
       traits: client.disc_scores ? [client.disc_scores] : [],
       coachingTips: [],
       scores: undefined,
@@ -66,6 +99,10 @@ export function clientToDisplay(client: Client) {
     nextAction: '',
     createdAt: client.created_at,
   };
+  if (readinessScoreOverride !== undefined) {
+    return { ...base, readinessScorePct: readinessScoreOverride };
+  }
+  return base;
 }
 
 export function getDiscColor(style: string): string {

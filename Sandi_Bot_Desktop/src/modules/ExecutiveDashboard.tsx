@@ -27,9 +27,11 @@ import {
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
+import { getDiscStyleBreakdown, getDiscProfilesMap } from '@/services/dashboardService';
+import { getAllStageReadiness } from '@/services/stageReadinessService';
 import { getConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
 import type { DashboardStats } from '@/types';
-import { clientToDisplay } from '@/services/clientAdapter';
+import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter';
 import { cn } from '@/lib/utils';
 
 const STAGES = [
@@ -134,16 +136,22 @@ function PipelineStageCard({
 export default function ExecutiveDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [clients, setClients] = useState<Awaited<ReturnType<typeof getAllClients>>>([]);
+  const [discDistribution, setDiscDistribution] = useState<Awaited<ReturnType<typeof getDiscStyleBreakdown>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([getDashboardStats(), getAllClients()])
-      .then(([s, c]) => {
+    Promise.all([
+      getDashboardStats(),
+      getAllClients(),
+      getDiscStyleBreakdown(),
+    ])
+      .then(([s, c, d]) => {
         setStats(s);
         setClients(c);
+        setDiscDistribution(d);
       })
       .catch((err) => {
         console.error(err);
@@ -163,7 +171,7 @@ export default function ExecutiveDashboard() {
 
   const pipelineChartData = useMemo(() => {
     return STAGES.map((stage) => {
-      const count = clients.filter((c) => c.stage === stage).length;
+      const count = clients.filter((c) => normalizeDisplayStage(c.inferred_stage ?? c.stage) === stage).length;
       const config = stageConfig[stage as keyof typeof stageConfig];
       return {
         stage: config?.label ?? stage,
@@ -181,32 +189,38 @@ export default function ExecutiveDashboard() {
     { day: 'Fri', calls: 2, emails: 4 },
   ];
 
-  const priorityClients = useMemo(() => {
-    return clients
-      .filter((c) => c.recommendation === 'PUSH')
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, 3)
-      .map(clientToDisplay);
-  }, [clients]);
+  const [priorityClients, setPriorityClients] = useState<ReturnType<typeof clientToDisplay>[]>([]);
+  const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
 
-  const discDistribution = useMemo(() => {
-    const counts = { D: 0, I: 0, S: 0, C: 0 };
-    clients.forEach((client) => {
-      const style = client.disc_style || 'I';
-      if (style in counts) counts[style as keyof typeof counts]++;
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getAllStageReadiness(), getDiscProfilesMap()]).then(([readiness, profiles]) => {
+      if (cancelled) return;
+      const pushIds = readiness
+        .filter((r) => r.recommendation === 'PUSH')
+        .sort((a, b) => b.readiness_score - a.readiness_score)
+        .slice(0, 3)
+        .map((r) => r.client_id);
+      const readinessById = new Map(readiness.map((r) => [r.client_id, r.readiness_score]));
+      const pushClients = clients
+        .filter((c) => pushIds.includes(c.id))
+        .sort((a, b) => pushIds.indexOf(a.id) - pushIds.indexOf(b.id))
+        .map((c) =>
+          clientToDisplay(c, {
+            disc: profiles.get(c.id),
+            readinessScore: readinessById.get(c.id),
+          })
+        );
+      setPriorityClients(pushClients);
+      setDiscProfiles(profiles);
     });
-    return [
-      { name: 'D', value: counts.D, color: discColors.D },
-      { name: 'I', value: counts.I, color: discColors.I },
-      { name: 'S', value: counts.S, color: discColors.S },
-      { name: 'C', value: counts.C, color: discColors.C },
-    ];
+    return () => { cancelled = true; };
   }, [clients]);
 
   const pipelineStageCards = useMemo(() => {
     const defaults = getPipelineStageDefaults();
     return STAGES.map((stage) => {
-      const count = clients.filter((c) => c.stage === stage).length;
+      const count = clients.filter((c) => normalizeDisplayStage(c.inferred_stage ?? c.stage) === stage).length;
       return { stage, count, avgDays: defaults.avgDays, conversion: defaults.conversion };
     });
   }, [clients]);

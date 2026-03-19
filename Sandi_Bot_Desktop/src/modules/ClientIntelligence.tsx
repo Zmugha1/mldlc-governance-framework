@@ -44,8 +44,10 @@ import {
 import {
   getStageReadiness,
   moveClientStage,
+  getAllStageReadiness,
   type StageReadiness,
 } from '@/services/stageReadinessService';
+import { getDiscProfilesMap } from '@/services/dashboardService';
 import { cn } from '@/lib/utils';
 
 const CONFIRMED_BY = 'Zubia';
@@ -1193,11 +1195,20 @@ export default function ClientIntelligence() {
   } | null>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
+  const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
+  const [readinessMap, setReadinessMap] = useState<Map<string, number>>(new Map());
+
   const loadClients = () => {
     setLoading(true);
     setError(null);
-    getAllClients()
-      .then(setClients)
+    Promise.all([getAllClients(), getDiscProfilesMap(), getAllStageReadiness()])
+      .then(([c, profiles, readiness]) => {
+        setClients(c);
+        setDiscProfiles(profiles);
+        const rMap = new Map<string, number>();
+        readiness.forEach((r) => rMap.set(r.client_id, r.readiness_score));
+        setReadinessMap(rMap);
+      })
       .catch((err) => {
         console.error(err);
         setError(String(err?.message ?? err ?? 'Failed to load clients'));
@@ -1283,10 +1294,21 @@ export default function ClientIntelligence() {
   };
 
   const displayClients = useMemo(
-    () => filteredClients.map(clientToDisplay),
-    [filteredClients]
+    () =>
+      filteredClients.map((client) =>
+        clientToDisplay(client, {
+          disc: discProfiles.get(client.id),
+          readinessScore: readinessMap.get(client.id),
+        })
+      ),
+    [filteredClients, discProfiles, readinessMap]
   );
-  const selectedDisplay = selectedClient ? clientToDisplay(selectedClient) : null;
+  const selectedDisplay = selectedClient
+    ? clientToDisplay(selectedClient, {
+        disc: discProfiles.get(selectedClient.id),
+        readinessScore: readinessMap.get(selectedClient.id),
+      })
+    : null;
 
   if (loading) {
     return (
@@ -1443,12 +1465,12 @@ export default function ClientIntelligence() {
                         <div
                           className="h-full bg-blue-500 rounded-full"
                           style={{
-                            width: `${calculateReadinessScore(client.readiness)}%`,
+                            width: `${(client as DisplayClient & { readinessScorePct?: number }).readinessScorePct ?? calculateReadinessScore(client.readiness)}%`,
                           }}
                         />
                       </div>
                       <span className="text-xs font-medium">
-                        {calculateReadinessScore(client.readiness)}
+                        {(client as DisplayClient & { readinessScorePct?: number }).readinessScorePct ?? calculateReadinessScore(client.readiness)}
                         %
                       </span>
                     </div>
