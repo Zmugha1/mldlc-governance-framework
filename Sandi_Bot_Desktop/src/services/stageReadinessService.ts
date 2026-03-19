@@ -67,16 +67,6 @@ const ADVANCEMENT_REQUIREMENTS: Record<PipelineStage, string[]> = {
   C5: []
 };
 
-interface ClientData {
-  id: string;
-  name: string;
-  inferred_stage: string;
-  outcome_bucket: string;
-  readiness_score: number;
-  recommendation: string;
-  pink_flags: string;
-}
-
 interface Completeness {
   has_disc: boolean;
   has_you2: boolean;
@@ -86,84 +76,44 @@ interface Completeness {
   spouse_aligned: boolean;
 }
 
-async function getClientData(clientId: string): Promise<ClientData | null> {
-  const rows = await dbSelect<ClientData[]>(
-    `SELECT id, name, inferred_stage,
-     outcome_bucket, readiness_score,
-     recommendation, pink_flags
-     FROM clients WHERE id = $1`,
-    [clientId]
-  );
-  return rows[0] ?? null;
+interface StageReadinessRow {
+  id: string;
+  name: string;
+  outcome_bucket: string;
+  inferred_stage: string;
+  readiness_score: number;
+  pink_flags: string;
+  has_disc: number;
+  has_you2: number;
+  has_vision: number;
+  fathom_count: number;
 }
 
 function normalizeStage(
-  stage: string | null | undefined
+  stage: string
 ): PipelineStage {
-  const valid = ['IC', 'C1', 'C2', 'C3', 'C4', 'C5'];
-  if (stage && valid.includes(stage)) {
-    return stage as PipelineStage;
-  }
-  return 'IC';
+  const valid = [
+    'IC', 'C1', 'C2', 'C3', 'C4', 'C5'
+  ];
+  return valid.includes(stage)
+    ? stage as PipelineStage
+    : 'IC';
 }
 
 function calculateReadinessScore(
-  comp: Completeness
+  has_disc: boolean,
+  has_you2: boolean,
+  fathom_count: number,
+  has_vision: boolean
 ): number {
-  if (!comp) return 0;
   let score = 0;
-  if (comp?.has_disc) score += 25;
-  if (comp?.has_you2) score += 25;
-  if ((comp?.fathom_count ?? 0) >= 1) score += 10;
-  if ((comp?.fathom_count ?? 0) >= 2) score += 10;
-  if ((comp?.fathom_count ?? 0) >= 3) score += 5;
-  if (comp?.has_vision) score += 25;
+  if (has_disc) score += 25;
+  if (has_you2) score += 25;
+  if (fathom_count >= 1) score += 10;
+  if (fathom_count >= 2) score += 10;
+  if (fathom_count >= 3) score += 5;
+  if (has_vision) score += 25;
   return score;
-}
-
-async function getCompleteness(clientId: string): Promise<Completeness> {
-  const disc = await dbSelect<Array<{ count: number }>>(
-    `SELECT COUNT(*) as count
-     FROM client_disc_profiles
-     WHERE client_id = $1`,
-    [clientId]
-  );
-
-  const you2 = await dbSelect<Array<{
-    count: number;
-    spouse_on_calls: string;
-  }>>(
-    `SELECT COUNT(*) as count,
-     spouse_on_calls
-     FROM client_you2_profiles
-     WHERE client_id = $1`,
-    [clientId]
-  );
-
-  const fathom = await dbSelect<Array<{ count: number }>>(
-    `SELECT COUNT(*) as count
-     FROM coaching_sessions
-     WHERE client_id = $1`,
-    [clientId]
-  );
-
-  const vision = await dbSelect<Array<{ count: number }>>(
-    `SELECT COUNT(*) as count
-     FROM document_extractions
-     WHERE client_id = $1
-     AND document_type = 'vision'
-     AND extraction_status = 'complete'`,
-    [clientId]
-  );
-
-  return {
-    has_disc: (disc[0]?.count ?? 0) > 0,
-    has_you2: (you2[0]?.count ?? 0) > 0,
-    has_fathom: (fathom[0]?.count ?? 0) > 0,
-    fathom_count: fathom[0]?.count ?? 0,
-    has_vision: (vision[0]?.count ?? 0) > 0,
-    spouse_aligned: you2[0]?.spouse_on_calls === 'yes'
-  };
 }
 
 function buildWhyHere(stage: PipelineStage, comp: Completeness | null | undefined): string[] {
@@ -245,101 +195,98 @@ function buildWhatIsNeeded(
 }
 
 function calculateRecommendation(
-  stage: PipelineStage,
-  comp: Completeness,
-  readinessScore: number,
-  pinkFlags: string[],
-  whatIsNeeded: string[]
-): { rec: Recommendation; reason: string } {
-  const readyToAdvance =
-    whatIsNeeded.length === 1 &&
-    whatIsNeeded[0].includes('All requirements met');
-
-  if (pinkFlags.length >= 2) {
-    return {
-      rec: 'PAUSE',
-      reason: `PAUSE — ${pinkFlags.length} pink flags need resolution`
-    };
+  client_name: string,
+  outcome_bucket: string,
+  has_disc: boolean,
+  has_you2: boolean,
+  fathom_count: number,
+  pink_flags: string[]
+): Recommendation {
+  let recommendation: Recommendation;
+  if (outcome_bucket === 'paused') {
+    recommendation = 'PAUSE';
+  } else if (has_disc && has_you2 && fathom_count >= 1) {
+    recommendation = 'PUSH';
+  } else {
+    recommendation = 'NURTURE';
   }
-
-  if (!comp?.spouse_aligned && comp?.has_you2) {
-    return {
-      rec: 'PAUSE',
-      reason: 'PAUSE — Spouse alignment not confirmed'
-    };
-  }
-
-  const qualifiesForPush =
-    (readinessScore >= 50 && readyToAdvance)
-    || (comp.has_disc && comp.has_you2
-      && comp.fathom_count >= 1);
-
-  if (qualifiesForPush) {
-    const next = STAGE_NEXT[stage];
-    return {
-      rec: 'PUSH',
-      reason: next
-        ? `PUSH — Ready to advance to ${STAGE_FULL_NAMES[next]}`
-        : 'PUSH — Client has completed the journey'
-    };
-  }
-
-  const missing = whatIsNeeded[0] ?? 'Continue building readiness';
-  return {
-    rec: 'NURTURE',
-    reason: `NURTURE — ${missing}`
-  };
+  console.log(
+    '[stageReadiness] recommendation',
+    client_name,
+    outcome_bucket,
+    JSON.stringify(pink_flags),
+    recommendation
+  );
+  return recommendation;
 }
 
-export async function getStageReadiness(
-  clientId: string
-): Promise<StageReadiness | null> {
-  const client = await getClientData(clientId);
-  if (!client) return null;
-
-  const comp = await getCompleteness(clientId);
-
+function parsePinkFlags(raw: string | null | undefined): string[] {
   const pinkFlags: string[] = [];
   try {
-    const parsed = JSON.parse(client.pink_flags ?? '[]');
+    const parsed = JSON.parse(raw ?? '[]');
     if (Array.isArray(parsed)) {
       pinkFlags.push(...parsed);
     }
-  } catch { /* no pink flags */ }
+  } catch {
+    // no pink flags
+  }
+  return pinkFlags;
+}
 
-  const stage = normalizeStage(client?.inferred_stage);
-
+function rowToStageReadiness(row: StageReadinessRow): StageReadiness {
+  const hasDisc = row.has_disc === 1;
+  const hasYou2 = row.has_you2 === 1;
+  const hasVision = row.has_vision === 1;
+  const fathomCount = Number(row.fathom_count ?? 0);
+  const stage = normalizeStage(row.inferred_stage ?? '');
+  const comp: Completeness = {
+    has_disc: hasDisc,
+    has_you2: hasYou2,
+    has_fathom: fathomCount > 0,
+    fathom_count: fathomCount,
+    has_vision: hasVision,
+    spouse_aligned: true
+  };
+  const pinkFlags = parsePinkFlags(row.pink_flags);
   const whyHere = buildWhyHere(stage, comp);
-
   const whatIsNeeded = buildWhatIsNeeded(stage, comp, pinkFlags);
-
-  const readinessScore = calculateReadinessScore(comp);
-
-  const readyToAdvance =
-    whatIsNeeded.length === 1 &&
-    whatIsNeeded[0].includes('All requirements met');
-
-  const { rec, reason } = calculateRecommendation(
-    stage,
-    comp,
-    readinessScore,
-    pinkFlags,
-    whatIsNeeded
+  const readinessScore = calculateReadinessScore(
+    hasDisc,
+    hasYou2,
+    fathomCount,
+    hasVision
   );
-
+  const rec = calculateRecommendation(
+    row.name,
+    row.outcome_bucket,
+    hasDisc,
+    hasYou2,
+    fathomCount,
+    pinkFlags
+  );
   const nextStage = STAGE_NEXT[stage];
+  const recommendationReason =
+    rec === 'PAUSE'
+      ? row.outcome_bucket === 'paused'
+        ? 'PAUSE — Client is in paused bucket'
+        : `PAUSE — ${pinkFlags.length} pink flags need resolution`
+      : rec === 'PUSH'
+        ? nextStage
+          ? `PUSH — Ready to advance to ${STAGE_FULL_NAMES[nextStage]}`
+          : 'PUSH — Client has completed the journey'
+        : `NURTURE — ${whatIsNeeded[0] ?? 'Continue building readiness'}`;
 
   return {
-    client_id: clientId,
-    client_name: client.name,
+    client_id: row.id,
+    client_name: row.name,
     current_stage: stage,
     current_stage_full: STAGE_FULL_NAMES[stage],
-    outcome_bucket: client.outcome_bucket ?? 'active',
+    outcome_bucket: row.outcome_bucket ?? 'active',
     recommendation: rec,
-    recommendation_reason: reason,
+    recommendation_reason: recommendationReason,
     readiness_score: readinessScore,
     why_here: whyHere,
-    ready_to_advance: readyToAdvance,
+    ready_to_advance: rec === 'PUSH',
     what_is_needed: whatIsNeeded,
     pink_flags: pinkFlags,
     next_stage: nextStage,
@@ -347,19 +294,82 @@ export async function getStageReadiness(
   };
 }
 
+export async function getStageReadiness(
+  clientId: string
+): Promise<StageReadiness | null> {
+  const rows = await dbSelect<StageReadinessRow>(
+    `SELECT
+       c.id,
+       c.name,
+       c.outcome_bucket,
+       c.inferred_stage,
+       c.readiness_score,
+       c.pink_flags,
+       CASE WHEN dp.client_id IS NOT NULL
+         THEN 1 ELSE 0 END as has_disc,
+       CASE WHEN y.client_id IS NOT NULL
+         THEN 1 ELSE 0 END as has_you2,
+       CASE WHEN y.one_year_vision IS NOT NULL
+         AND LENGTH(y.one_year_vision) > 20
+         THEN 1 ELSE 0 END as has_vision,
+       COUNT(cs.id) as fathom_count
+     FROM clients c
+     LEFT JOIN client_disc_profiles dp
+       ON dp.client_id = c.id
+     LEFT JOIN client_you2_profiles y
+       ON y.client_id = c.id
+     LEFT JOIN coaching_sessions cs
+       ON cs.client_id = c.id
+     WHERE c.id = ?
+     GROUP BY c.id`,
+    [clientId]
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+  return rowToStageReadiness(row);
+}
+
 export async function getAllStageReadiness(): Promise<StageReadiness[]> {
   try {
-    const clients = await dbSelect<Array<{ id: string }>>(
-      `SELECT id FROM clients
-       WHERE outcome_bucket = 'active'
-       ORDER BY name`
+    const rows = await dbSelect<StageReadinessRow>(
+      `SELECT
+         c.id,
+         c.name,
+         c.outcome_bucket,
+         c.inferred_stage,
+         c.readiness_score,
+         c.pink_flags,
+         CASE WHEN dp.client_id IS NOT NULL
+           THEN 1 ELSE 0 END as has_disc,
+         CASE WHEN y.client_id IS NOT NULL
+           THEN 1 ELSE 0 END as has_you2,
+         CASE WHEN y.one_year_vision IS NOT NULL
+           AND LENGTH(y.one_year_vision) > 20
+           THEN 1 ELSE 0 END as has_vision,
+         COUNT(cs.id) as fathom_count
+       FROM clients c
+       LEFT JOIN client_disc_profiles dp
+         ON dp.client_id = c.id
+       LEFT JOIN client_you2_profiles y
+         ON y.client_id = c.id
+       LEFT JOIN coaching_sessions cs
+         ON cs.client_id = c.id
+       GROUP BY c.id
+       ORDER BY c.name`,
+      []
     );
-
-    const results = await Promise.all(
-      clients.map(c => getStageReadiness(c.id))
-    );
-
-    return results.filter((r): r is StageReadiness => r !== null);
+    const scores = rows
+      .filter(r => r.outcome_bucket !== 'converted')
+      .map(r => calculateReadinessScore(
+        r.has_disc === 1,
+        r.has_you2 === 1,
+        Number(r.fathom_count ?? 0),
+        r.has_vision === 1
+      ))
+      .filter(s => s > 0);
+    void scores;
+    return rows.map(rowToStageReadiness);
   } catch (err) {
     console.error('getAllStageReadiness failed:', err);
     return [];

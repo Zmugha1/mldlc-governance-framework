@@ -1,5 +1,6 @@
 import { dbSelect } from './db';
 import { discColors } from '@/data/sampleClients';
+import { getAllStageReadiness, type Recommendation } from './stageReadinessService';
 
 export interface DiscDistributionEntry {
   name: string;
@@ -113,6 +114,78 @@ export async function getDiscStyleBreakdown(): Promise<DiscDistributionEntry[]> 
 export interface DiscProfileEnrichment {
   style: 'D' | 'I' | 'S' | 'C';
   label: string;
+}
+
+export interface DashboardKPIs {
+  push_count: number;
+  nurture_count: number;
+  pause_count: number;
+  avg_readiness: number;
+}
+
+export interface HotProspect {
+  id: string;
+  name: string;
+  stage: string;
+  recommendation: Recommendation;
+  readiness_score: number;
+  disc_style: string | null;
+}
+
+export async function getDashboardKPIs(): Promise<DashboardKPIs> {
+  const allReadiness =
+    await getAllStageReadiness();
+
+  const activeOnly = allReadiness.filter(
+    r => r.outcome_bucket !== 'converted'
+  );
+
+  const push_count = activeOnly.filter(
+    r => r.recommendation === 'PUSH'
+  ).length;
+  const nurture_count = activeOnly.filter(
+    r => r.recommendation === 'NURTURE'
+  ).length;
+  const pause_count = activeOnly.filter(
+    r => r.recommendation === 'PAUSE'
+  ).length;
+
+  const scores = activeOnly
+    .map(r => r.readiness_score)
+    .filter(s => s > 0);
+  const avg_readiness = scores.length > 0
+    ? Math.round(
+        scores.reduce((a, b) => a + b, 0)
+        / scores.length
+      )
+    : 0;
+
+  return { push_count, nurture_count, pause_count, avg_readiness };
+}
+
+export async function getHotProspects(
+  limit = 5
+): Promise<HotProspect[]> {
+  const allReadiness =
+    await getAllStageReadiness();
+
+  return allReadiness
+    .filter(r =>
+      r.recommendation === 'PUSH' ||
+      r.readiness_score >= 50
+    )
+    .sort((a, b) =>
+      b.readiness_score - a.readiness_score
+    )
+    .slice(0, limit)
+    .map(r => ({
+      id: r.client_id,
+      name: r.client_name,
+      stage: r.current_stage_full,
+      recommendation: r.recommendation,
+      readiness_score: r.readiness_score,
+      disc_style: null
+    }));
 }
 
 export async function getDiscProfilesMap(): Promise<Map<string, DiscProfileEnrichment>> {
