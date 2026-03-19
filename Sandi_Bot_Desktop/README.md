@@ -10,27 +10,25 @@
 - **Tailwind CSS 3.4** — Do NOT upgrade to v4
 - **SQLite** — Local persistence via rusqlite
 - **shadcn/ui + Radix UI** — Component library
+- **PDF Extraction** — pdfium-render (Rust crate) — Replaces lopdf
+- **OCR Fallback** — Tesseract CLI v5.5 — Image-based PDFs
+- **LLM Model** — qwen2.5:7b-instruct-q4_k_m — Replaces llama3.1:8b
 
 ## Prerequisites
 
 1. **Node.js 18+** and npm
 2. **Rust** — Install from [rustup.rs](https://rustup.rs/)
 3. **Platform deps** — See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
-
-### Required Runtime Dependencies
-
-- **pdfium.dll** — Place in `src-tauri/`
-  - Download: [github.com/bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries)
-  - File: pdfium-win-x64.tgz → extract pdfium.dll
-
-- **Tesseract OCR v5.5+**
-  - Download: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki)
-  - Install to: `C:\Program Files\Tesseract-OCR\`
-  - Required language: eng
-
-- **Ollama**
-  - Model: `qwen2.5:7b-instruct-q4_k_m`
-  - Command: `ollama pull qwen2.5:7b-instruct-q4_k_m`
+4. **pdfium.dll** — Download from:
+   [github.com/bblanchon/pdfium-binaries/releases](https://github.com/bblanchon/pdfium-binaries/releases)
+   Extract pdfium-win-x64.tgz → place pdfium.dll in `src-tauri/` directory
+5. **Tesseract OCR v5.5+**
+   Download from: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki)
+   Install to default location
+   Ensure English language pack is included
+6. **Ollama** with qwen2.5:7b-instruct-q4_k_m
+   `ollama pull qwen2.5:7b-instruct-q4_k_m`
+   Keep `ollama serve` running during imports
 
 ## Quick Start
 
@@ -55,10 +53,13 @@ Sandi_Bot_Desktop/
 │   └── types/              # TypeScript types
 ├── src-tauri/              # Rust backend
 │   └── src/
-│       ├── database.rs     # SQLite schema + queries
-│       ├── pdf_parser.rs   # PDF extraction
-│       ├── file_watcher.rs # Folder monitoring
-│       └── backup.rs       # Backup system
+│       ├── lib.rs              # IPC commands + migrations
+│       ├── database.rs         # SQLite schema + queries
+│       ├── text_extractor.rs   # pdfium + Tesseract OCR
+│       ├── disc_parser.rs      # Deterministic DISC regex
+│       ├── you2_parser.rs      # Deterministic You2 extraction
+│       ├── file_watcher.rs     # Folder monitoring
+│       └── backup.rs           # Backup system
 └── prompts/                # LLM templates (Phase 7)
 ```
 
@@ -107,7 +108,11 @@ C:\Users\zumah\SandiBot\clients\
 ## Critical Rules
 
 - **Never** use `better-sqlite3` (Node native module)
-- **Never** use `pdf-parse` — use `pdfium-render` / Tesseract OCR (Rust)
+- **Never** use `pdf-parse`, `pdf-extract`, or `lopdf`
+- **Always** use `pdfium-render` for PDF text extraction
+- **Always** use Tesseract CLI OCR for image-based PDFs
+- **pdfium.dll** must be present in `src-tauri/`
+- **Tesseract** must be installed at: `C:\Program Files\Tesseract-OCR\tesseract.exe`
 - **Never** upgrade Tailwind to v4
 - **Never** use Electron — Tauri only
 - **Always** log recommendations to audit table
