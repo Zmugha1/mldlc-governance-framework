@@ -42,3 +42,7 @@ SandiStahl_Bot/
 # Sandi Bot Desktop (Tauri + React)
 Sandi_Bot_Desktop/node_modules/
 Sandi_Bot_Desktop/dist/
+Sandi_Bot_Desktop/src-tauri/target/
+Sandi_Bot_Desktop/src-tauri/pdfium.dll
+Sandi_Bot_Desktop/src-tauri/bin/
+Sandi_Bot_Desktop/tesseract-ocr-w64-setup.exe
