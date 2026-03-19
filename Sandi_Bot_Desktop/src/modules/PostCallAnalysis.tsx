@@ -32,16 +32,15 @@ import {
   Radar
 } from 'recharts';
 import { SkeletonCard } from '@/components/SkeletonCard';
-import { sampleClients, knowledgeGraph } from '@/data/sampleClients';
+import { knowledgeGraph } from '@/data/sampleClients';
 import type { CLEARScores } from '@/types';
 import {
   getScoreColor,
   calculateOverallScore,
-  getHistoricalAverages,
   getCoachingTip,
-  calculateCallAverage,
   getStrengthsAndOpportunities,
 } from '@/services/postCallService';
+import { dbExecute, dbSelect } from '@/services/db';
 import { cn } from '@/lib/utils';
 
 // CLEAR Dimensions from Knowledge Graph
@@ -130,18 +129,39 @@ function CLEARScoreInput({
   );
 }
 
-// Mock historical scores for demonstration
-const mockHistoricalScores: CLEARScores[] = [
-  { curiosity: 4, locating: 3, engagement: 5, accountability: 4, reflection: 4, notes: 'Great call with Andrea - she opened up about health insurance concerns', date: '2026-03-10' },
-  { curiosity: 5, locating: 4, engagement: 4, accountability: 3, reflection: 5, notes: 'Alex is highly engaged, ready to move forward', date: '2026-03-08' },
-  { curiosity: 3, locating: 4, engagement: 3, accountability: 3, reflection: 3, notes: 'Marcus needs more data - provided detailed projections', date: '2026-03-05' },
-  { curiosity: 4, locating: 3, engagement: 4, accountability: 2, reflection: 4, notes: 'Sarah building confidence, age concerns addressed', date: '2026-03-01' },
-  { curiosity: 5, locating: 5, engagement: 5, accountability: 4, reflection: 5, notes: 'David highly motivated, spouse call scheduled', date: '2026-03-09' },
-];
+interface ActiveClient {
+  id: string;
+  name: string;
+}
+
+interface HistorySession {
+  id: number;
+  client_id: string;
+  client_name: string;
+  session_date: string;
+  call_duration: string;
+  clear_curiosity: number;
+  clear_locating: number;
+  clear_engagement: number;
+  clear_accountability: number;
+  clear_reflection: number;
+  clear_notes: string;
+  overall_clear_score: number;
+}
+
+interface ClearInsights {
+  avg_curiosity: number;
+  avg_locating: number;
+  avg_engagement: number;
+  avg_accountability: number;
+  avg_reflection: number;
+  total_sessions: number;
+}
 
 export default function PostCallAnalysis() {
   const [loading, setLoading] = useState(true);
   const [selectedClient, setSelectedClient] = useState<string>('');
+  const [clients, setClients] = useState<ActiveClient[]>([]);
   const [scores, setScores] = useState({
     curiosity: 3,
     locating: 3,
@@ -149,8 +169,13 @@ export default function PostCallAnalysis() {
     accountability: 3,
     reflection: 3,
   });
-  const [notes, setNotes] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [callDuration, setCallDuration] = useState('');
+  const [callNotes, setCallNotes] = useState('');
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [historySessions, setHistorySessions] = useState<HistorySession[]>([]);
+  const [insights, setInsights] = useState<ClearInsights | null>(null);
 
   // Calculate overall score
   const overallScore = useMemo(() => calculateOverallScore(scores), [scores]);
@@ -162,19 +187,127 @@ export default function PostCallAnalysis() {
     fullMark: 5,
   }));
 
-  // Historical averages
-  const historicalAverages = useMemo(
-    () => getHistoricalAverages(mockHistoricalScores, scores),
-    [scores]
-  );
+  const chartData = useMemo(() => {
+    const averageByKey: Record<keyof typeof scores, number> = {
+      curiosity: insights?.avg_curiosity ?? 0,
+      locating: insights?.avg_locating ?? 0,
+      engagement: insights?.avg_engagement ?? 0,
+      accountability: insights?.avg_accountability ?? 0,
+      reflection: insights?.avg_reflection ?? 0,
+    };
+    return clearDimensions.map((dim) => ({
+      dimension: dim.label,
+      average: averageByKey[dim.key as keyof typeof scores],
+      current: scores[dim.key as keyof typeof scores],
+    }));
+  }, [insights, scores]);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const loadClients = async () => {
+    const activeClients = await dbSelect<ActiveClient>(
+      `SELECT id, name FROM clients
+       WHERE outcome_bucket = 'active'
+       ORDER BY name`,
+      []
+    );
+    setClients(activeClients);
+  };
+
+  const loadHistory = async () => {
+    const sessions = await dbSelect<HistorySession>(
+      `SELECT cs.id, cs.client_id,
+       c.name as client_name,
+       cs.session_date, cs.call_duration,
+       cs.clear_curiosity, cs.clear_locating,
+       cs.clear_engagement,
+       cs.clear_accountability,
+       cs.clear_reflection, cs.clear_notes,
+       cs.overall_clear_score
+       FROM coaching_sessions cs
+       JOIN clients c ON c.id = cs.client_id
+       WHERE cs.overall_clear_score IS NOT NULL
+       ORDER BY cs.session_date DESC
+       LIMIT 20`,
+      []
+    );
+    setHistorySessions(sessions);
+  };
+
+  const loadInsights = async () => {
+    const insightRows = await dbSelect<ClearInsights>(
+      `SELECT
+       ROUND(AVG(clear_curiosity), 1) as avg_curiosity,
+       ROUND(AVG(clear_locating), 1) as avg_locating,
+       ROUND(AVG(clear_engagement), 1) as avg_engagement,
+       ROUND(AVG(clear_accountability), 1)
+         as avg_accountability,
+       ROUND(AVG(clear_reflection), 1) as avg_reflection,
+       COUNT(*) as total_sessions
+       FROM coaching_sessions
+       WHERE overall_clear_score IS NOT NULL`,
+      []
+    );
+    setInsights(insightRows[0] ?? null);
+  };
+
+  const handleSave = async () => {
+    if (!selectedClient) return;
+    setSaveError(null);
+    setSavedMessage(null);
+    try {
+      await dbExecute(
+        `INSERT INTO coaching_sessions
+         (client_id, session_date, call_duration,
+          clear_curiosity, clear_locating,
+          clear_engagement, clear_accountability,
+          clear_reflection, clear_notes,
+          overall_clear_score)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ROUND((? + ? + ? + ? + ?) / 5.0, 1))`,
+        [
+          selectedClient,
+          selectedDate,
+          callDuration,
+          scores.curiosity,
+          scores.locating,
+          scores.engagement,
+          scores.accountability,
+          scores.reflection,
+          callNotes,
+          scores.curiosity,
+          scores.locating,
+          scores.engagement,
+          scores.accountability,
+          scores.reflection
+        ]
+      );
+      setSavedMessage('Saved successfully!');
+      setSelectedClient('');
+      setSelectedDate(new Date().toISOString().split('T')[0]);
+      setCallDuration('');
+      setCallNotes('');
+      setScores({
+        curiosity: 3,
+        locating: 3,
+        engagement: 3,
+        accountability: 3,
+        reflection: 3,
+      });
+      await Promise.all([loadHistory(), loadInsights()]);
+      setTimeout(() => setSavedMessage(null), 2000);
+    } catch (err) {
+      setSaveError(String(err ?? 'Failed to save analysis'));
+    }
   };
 
   useEffect(() => {
-    setLoading(false);
+    const load = async () => {
+      try {
+        await Promise.all([loadClients(), loadHistory(), loadInsights()]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
 
   const coachingTip = getCoachingTip(scores);
@@ -226,9 +359,9 @@ export default function PostCallAnalysis() {
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select a client...</option>
-                      {sampleClients.map(client => (
+                      {clients.map(client => (
                         <option key={client.id} value={client.id}>
-                          {client.name} - {client.stage}
+                          {client.name}
                         </option>
                       ))}
                     </select>
@@ -236,11 +369,19 @@ export default function PostCallAnalysis() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-2 block">Date</label>
-                      <Input type="date" defaultValue={new Date().toISOString().split('T')[0]} />
+                      <Input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                      />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-2 block">Duration</label>
-                      <Input placeholder="e.g., 45 min" />
+                      <Input
+                        placeholder="e.g., 45 min"
+                        value={callDuration}
+                        onChange={(e) => setCallDuration(e.target.value)}
+                      />
                     </div>
                   </div>
                 </CardContent>
@@ -272,8 +413,8 @@ export default function PostCallAnalysis() {
                 <CardContent>
                   <Textarea
                     placeholder="What went well? What could be improved? Key takeaways..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
+                    value={callNotes}
+                    onChange={(e) => setCallNotes(e.target.value)}
                     rows={4}
                   />
                 </CardContent>
@@ -285,10 +426,10 @@ export default function PostCallAnalysis() {
                 className="w-full"
                 disabled={!selectedClient}
               >
-                {saved ? (
+                {savedMessage ? (
                   <>
                     <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Saved Successfully!
+                    {savedMessage}
                   </>
                 ) : (
                   <>
@@ -297,6 +438,9 @@ export default function PostCallAnalysis() {
                   </>
                 )}
               </Button>
+              {saveError && (
+                <p className="text-sm text-red-600 mt-2">{saveError}</p>
+              )}
             </div>
 
             {/* Right Column - Results */}
@@ -399,35 +543,56 @@ export default function PostCallAnalysis() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {mockHistoricalScores.map((score, index) => {
-                  const avg = calculateCallAverage(score);
+                {historySessions.length === 0 ? (
+                  <p className="text-slate-500">No analyses saved yet.</p>
+                ) : (
+                  historySessions.map((session) => {
                   return (
-                    <div key={index} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <div key={session.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
                             <Calendar className="h-5 w-5 text-blue-600" />
                           </div>
                           <div>
-                            <p className="font-semibold text-slate-900">{score.date}</p>
-                            <p className="text-sm text-slate-500">{score.notes}</p>
+                            <p className="font-semibold text-slate-900">
+                              {session.session_date} - {session.client_name}
+                            </p>
+                            <p className="text-sm text-slate-500">
+                              {session.call_duration || 'Duration not set'}{session.clear_notes ? ` - ${session.clear_notes}` : ''}
+                            </p>
                           </div>
                         </div>
-                        <Badge className={cn('text-white', getScoreColor(avg))}>
-                          {avg.toFixed(1)}/5
+                        <Badge className={cn('text-white', getScoreColor(session.overall_clear_score || 0))}>
+                          {(session.overall_clear_score || 0).toFixed(1)}/5
                         </Badge>
                       </div>
                       <div className="grid grid-cols-5 gap-2">
-                        {clearDimensions.map((dim) => (
-                          <div key={dim.key} className="text-center">
-                            <p className="text-xs text-slate-500">{dim.label.slice(0, 3)}</p>
-                            <p className="text-sm font-medium">{score[dim.key as keyof CLEARScores] as number}</p>
-                          </div>
-                        ))}
+                        <div className="text-center">
+                          <p className="text-xs text-slate-500">Cur</p>
+                          <p className="text-sm font-medium">{session.clear_curiosity}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-slate-500">Loc</p>
+                          <p className="text-sm font-medium">{session.clear_locating}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-slate-500">Eng</p>
+                          <p className="text-sm font-medium">{session.clear_engagement}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-slate-500">Acc</p>
+                          <p className="text-sm font-medium">{session.clear_accountability}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-slate-500">Ref</p>
+                          <p className="text-sm font-medium">{session.clear_reflection}</p>
+                        </div>
                       </div>
                     </div>
                   );
-                })}
+                })
+                )}
               </div>
             </CardContent>
           </Card>
@@ -442,26 +607,37 @@ export default function PostCallAnalysis() {
                 <CardTitle className="text-lg">Performance Trends</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={historicalAverages}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                    <XAxis dataKey="dimension" tick={{ fontSize: 11 }} />
-                    <YAxis domain={[0, 5]} tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="average" fill="#94A3B8" name="Your Average" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="current" fill="#3B82F6" name="Current Call" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="flex justify-center gap-6 mt-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 w-3 rounded-full bg-slate-400" />
-                    <span className="text-sm text-slate-600">Your Average</span>
+                {insights && insights.total_sessions > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                        <XAxis dataKey="dimension" tick={{ fontSize: 11 }} />
+                        <YAxis domain={[0, 5]} tick={{ fontSize: 11 }} />
+                        <Tooltip />
+                        <Bar dataKey="average" fill="#94A3B8" name="Your Average" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="current" fill="#3B82F6" name="Current Call" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="flex justify-center gap-6 mt-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full bg-slate-400" />
+                        <span className="text-sm text-slate-600">Your Average</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full bg-blue-500" />
+                        <span className="text-sm text-slate-600">Current Call</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3 text-center">
+                      Based on {insights.total_sessions} saved session{insights.total_sessions === 1 ? '' : 's'}
+                    </p>
+                  </>
+                ) : (
+                  <div className="py-10 text-center text-slate-500">
+                    No analyses saved yet. Complete your first post-call analysis to see insights.
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 w-3 rounded-full bg-blue-500" />
-                    <span className="text-sm text-slate-600">Current Call</span>
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
