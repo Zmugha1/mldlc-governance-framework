@@ -88,40 +88,6 @@ function RecommendationBadge({
   );
 }
 
-function ReadinessRadar({
-  scores,
-}: {
-  scores: { identity: number; commitment: number; financial: number; execution: number };
-}) {
-  const dimensions = [
-    { key: 'identity', label: 'Identity', score: scores.identity },
-    { key: 'commitment', label: 'Commitment', score: scores.commitment },
-    { key: 'financial', label: 'Financial', score: scores.financial },
-    { key: 'execution', label: 'Execution', score: scores.execution },
-  ];
-  return (
-    <div className="space-y-3">
-      {dimensions.map((dim) => (
-        <div key={dim.key}>
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-sm font-medium text-slate-700">{dim.label}</span>
-            <span className="text-sm font-bold text-slate-900">{dim.score}/5</span>
-          </div>
-          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all',
-                dim.score >= 4 ? 'bg-green-500' : dim.score >= 3 ? 'bg-yellow-500' : 'bg-red-500'
-              )}
-              style={{ width: `${(dim.score / 5) * 100}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function ClientDetailModal({
   client,
   isOpen,
@@ -148,10 +114,95 @@ function ClientDetailModal({
     time_commitment: string;
   } | null>(null);
   const [tumayData, setTumayData] = useState<Record<string, unknown> | null>(null);
+  const [readinessScorePct, setReadinessScorePct] = useState(0);
+  const [contact, setContact] = useState<{ email: string | null; phone: string | null; company: string | null }>({
+    email: null,
+    phone: null,
+    company: null,
+  });
+  const [discStyleLabel, setDiscStyleLabel] = useState<string>('—');
 
   useEffect(() => {
     if (client && isOpen) {
       getStageReadiness(client.id).then(setReadiness);
+      getAllStageReadiness()
+        .then((allReadiness) => {
+          const matched = allReadiness.find((r) => r.client_id === client.id);
+          setReadinessScorePct(matched?.readiness_score ?? 0);
+        })
+        .catch(() => setReadinessScorePct(0));
+      dbSelect<{
+        email: string | null;
+        phone: string | null;
+        company: string | null;
+      }>(
+        `SELECT email, phone, company FROM clients
+         WHERE id = ?`,
+        [client.id]
+      )
+        .then((rows) => {
+          setContact({
+            email: rows[0]?.email ?? null,
+            phone: rows[0]?.phone ?? null,
+            company: rows[0]?.company ?? null,
+          });
+        })
+        .catch(() => {
+          setContact({ email: null, phone: null, company: null });
+        });
+      dbSelect<{
+        natural_d: number | null;
+        natural_i: number | null;
+        natural_s: number | null;
+        natural_c: number | null;
+        primary_style_label: string | null;
+      }>(
+        `SELECT natural_d, natural_i, natural_s, natural_c, primary_style_label
+         FROM client_disc_profiles
+         WHERE client_id = ?`,
+        [client.id]
+      )
+        .then((rows) => {
+          const row = rows[0];
+          if (!row) {
+            setDiscStyleLabel('—');
+            return;
+          }
+          if (row.primary_style_label?.trim()) {
+            setDiscStyleLabel(row.primary_style_label.trim());
+            return;
+          }
+          const scores = {
+            D: Number(row.natural_d ?? 0),
+            I: Number(row.natural_i ?? 0),
+            S: Number(row.natural_s ?? 0),
+            C: Number(row.natural_c ?? 0),
+          };
+          const sorted = Object.entries(scores)
+            .sort((a, b) => b[1] - a[1]);
+          const top = sorted[0][0];
+          const second = sorted[1][0];
+          const labels: Record<string, string> = {
+            DS: 'Driving Supporter',
+            DI: 'Driving Influencer',
+            DC: 'Driving Analyzer',
+            ID: 'Influencing Driver',
+            IS: 'Influencing Supporter',
+            IC: 'Influencing Analyzer',
+            SD: 'Supporting Driver',
+            SI: 'Supporting Influencer',
+            SC: 'Supporting Analyzer',
+            CD: 'Analyzing Driver',
+            CI: 'Analyzing Influencer',
+            CS: 'Analyzing Supporter',
+            D: 'Driver',
+            I: 'Influencer',
+            S: 'Supporter',
+            C: 'Analyzer',
+          };
+          setDiscStyleLabel(labels[`${top}${second}`] ?? labels[top] ?? `High ${top}`);
+        })
+        .catch(() => setDiscStyleLabel('—'));
       dbSelect<{
         one_year_vision: string;
         spouse_name: string;
@@ -240,6 +291,9 @@ function ClientDetailModal({
       setYou2Vision('No statement yet');
       setYou2Details(null);
       setTumayData(null);
+      setReadinessScorePct(0);
+      setContact({ email: null, phone: null, company: null });
+      setDiscStyleLabel('—');
     }
   }, [client?.id, isOpen]);
 
@@ -270,7 +324,7 @@ function ClientDetailModal({
               <div>
                 <h2 className="text-2xl font-bold">{client.name}</h2>
                 <p className="text-sm text-slate-500 font-normal">
-                  {client.company || '—'} • {client.industry}
+                  {discStyleLabel} • {contact.company || '—'}
                 </p>
               </div>
             </div>
@@ -319,7 +373,18 @@ function ClientDetailModal({
                   <CardTitle className="text-sm text-slate-500">Readiness</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ReadinessRadar scores={client.readiness} />
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-slate-700">Readiness Score</span>
+                      <span className="text-sm font-bold text-slate-900">{readinessScorePct}%</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded-full transition-all"
+                        style={{ width: `${Math.max(0, Math.min(100, readinessScorePct))}%` }}
+                      />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -331,15 +396,15 @@ function ClientDetailModal({
               <CardContent className="space-y-2">
                 <div className="flex items-center gap-3">
                   <Mail className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{client.email || '—'}</span>
+                  <span className="text-sm">{contact.email || '—'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Phone className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{client.phone || '—'}</span>
+                  <span className="text-sm">{contact.phone || '—'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Briefcase className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{client.industry}</span>
+                  <span className="text-sm">{contact.company || '—'}</span>
                 </div>
               </CardContent>
             </Card>
