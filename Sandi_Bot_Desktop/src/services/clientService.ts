@@ -1,6 +1,7 @@
 import { dbSelect, dbExecute } from './db';
 import type { Client } from '../types';
 import { getRecommendation } from './recommendationService';
+import { getAllStageReadiness } from './stageReadinessService';
 import type { DashboardStats } from '../types';
 
 export async function getAllClients(): Promise<Client[]> {
@@ -143,6 +144,7 @@ export async function deleteClient(id: string): Promise<void> {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   const clients = await getAllClients();
+  const allReadiness = await getAllStageReadiness();
 
   const totalClients = clients.length;
   const activeConversations = clients.filter(
@@ -168,11 +170,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const conversionRate =
     totalClients > 0 ? Math.round((converted / totalClients) * 100) : 0;
 
-  const pushCount = clients.filter((c) => c.recommendation === 'PUSH').length;
-  const nurtureCount = clients.filter(
-    (c) => c.recommendation === 'NURTURE'
-  ).length;
-  const pauseCount = clients.filter((c) => c.recommendation === 'PAUSE').length;
+  const pushCount = allReadiness.filter((r) => r.recommendation === 'PUSH').length;
+  const nurtureCount = allReadiness.filter((r) => r.recommendation === 'NURTURE').length;
+  const pauseCount = allReadiness.filter((r) => r.recommendation === 'PAUSE').length;
 
   return {
     totalClients,

@@ -20,6 +20,7 @@ import {
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, discColors, knowledgeGraph } from '@/data/sampleClients';
 import { getAllClients } from '@/services/clientService';
+import { getAllStageReadiness } from '@/services/stageReadinessService';
 import { calculateConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import type { Client } from '@/types';
@@ -49,16 +50,24 @@ function PinkFlagAlert({ flags }: { flags: string[] }) {
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
 
+const REC_COLORS: Record<string, string> = {
+  PUSH: '#22c55e',
+  NURTURE: '#f59e0b',
+  PAUSE: '#ef4444',
+};
+
 // Stage Column Component
-function StageColumn({ 
-  stage, 
-  clients, 
+function StageColumn({
+  stage,
+  clients,
+  clientRecommendations,
   isActive,
   onClick,
   stats
-}: { 
-  stage: string; 
+}: {
+  stage: string;
   clients: DisplayClient[];
+  clientRecommendations: Map<string, string>;
   isActive: boolean;
   onClick: () => void;
   stats?: { avgDaysInStage: number; conversionRate: number };
@@ -95,37 +104,37 @@ function StageColumn({
 
       {/* Clients in Stage */}
       <div className="flex-1 p-3 space-y-2 min-h-[200px] max-h-[400px] overflow-auto">
-        {clients.map((client) => (
-          <div 
-            key={client.id}
-            className="p-3 rounded-lg bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <div 
-                className="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                style={{ backgroundColor: discColors[client.disc.style] }}
-              >
-                {client.avatar}
+        {clients.map((client) => {
+          const rec = clientRecommendations.get(client.id) ?? 'NURTURE';
+          const recColor = REC_COLORS[rec] ?? '#f59e0b';
+          return (
+            <div
+              key={client.id}
+              className="p-3 rounded-lg bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                  style={{ backgroundColor: discColors[client.disc.style] }}
+                >
+                  {client.avatar}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-900 truncate">{client.name}</p>
+                  <p className="text-xs text-slate-500 truncate">{client.tumay.industriesOfInterest[0]}</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900 truncate">{client.name}</p>
-                <p className="text-xs text-slate-500 truncate">{client.tumay.industriesOfInterest[0]}</p>
+              <div className="flex items-center justify-between">
+                <span
+                  className="text-xs font-semibold px-2 py-0.5 rounded"
+                  style={{ backgroundColor: recColor, color: 'white' }}
+                >
+                  {rec}
+                </span>
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              <Badge variant="outline" className="text-xs">
-                {client.persona}
-              </Badge>
-              <span className={cn(
-                "text-xs font-medium",
-                client.confidence >= 80 ? "text-green-600" : 
-                client.confidence >= 60 ? "text-yellow-600" : "text-red-600"
-              )}>
-                {client.confidence}%
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Stage Stats */}
@@ -141,6 +150,10 @@ function StageColumn({
 }
 
 const STAGES = ['Initial Contact', 'Seeker Connection', 'Seeker Clarification', 'Possibilities', 'Client Career 2.0', 'Business Purchase'];
+
+const STAGE_READINESS_TO_COLUMN: Record<string, string> = {
+  'Coach Client Collaboration': 'Possibilities',
+};
 
 // Conversion Funnel Component
 function ConversionFunnel({ clients }: { clients: Client[] }) {
@@ -187,14 +200,18 @@ function ConversionFunnel({ clients }: { clients: Client[] }) {
 export default function PipelineVisualizer() {
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
+  const [readiness, setReadiness] = useState<Awaited<ReturnType<typeof getAllStageReadiness>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getAllClients()
-      .then(setClients)
+    Promise.all([getAllClients(), getAllStageReadiness()])
+      .then(([c, r]) => {
+        setClients(c);
+        setReadiness(r);
+      })
       .catch((err) => {
         console.error(err);
         setError(String(err?.message ?? err ?? 'Failed to load pipeline'));
@@ -202,17 +219,31 @@ export default function PipelineVisualizer() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Group clients by stage (display format for StageColumn)
+  const clientRecommendations = useMemo(() => {
+    const m = new Map<string, string>();
+    readiness.forEach(r => m.set(r.client_id, r.recommendation));
+    return m;
+  }, [readiness]);
+
+  const clientMap = useMemo(() => {
+    const m = new Map<string, Client>();
+    clients.forEach(c => m.set(c.id, c));
+    return m;
+  }, [clients]);
+
+  // Group clients by stage from readiness (display format for StageColumn)
   const clientsByStage = useMemo(() => {
     const defaults = getPipelineStageDefaults();
     return STAGES.map(stage => ({
       stage,
-      clients: clients
-        .filter(c => c.stage === stage)
+      clients: readiness
+        .filter(r => (STAGE_READINESS_TO_COLUMN[r.current_stage_full] ?? r.current_stage_full) === stage)
+        .map(r => clientMap.get(r.client_id))
+        .filter((c): c is Client => c != null)
         .map(clientToDisplay),
       stats: { avgDaysInStage: defaults.avgDaysInStage, conversionRate: defaults.conversionRate }
     }));
-  }, [clients]);
+  }, [readiness, clientMap]);
 
   // Pipeline flow data from real clients
   const flowData = useMemo(() => {
@@ -357,6 +388,7 @@ export default function PipelineVisualizer() {
                 key={stage}
                 stage={stage}
                 clients={stageClients}
+                clientRecommendations={clientRecommendations}
                 isActive={selectedStage === stage}
                 onClick={() => setSelectedStage(selectedStage === stage ? null : stage)}
                 stats={stats}

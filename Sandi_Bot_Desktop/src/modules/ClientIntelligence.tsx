@@ -41,6 +41,11 @@ import {
   type You2ReviewData,
   type DiscReviewData,
 } from '@/services/extractionReviewService';
+import {
+  getStageReadiness,
+  moveClientStage,
+  type StageReadiness,
+} from '@/services/stageReadinessService';
 import { cn } from '@/lib/utils';
 
 const CONFIRMED_BY = 'Zubia';
@@ -125,6 +130,16 @@ function ClientDetailModal({
   onClose: () => void;
   onDelete?: (id: string) => void;
 }) {
+  const [readiness, setReadiness] = useState<StageReadiness | null>(null);
+
+  useEffect(() => {
+    if (client && isOpen) {
+      getStageReadiness(client.id).then(setReadiness);
+    } else {
+      setReadiness(null);
+    }
+  }, [client?.id, isOpen]);
+
   if (!client) return null;
 
   const stage = stageConfig[client.stage as keyof typeof stageConfig];
@@ -225,6 +240,74 @@ function ClientDetailModal({
                 </div>
               </CardContent>
             </Card>
+
+            {readiness && (
+              <Card className="readiness-card">
+                <CardHeader>
+                  <CardTitle className="text-lg">Stage Readiness</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div
+                    className="recommendation-badge inline-flex px-3 py-1.5 rounded-lg font-semibold text-sm"
+                    data-rec={readiness.recommendation}
+                    style={{
+                      backgroundColor:
+                        readiness.recommendation === 'PUSH'
+                          ? '#22c55e'
+                          : readiness.recommendation === 'NURTURE'
+                            ? '#f59e0b'
+                            : '#ef4444',
+                      color: 'white',
+                    }}
+                  >
+                    {readiness.recommendation}
+                  </div>
+                  <p className="text-sm text-slate-600">{readiness.recommendation_reason}</p>
+                  <div className="why-here">
+                    <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                      Why at {readiness.current_stage_full}
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-slate-600">
+                      {readiness.why_here.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="what-needed">
+                    <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                      To advance to {readiness.next_stage_full ?? '—'}
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-slate-600">
+                      {readiness.what_is_needed.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  {readiness.ready_to_advance && readiness.next_stage && (
+                    <Button
+                      onClick={() => {
+                        const reason = prompt(
+                          `Reason for moving to ${readiness.next_stage_full}?`
+                        );
+                        if (reason) {
+                          moveClientStage(
+                            readiness.client_id,
+                            readiness.next_stage,
+                            reason,
+                            'Sandi Stahl'
+                          ).then(() => {
+                            getStageReadiness(readiness.client_id).then(setReadiness);
+                          });
+                        }
+                      }}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      Move to {readiness.next_stage_full} →
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>
