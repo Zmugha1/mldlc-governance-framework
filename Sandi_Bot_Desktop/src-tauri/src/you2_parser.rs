@@ -56,11 +56,8 @@ pub fn extract_you2_vision_deterministic(text: &str) -> You2DeterministicResult 
 
     if let Some(idx) = dangers_idx {
         if idx > 1 {
-            result.vision = lines[1..idx]
-                .join(" ")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
+            let raw = lines[1..idx].join(" ");
+            result.vision = clean_vision_text(&raw);
         }
     }
 
@@ -81,13 +78,37 @@ pub fn extract_you2_vision_deterministic(text: &str) -> You2DeterministicResult 
     result
 }
 
+/// Strip everything before the actual answer (after "happy with your progress?")
+/// and strip "Other:" onwards.
+fn clean_vision_text(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    let marker = "happy with your progress?";
+    let start = if let Some(pos) = lower.find(marker) {
+        pos + marker.len()
+    } else {
+        0
+    };
+    let after_question = raw.get(start..).unwrap_or("").trim();
+    let before_other = if let Some(pos) = after_question.to_lowercase().find("other:") {
+        after_question[..pos].trim()
+    } else {
+        after_question
+    };
+    before_other
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
+}
+
 fn extract_danger_goal(lines: &[String]) -> Vec<DangerGoal> {
     let danger_re = Regex::new(r"^(?i)danger:\s*(.+)$").unwrap();
     let goal_re = Regex::new(r"^(?i)goal:\s*(.+)$").unwrap();
     let mut pairs = Vec::new();
     let mut current: Option<DangerGoal> = None;
 
-    for line in lines {
+    for (i, line) in lines.iter().enumerate() {
         if let Some(caps) = danger_re.captures(line) {
             if let Some(c) = current.take() {
                 pairs.push(c);
@@ -97,9 +118,13 @@ fn extract_danger_goal(lines: &[String]) -> Vec<DangerGoal> {
                 goal: String::new(),
             });
         } else if let Some(caps) = goal_re.captures(line) {
-            if let Some(mut c) = current.take() {
-                c.goal = caps[1].trim().to_string();
-                pairs.push(c);
+            // Only pair Goal with immediately preceding Danger: — not a Strength/Opportunity
+            let prev_is_danger = i > 0 && danger_re.is_match(&lines[i - 1]);
+            if prev_is_danger {
+                if let Some(mut c) = current.take() {
+                    c.goal = caps[1].trim().to_string();
+                    pairs.push(c);
+                }
             }
         }
     }
@@ -115,7 +140,7 @@ fn extract_strength_goal(lines: &[String]) -> Vec<StrengthGoal> {
     let mut pairs = Vec::new();
     let mut current: Option<StrengthGoal> = None;
 
-    for line in lines {
+    for (i, line) in lines.iter().enumerate() {
         if let Some(caps) = strength_re.captures(line) {
             if let Some(c) = current.take() {
                 pairs.push(c);
@@ -125,9 +150,12 @@ fn extract_strength_goal(lines: &[String]) -> Vec<StrengthGoal> {
                 goal: String::new(),
             });
         } else if let Some(caps) = goal_re.captures(line) {
-            if let Some(mut c) = current.take() {
-                c.goal = caps[1].trim().to_string();
-                pairs.push(c);
+            let prev_is_strength = i > 0 && strength_re.is_match(&lines[i - 1]);
+            if prev_is_strength {
+                if let Some(mut c) = current.take() {
+                    c.goal = caps[1].trim().to_string();
+                    pairs.push(c);
+                }
             }
         }
     }
@@ -143,7 +171,7 @@ fn extract_opportunity_goal(lines: &[String]) -> Vec<OpportunityGoal> {
     let mut pairs = Vec::new();
     let mut current: Option<OpportunityGoal> = None;
 
-    for line in lines {
+    for (i, line) in lines.iter().enumerate() {
         if let Some(caps) = opp_re.captures(line) {
             if let Some(c) = current.take() {
                 pairs.push(c);
@@ -153,9 +181,12 @@ fn extract_opportunity_goal(lines: &[String]) -> Vec<OpportunityGoal> {
                 goal: String::new(),
             });
         } else if let Some(caps) = goal_re.captures(line) {
-            if let Some(mut c) = current.take() {
-                c.goal = caps[1].trim().to_string();
-                pairs.push(c);
+            let prev_is_opp = i > 0 && opp_re.is_match(&lines[i - 1]);
+            if prev_is_opp {
+                if let Some(mut c) = current.take() {
+                    c.goal = caps[1].trim().to_string();
+                    pairs.push(c);
+                }
             }
         }
     }
