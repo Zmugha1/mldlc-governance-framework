@@ -279,10 +279,11 @@ export async function bulkImportFolder(
 
       let files: string[] = [];
       try {
-        console.log('[PATH CHECK] Calling list_directory_files with path:', clientPath);
+        console.log('[YOU2 PATH CHECK]', 'clientName:', clientName, 'path:', clientPath);
         files = await invoke<string[]>('list_directory_files', {
           path: clientPath
         });
+        console.log('[YOU2 FILES RETURNED]', 'clientName:', clientName, 'files:', JSON.stringify(files));
       } catch {
         continue;
       }
@@ -365,6 +366,7 @@ export async function bulkImportFolder(
           result.skipped++;
         } else {
         const hasProfile = await hasYou2Profile(clientId);
+        console.log('[YOU2 SKIP]', 'clientName:', clientName, 'hasYou2Profile:', hasProfile, 'skipping:', hasProfile);
         if (hasProfile) {
           result.skipped++;
         } else {
@@ -439,7 +441,7 @@ export async function bulkImportFolder(
           file.fileName,
           extracted.text
         );
-        console.log('[DETECT] File:', file.fileName, '→ type:', docType ?? 'NO MATCH');
+        console.log('[YOU2 DETECT]', 'file:', file.fileName, 'type:', docType ?? 'NO MATCH');
         if (!docType) {
           if (!extracted.success || !extracted.text) {
             const errMsg = extracted.error ?? 'extraction failed';
