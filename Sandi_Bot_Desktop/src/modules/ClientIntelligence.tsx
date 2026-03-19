@@ -32,6 +32,7 @@ import type { Client } from '@/types';
 import { getAllClients, createClient, updateClient, deleteClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { calculateReadinessScore } from '@/services/coachingService';
+import { dbSelect } from '@/services/db';
 import {
   getAllClientsForReview,
   getClientYou2ForReview,
@@ -133,12 +134,112 @@ function ClientDetailModal({
   onDelete?: (id: string) => void;
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null);
+  const [you2Vision, setYou2Vision] = useState('No statement yet');
+  const [you2Details, setYou2Details] = useState<{
+    spouse_name: string;
+    financial_net_worth_range: string;
+    credit_score: number | null;
+    launch_timeline: string;
+    dangers: string[];
+    strengths: string[];
+    opportunities: string[];
+    areas_of_interest: string[];
+    skills: string[];
+    time_commitment: string;
+  } | null>(null);
+  const [tumayData, setTumayData] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (client && isOpen) {
       getStageReadiness(client.id).then(setReadiness);
+      dbSelect<{
+        one_year_vision: string;
+        spouse_name: string;
+        financial_net_worth_range: string;
+        credit_score: number;
+        launch_timeline: string;
+        dangers: string;
+        strengths: string;
+        opportunities: string;
+        areas_of_interest: string;
+        skills: string;
+        time_commitment: string;
+      }>(
+        `SELECT one_year_vision, spouse_name,
+         financial_net_worth_range, credit_score,
+         launch_timeline, dangers, strengths,
+         opportunities, areas_of_interest,
+         skills, time_commitment
+         FROM client_you2_profiles
+         WHERE client_id = ?`,
+        [client.id]
+      )
+        .then((you2Result) => {
+          const row = you2Result[0];
+          const vision = row?.one_year_vision
+            ?? 'No statement yet';
+          setYou2Vision(vision);
+          const parseList = (raw: string | null | undefined): string[] => {
+            if (!raw) return [];
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                return parsed.map(String).filter(Boolean);
+              }
+            } catch {
+              // fallback below
+            }
+            return raw
+              .split('\n')
+              .map((s) => s.trim())
+              .filter(Boolean);
+          };
+          setYou2Details(
+            row
+              ? {
+                  spouse_name: row.spouse_name ?? '',
+                  financial_net_worth_range: row.financial_net_worth_range ?? '',
+                  credit_score: row.credit_score ?? null,
+                  launch_timeline: row.launch_timeline ?? '',
+                  dangers: parseList(row.dangers),
+                  strengths: parseList(row.strengths),
+                  opportunities: parseList(row.opportunities),
+                  areas_of_interest: parseList(row.areas_of_interest),
+                  skills: parseList(row.skills),
+                  time_commitment: row.time_commitment ?? '',
+                }
+              : null
+          );
+        })
+        .catch(() => {
+          setYou2Vision('No statement yet');
+          setYou2Details(null);
+        });
+      dbSelect<{
+        tumay_data: string;
+      }>(
+        `SELECT tumay_data FROM clients
+         WHERE id = ?`,
+        [client.id]
+      )
+        .then((tumayResult) => {
+          const tumayDataRaw = tumayResult[0]?.tumay_data;
+          if (!tumayDataRaw) {
+            setTumayData(null);
+            return;
+          }
+          try {
+            setTumayData(JSON.parse(tumayDataRaw));
+          } catch {
+            setTumayData(null);
+          }
+        })
+        .catch(() => setTumayData(null));
     } else {
       setReadiness(null);
+      setYou2Vision('No statement yet');
+      setYou2Details(null);
+      setTumayData(null);
     }
   }, [client?.id, isOpen]);
 
@@ -368,12 +469,32 @@ function ClientDetailModal({
               <CardContent>
                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
                   <p className="text-slate-700 italic">
-                    &quot;{client.you2.statement || 'No statement yet.'}&quot;
+                    &quot;{you2Vision || 'No statement yet'}&quot;
                   </p>
                 </div>
               </CardContent>
             </Card>
-            {(client.you2.dangers.length > 0 || client.you2.opportunities.length > 0) && (
+            {you2Details && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">You 2.0 Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-slate-700">
+                  {you2Details.spouse_name && <p><span className="font-semibold">Spouse:</span> {you2Details.spouse_name}</p>}
+                  {you2Details.financial_net_worth_range && <p><span className="font-semibold">Net worth range:</span> {you2Details.financial_net_worth_range}</p>}
+                  {you2Details.credit_score !== null && <p><span className="font-semibold">Credit score:</span> {you2Details.credit_score}</p>}
+                  {you2Details.launch_timeline && <p><span className="font-semibold">Launch timeline:</span> {you2Details.launch_timeline}</p>}
+                  {you2Details.time_commitment && <p><span className="font-semibold">Time commitment:</span> {you2Details.time_commitment}</p>}
+                  {you2Details.areas_of_interest.length > 0 && (
+                    <p><span className="font-semibold">Areas of interest:</span> {you2Details.areas_of_interest.join(', ')}</p>
+                  )}
+                  {you2Details.skills.length > 0 && (
+                    <p><span className="font-semibold">Skills:</span> {you2Details.skills.join(', ')}</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+            {you2Details && (you2Details.dangers.length > 0 || you2Details.opportunities.length > 0 || you2Details.strengths.length > 0) && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card>
                   <CardHeader>
@@ -384,7 +505,7 @@ function ClientDetailModal({
                   </CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
-                      {client.you2.dangers.map((danger, i) => (
+                      {you2Details.dangers.map((danger, i) => (
                         <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
                           <span className="text-red-500 mt-0.5">•</span>
                           {danger}
@@ -397,12 +518,12 @@ function ClientDetailModal({
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2 text-green-600">
                     <TrendingUp className="h-5 w-5" />
-                    Opportunities
-                  </CardTitle>
+                    Strengths & Opportunities
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
-                      {client.you2.opportunities.map((opp, i) => (
+                      {[...you2Details.strengths, ...you2Details.opportunities].map((opp, i) => (
                         <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
                           <span className="text-green-500 mt-0.5">•</span>
                           {opp}
@@ -421,11 +542,20 @@ function ClientDetailModal({
                 <CardTitle className="text-lg">TUMAY Data</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-slate-600">
-                  {client.tumay.industriesOfInterest[0] !== '—'
-                    ? client.tumay.industriesOfInterest.join(', ')
-                    : 'No TUMAY data yet.'}
-                </p>
+                {tumayData ? (
+                  <div className="space-y-2 text-sm text-slate-700">
+                    {Object.entries(tumayData).map(([key, value]) => (
+                      <p key={key}>
+                        <span className="font-semibold">{key}:</span>{' '}
+                        {typeof value === 'string'
+                          ? value
+                          : JSON.stringify(value)}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-600">No TUMAY data yet.</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
