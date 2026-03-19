@@ -160,16 +160,6 @@ function detectDocType(
   return null;
 }
 
-const isYou2File = (name: string): boolean => {
-  const n = name.toLowerCase();
-  return (n.includes('you') && (n.includes('2') || n.includes('two'))) ||
-    n.includes('you2') ||
-    n.includes('you 2') ||
-    n.includes('you2.0') ||
-    n.includes('tumay') ||
-    n.includes('you_2');
-};
-
 async function findOrCreateClient(
   clientName: string,
   bucket: OutcomeBucket
@@ -327,86 +317,8 @@ export async function bulkImportFolder(
     const clientFailed = { count: 0 };
     const clientSucceededTypes = new Set<string>();
 
-    // Separate You2/TUMAY files for concatenation
-    const you2Files = files.filter(f => isYou2File(f.fileName));
-    const otherFiles = files.filter(f => !isYou2File(f.fileName));
-
-    // Process You2 + TUMAY as combined extraction
-    if (you2Files.length > 0) {
-      let combinedText = '';
-      for (const file of you2Files) {
-        onProgress?.({
-          total,
-          current: ++current,
-          current_file: file.fileName,
-          current_client: clientName
-        });
-        try {
-          const extracted = await invoke<{
-            text: string;
-            success: boolean;
-            error?: string;
-          }>('extract_text_from_any_file', {
-            filePath: file.filePath
-          });
-          if (extracted.success && extracted.text) {
-            combinedText += '\n\n' + extracted.text;
-          }
-        } catch (e) {
-          const errMsg = e instanceof Error ? e.message : 'text extraction failed';
-          result.failedFiles.push({ clientName, fileName: file.fileName, error: errMsg });
-          result.failed++;
-          clientFailed.count++;
-          result.errors.push(`${clientName} — ${file.fileName}: ${errMsg}`);
-        }
-      }
-
-      if (combinedText.trim().length > 50) {
-        if (you2Files.some((f) => f.fileName.toLowerCase().includes('tumay'))) {
-          result.skipped++;
-        } else {
-        const hasProfile = await hasYou2Profile(clientId);
-        console.log('[YOU2 SKIP]', 'clientName:', clientName, 'hasYou2Profile:', hasProfile, 'skipping:', hasProfile);
-        if (hasProfile) {
-          result.skipped++;
-        } else {
-        try {
-          const r = await extractWithTimeout(
-            () => processDocument(
-              clientId,
-              'you2',
-              combinedText.trim(),
-              you2Files[0].fileName,
-              you2Files[0].filePath
-            ),
-            EXTRACTION_TIMEOUT
-          );
-          if (r.success) {
-            result.processed++;
-            clientProcessed.count++;
-            clientSucceededTypes.add('you2');
-          } else {
-            result.failed++;
-            clientFailed.count++;
-            const errMsg = r.error ?? 'extraction failed';
-            result.failedFiles.push({ clientName, fileName: you2Files[0].fileName, error: errMsg });
-            result.errors.push(`${clientName} — ${you2Files[0].fileName}: ${errMsg}`);
-          }
-        } catch (e) {
-          const errMsg = e instanceof Error ? e.message : 'Unknown error';
-          result.failed++;
-          clientFailed.count++;
-          result.failedFiles.push({ clientName, fileName: you2Files[0].fileName, error: errMsg });
-          result.errors.push(`${clientName} — ${you2Files[0].fileName}: ${errMsg}`);
-          console.error(`Failed to process ${you2Files[0].fileName}:`, e);
-        }
-        }
-        }
-      }
-    }
-
-    // Process all other files
-    for (const file of otherFiles) {
+    // Process all files in one loop — You2 skip check happens per file inside the loop
+    for (const file of files) {
       onProgress?.({
         total,
         current: ++current,
@@ -453,12 +365,15 @@ export async function bulkImportFolder(
           continue;
         }
 
-        // Skip only when profile/session data actually exists
+        // Skip only when profile/session data actually exists — check per file, not per client
         const hasProfile = docType === 'you2' ? await hasYou2Profile(clientId)
           : docType === 'disc' ? await hasDiscProfile(clientId)
           : docType === 'fathom' ? await hasFathomSession(clientId)
           : await hasVisionComplete(clientId);
         if (hasProfile) {
+          if (docType === 'you2') {
+            console.log('[YOU2 SKIP] Already has profile, skipping:', file.fileName);
+          }
           result.skipped++;
           continue;
         }
