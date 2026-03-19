@@ -286,12 +286,13 @@ export async function bulkImportFolder(
         continue;
       }
 
-      console.log('[SCAN] Client folder:', clientPath);
-      console.log('[SCAN] Files found:', files.join(', '));
+      console.log('[RAW FILES] Client:', clientName, 'Raw files before filter:', files.join(', '));
 
+      const filteredFiles: string[] = [];
       for (const file of files) {
         const ext = '.' + (file.split('.').pop()?.toLowerCase() ?? '');
         if (!SUPPORTED_EXTENSIONS.includes(ext)) continue;
+        filteredFiles.push(file);
 
         allFiles.push({
           filePath: `${clientPath}${sep}${file}`,
@@ -300,6 +301,7 @@ export async function bulkImportFolder(
           bucket
         });
       }
+      console.log('[FILTERED FILES] Client:', clientName, 'Files after filter:', filteredFiles.join(', '));
     }
   }
 
