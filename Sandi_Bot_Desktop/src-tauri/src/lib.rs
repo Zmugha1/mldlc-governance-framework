@@ -202,11 +202,21 @@ fn read_prompt_file(name: String, app_handle: tauri::AppHandle) -> Result<String
 #[tauri::command]
 fn list_directory_files(path: String) -> Result<Vec<String>, String> {
     let dir = std::fs::read_dir(&path)
-        .map_err(|e| format!("Cannot read {}: {}", path, e))?;
-    let files: Vec<String> = dir
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .collect();
+        .map_err(|e| format!("Cannot read dir {}: {}", path, e))?;
+
+    let mut files = Vec::new();
+
+    for entry in dir {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let file_name = entry.file_name().to_string_lossy().to_string();
+
+        println!("[RUST SCAN] Found file: {}", file_name);
+
+        files.push(file_name);
+    }
+
+    println!("[RUST SCAN] Total files in {}: {}", path, files.len());
+
     Ok(files)
 }
 
