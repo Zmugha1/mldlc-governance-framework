@@ -79,10 +79,13 @@ fn debug_disc_pages(file_path: String) -> String {
     result.text
 }
 
-/// Test You2 extraction for a single file — extracts full text and runs deterministic vision + top 3.
+/// Test You2 extraction for a single file — uses pdfium (pages 1–5), runs deterministic vision + top 3.
 #[tauri::command]
 fn test_you2_extraction(file_path: String) -> Result<serde_json::Value, String> {
-    let result = text_extractor::extract_text(&file_path);
+    let result = text_extractor::extract_pages_by_numbers(
+        &file_path,
+        vec![1, 2, 3, 4, 5], // You2 is typically 2 pages; pdfium handles missing pages gracefully
+    );
     let extracted = you2_parser::extract_you2_vision_deterministic(&result.text);
     Ok(serde_json::json!({
         "vision": extracted.vision,

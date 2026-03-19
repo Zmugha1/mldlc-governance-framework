@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { dbExecute, dbSelect } from './db';
+import { logEntry } from './auditService';
 import type {
   DiscProfile,
   You2Profile,
@@ -770,15 +771,36 @@ export async function extractYou2Profile(
   filePath: string
 ): Promise<ExtractionResult<You2Profile>> {
   try {
-    // PASS 1 — Deterministic extraction (vision + top 3)
-    const deterministic = extractYou2VisionDeterministic(rawText);
+    // Get text: use pdfium for PDFs (lopdf cannot decode these), else use rawText
+    let workingText = rawText;
+    const isPdf = filePath.toLowerCase().endsWith('.pdf');
+    if (isPdf) {
+      const pageResult = await invoke<{
+        text: string;
+        success: boolean;
+        error?: string;
+      }>('extract_pdf_pages', {
+        filePath,
+        pageNumbers: [1, 2, 3, 4, 5],
+      });
+      if (!pageResult.success) {
+        throw new Error(
+          `You2 page extraction failed: ${pageResult.error ?? 'unknown'}`
+        );
+      }
+      workingText = pageResult.text;
+    }
 
-    let profile: You2Profile | null = null;
+    // PASS 1 — Deterministic extraction (vision + top 3) — fast, no LLM
+    const deterministic = extractYou2VisionDeterministic(workingText);
 
-    if (deterministic.one_year_vision && deterministic.one_year_vision.length > 20) {
-      // Deterministic found vision — use it, skip LLM for core fields
-      const firstLine = rawText.split(/\r?\n/)[0]?.trim() || '';
-      profile = {
+    if (
+      deterministic.one_year_vision &&
+      deterministic.one_year_vision.length > 20
+    ) {
+      // Skip LLM entirely — deterministic succeeded
+      const firstLine = workingText.split(/\r?\n/)[0]?.trim() || '';
+      const profile: You2Profile = {
         client_name: firstLine || 'Unknown',
         one_year_vision: deterministic.one_year_vision,
         spouse_name: '',
@@ -800,10 +822,65 @@ export async function extractYou2Profile(
         self_sufficiency_excitement: '',
         additional_stakeholders: [],
       };
+      await dbExecute(
+        `INSERT OR REPLACE INTO client_you2_profiles
+         (client_id, one_year_vision, spouse_name, spouse_role,
+          spouse_on_calls, spouse_mindset, financial_net_worth_range,
+          credit_score, launch_timeline, time_commitment, dangers,
+          strengths, opportunities, areas_of_interest,
+          reasons_for_change, location_preference, skills,
+          prior_business_experience, self_sufficiency_excitement,
+          additional_stakeholders, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,CURRENT_TIMESTAMP)`,
+        [
+          clientId,
+          profile.one_year_vision,
+          profile.spouse_name,
+          profile.spouse_role,
+          profile.spouse_on_calls,
+          profile.spouse_mindset_verbatim,
+          profile.financial_net_worth_range,
+          profile.credit_score,
+          profile.launch_timeline,
+          profile.time_commitment,
+          JSON.stringify(profile.dangers),
+          JSON.stringify(profile.strengths),
+          JSON.stringify(profile.opportunities),
+          JSON.stringify(profile.areas_of_interest),
+          JSON.stringify(profile.reasons_for_change),
+          profile.location_preference,
+          JSON.stringify(profile.skills),
+          profile.prior_business_experience,
+          profile.self_sufficiency_excitement,
+          JSON.stringify(profile.additional_stakeholders),
+        ]
+      );
+      await recordExtraction(
+        clientId,
+        'you2',
+        filePath,
+        fileName,
+        'complete',
+        profile
+      );
+      await logEntry(
+        'you2_extraction',
+        clientId,
+        null,
+        null,
+        `You2 extracted via deterministic method. Vision length: ${deterministic.one_year_vision.length} chars.`,
+        'deterministic'
+      );
+      return {
+        success: true,
+        data: profile,
+        extraction_status: 'complete',
+      };
     }
 
-    // PASS 2 — LLM only if deterministic returned empty vision
-    if (!profile) {
+    // PASS 2 — LLM fallback only if deterministic returned empty vision
+    let profile: You2Profile | null = null;
+    {
       const prompt = await loadPrompt('you2_extraction');
 
       const systemPrompt = `${prompt}
@@ -893,7 +970,7 @@ Schema:
   "additional_stakeholders": [{ "name": "string", "relationship": "string" }]
 }`;
 
-      const rawResponse = await callOllamaYou2(systemPrompt, rawText, YOU2_FORMAT_SCHEMA);
+      const rawResponse = await callOllamaYou2(systemPrompt, workingText, YOU2_FORMAT_SCHEMA);
       profile = parseExtractionResponse<You2Profile>(rawResponse);
 
       // Override with deterministic top 3 if LLM missed them
@@ -989,6 +1066,14 @@ Schema:
       fileName,
       'complete',
       profile
+    );
+    await logEntry(
+      'you2_extraction',
+      clientId,
+      null,
+      null,
+      `You2 extracted via llm method. Vision length: ${profile.one_year_vision?.length ?? 0} chars.`,
+      'qwen2.5:7b-instruct-q4_k_m'
     );
 
     return {
