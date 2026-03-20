@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { dbExecute, dbSelect } from './db';
+import { dbExecute, dbSelect, getDb } from './db';
 import { logEntry } from './auditService';
 import type {
   DiscProfile,
@@ -1371,6 +1371,136 @@ export async function reExtractVision(
   const fileName = filePath.split(/[\\/]/).pop() || 'vision.pptx';
   const result = await handleVisionStatement(clientId, fileName, filePath, '');
   return result.success;
+}
+
+async function extractVisionFromFile(
+  clientId: string,
+  filePath: string
+): Promise<boolean> {
+  try {
+    const text = await invoke<string>(
+      'extract_text', { filePath }
+    );
+    if (!text || text.trim().length < 20) {
+      return false;
+    }
+    const db = await getDb();
+    await db.execute(
+      `UPDATE clients
+       SET vision_statement = ?,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [text.trim(), clientId]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function extractTumayFromFile(
+  clientId: string,
+  filePath: string
+): Promise<boolean> {
+  try {
+    const text = await invoke<string>(
+      'extract_text', { filePath }
+    );
+    if (!text || text.trim().length < 20) {
+      return false;
+    }
+    const parsed = await invoke<string>(
+      'parse_tumay', { text }
+    );
+    const db = await getDb();
+    await db.execute(
+      `UPDATE clients
+       SET tumay_data = ?,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [parsed, clientId]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function bulkReExtractVisionAndTumay(
+  clients: Array<{
+    id: string;
+    name: string;
+    outcome_bucket: string;
+  }>
+): Promise<{
+  vision_success: number;
+  tumay_success: number;
+  errors: string[];
+}> {
+  const BASE = 'C:\\Users\\zumah\\SandiBot\\clients';
+  const BUCKETS: Record<string, string> = {
+    active: 'Active',
+    converted: 'WIN',
+    paused: 'Paused',
+  };
+
+  let vision_success = 0;
+  let tumay_success = 0;
+  const errors: string[] = [];
+
+  for (const client of clients) {
+    const bucket = BUCKETS[client.outcome_bucket]
+      ?? 'Active';
+    const folderName = client.name
+      .replace(/\s+/g, '_');
+    const folderPath =
+      `${BASE}\\${bucket}\\${folderName}`;
+
+    try {
+      let files: string[] = [];
+      try {
+        files = await invoke<string[]>(
+          'list_directory', { path: folderPath }
+        );
+      } catch {
+        files = await invoke<string[]>(
+          'list_directory_files', { path: folderPath }
+        );
+      }
+
+      for (const filePath of files) {
+        const lower = filePath.toLowerCase();
+
+        if (lower.includes('vision') &&
+            lower.endsWith('.pptx')) {
+          const ok = await extractVisionFromFile(
+            client.id, filePath
+          );
+          if (ok) vision_success++;
+          else errors.push(
+            `Vision failed: ${client.name}`
+          );
+        }
+
+        if (lower.includes('tumay') &&
+            lower.endsWith('.pdf')) {
+          const ok = await extractTumayFromFile(
+            client.id, filePath
+          );
+          if (ok) tumay_success++;
+          else errors.push(
+            `TUMAY failed: ${client.name}`
+          );
+        }
+      }
+    } catch {
+      errors.push(
+        `Folder not found: ${folderPath}`
+      );
+    }
+  }
+
+  return { vision_success, tumay_success, errors };
 }
 
 // ─────────────────────────────────────

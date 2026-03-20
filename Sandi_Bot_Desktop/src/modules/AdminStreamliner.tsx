@@ -33,6 +33,7 @@ import { SkeletonCard } from '@/components/SkeletonCard';
 import { Progress } from '@/components/ui/progress';
 import { knowledgeGraph } from '@/data/sampleClients';
 import { bulkImportFolder, bulkImportRetryFailed, type BulkImportResult, type ImportProgress } from '@/services/bulkImportService';
+import { bulkReExtractVisionAndTumay } from '@/services/documentExtractionService';
 import { getAllClients, getRankedClients, getPushClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
 import { getAuditLog, auditEntriesToActivityLogs } from '@/services/auditService';
 import { dbSelect } from '@/services/db';
@@ -129,6 +130,12 @@ export default function AdminStreamliner() {
   const [importRunning, setImportRunning] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
+  const [reExtractRunning, setReExtractRunning] = useState(false);
+  const [reExtractResult, setReExtractResult] = useState<{
+    vision_success: number;
+    tumay_success: number;
+    errors: string[];
+  } | null>(null);
   const [testDiscOutput, setTestDiscOutput] = useState<string | null>(null);
   const [backupStatus, setBackupStatus] = useState<{
     backup_count: number;
@@ -206,7 +213,10 @@ export default function AdminStreamliner() {
     setImportResult(null);
     try {
       const appDir = await invoke<string>('get_app_dir');
+      const watcherPath = `${appDir.replace(/[/\\]+$/, '')}/client-files`;
       const basePath = `${appDir.replace(/[/\\]+$/, '')}/clients`;
+      console.log('[admin] file watcher absolute path:', watcherPath);
+      console.log('[admin] extraction base path:', basePath);
       const result = await bulkImportFolder(basePath, (p) => setImportProgress(p));
       setImportResult(result);
       const [rawClients, auditEntries] = await Promise.all([
@@ -259,6 +269,32 @@ export default function AdminStreamliner() {
     } finally {
       setImportRunning(false);
       setImportProgress(null);
+    }
+  };
+
+  const handleReExtractVisionTumay = async () => {
+    setReExtractRunning(true);
+    setReExtractResult(null);
+    try {
+      const allClients = await dbSelect<{
+        id: string;
+        name: string;
+        outcome_bucket: string;
+      }>(
+        `SELECT id, name, outcome_bucket
+         FROM clients ORDER BY name`,
+        []
+      );
+      const result = await bulkReExtractVisionAndTumay(allClients);
+      setReExtractResult(result);
+    } catch (err) {
+      setReExtractResult({
+        vision_success: 0,
+        tumay_success: 0,
+        errors: [String(err)],
+      });
+    } finally {
+      setReExtractRunning(false);
     }
   };
 
@@ -458,7 +494,33 @@ export default function AdminStreamliner() {
                 >
                   Retry Failed Only
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleReExtractVisionTumay}
+                  disabled={reExtractRunning || importRunning}
+                >
+                  Re-Extract Vision & TUMAY
+                </Button>
               </div>
+              {reExtractRunning && (
+                <p className="text-sm text-slate-600">Extracting files...</p>
+              )}
+              {reExtractResult && !reExtractRunning && (
+                <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
+                  <p className="font-medium text-slate-800">Vision: {reExtractResult.vision_success}/17 extracted</p>
+                  <p className="font-medium text-slate-800">TUMAY: {reExtractResult.tumay_success}/17 extracted</p>
+                  {reExtractResult.errors.length > 0 && (
+                    <div>
+                      <p className="font-medium text-amber-700">Errors:</p>
+                      <ul className="text-sm text-slate-600 list-disc list-inside">
+                        {reExtractResult.errors.map((e, i) => (
+                          <li key={`${e}-${i}`}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
               {importRunning && importProgress && (
                 <div className="space-y-2">
                   <Progress
