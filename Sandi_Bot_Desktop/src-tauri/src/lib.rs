@@ -228,6 +228,43 @@ fn list_directory_files(path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+fn list_directory(
+    path: String
+) -> Result<Vec<String>, String> {
+    let dir = std::fs::read_dir(&path)
+        .map_err(|e| format!(
+            "Cannot read dir {}: {}", path, e
+        ))?;
+    let files: Vec<String> = dir
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .map(|e| e.path()
+            .to_string_lossy()
+            .to_string())
+        .collect();
+    Ok(files)
+}
+
+#[tauri::command]
+fn debug_list_path(
+    path: String
+) -> String {
+    match std::fs::read_dir(&path) {
+        Ok(dir) => {
+            let files: Vec<String> = dir
+                .filter_map(|e| e.ok())
+                .map(|e| e.path()
+                    .to_string_lossy()
+                    .to_string())
+                .collect();
+            format!("OK: {} files found: {:?}",
+                files.len(), files)
+        }
+        Err(e) => format!("ERROR: {}", e)
+    }
+}
+
+#[tauri::command]
 fn create_client_folder(
     base_path: String,
     bucket: String,
@@ -786,6 +823,8 @@ pub fn run() {
             greet,
             read_prompt_file,
             list_directory_files,
+            list_directory,
+            debug_list_path,
             get_app_dir,
             create_client_folder,
             watch_client_folders,
