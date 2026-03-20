@@ -55,6 +55,66 @@ const CONFIRMED_BY = 'Zubia';
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
 
+function tryParseJson(val: unknown): unknown {
+  if (!val) return null;
+  if (typeof val !== 'string') return val;
+  try { return JSON.parse(val); }
+  catch { return val; }
+}
+
+function deriveStyleLabel(
+  d: number,
+  i: number,
+  s: number,
+  c: number
+): string {
+  const scores: Record<string, number> = {
+    D: Number(d ?? 0),
+    I: Number(i ?? 0),
+    S: Number(s ?? 0),
+    C: Number(c ?? 0)
+  };
+  const sorted = Object.entries(scores)
+    .sort((a, b) => b[1] - a[1]);
+  const top = sorted[0][0];
+  const second = sorted[1][0];
+  const labels: Record<string, string> = {
+    DS: 'Driving Supporter',
+    DI: 'Driving Influencer',
+    DC: 'Driving Analyzer',
+    ID: 'Influencing Driver',
+    IS: 'Influencing Supporter',
+    IC: 'Influencing Analyzer',
+    SD: 'Supporting Driver',
+    SI: 'Supporting Influencer',
+    SC: 'Supporting Analyzer',
+    CD: 'Analyzing Driver',
+    CI: 'Analyzing Influencer',
+    CS: 'Analyzing Supporter',
+    D: 'Driver', I: 'Influencer',
+    S: 'Supporter', C: 'Analyzer',
+  };
+  return labels[`${top}${second}`]
+    ?? labels[top]
+    ?? `High ${top}`;
+}
+
+function deriveStyleLetter(
+  d: number,
+  i: number,
+  s: number,
+  c: number
+): 'D' | 'I' | 'S' | 'C' {
+  const scores = {
+    D: Number(d ?? 0),
+    I: Number(i ?? 0),
+    S: Number(s ?? 0),
+    C: Number(c ?? 0)
+  };
+  return Object.entries(scores)
+    .sort((a, b) => b[1] - a[1])[0][0] as 'D' | 'I' | 'S' | 'C';
+}
+
 function DISCBadge({ style }: { style: 'D' | 'I' | 'S' | 'C' }) {
   const color = discColors[style];
   const labels = { D: 'Dominance', I: 'Influence', S: 'Steadiness', C: 'Conscientiousness' };
@@ -121,6 +181,15 @@ function ClientDetailModal({
     company: null,
   });
   const [discStyleLabel, setDiscStyleLabel] = useState<string>('—');
+  const [modalDiscStyle, setModalDiscStyle] = useState<'D' | 'I' | 'S' | 'C'>(client?.disc?.style ?? 'I');
+  const [fathomSessions, setFathomSessions] = useState<Array<{
+    session_date: string | null;
+    session_number: number | null;
+    stage: string | null;
+    notes: string | null;
+    next_actions: string | null;
+    overall_clear_score: number | null;
+  }>>([]);
 
   useEffect(() => {
     if (client && isOpen) {
@@ -155,9 +224,8 @@ function ClientDetailModal({
         natural_i: number | null;
         natural_s: number | null;
         natural_c: number | null;
-        primary_style_label: string | null;
       }>(
-        `SELECT natural_d, natural_i, natural_s, natural_c, primary_style_label
+        `SELECT natural_d, natural_i, natural_s, natural_c
          FROM client_disc_profiles
          WHERE client_id = ?`,
         [client.id]
@@ -166,43 +234,30 @@ function ClientDetailModal({
           const row = rows[0];
           if (!row) {
             setDiscStyleLabel('—');
+            setModalDiscStyle(client.disc.style);
             return;
           }
-          if (row.primary_style_label?.trim()) {
-            setDiscStyleLabel(row.primary_style_label.trim());
-            return;
-          }
-          const scores = {
-            D: Number(row.natural_d ?? 0),
-            I: Number(row.natural_i ?? 0),
-            S: Number(row.natural_s ?? 0),
-            C: Number(row.natural_c ?? 0),
-          };
-          const sorted = Object.entries(scores)
-            .sort((a, b) => b[1] - a[1]);
-          const top = sorted[0][0];
-          const second = sorted[1][0];
-          const labels: Record<string, string> = {
-            DS: 'Driving Supporter',
-            DI: 'Driving Influencer',
-            DC: 'Driving Analyzer',
-            ID: 'Influencing Driver',
-            IS: 'Influencing Supporter',
-            IC: 'Influencing Analyzer',
-            SD: 'Supporting Driver',
-            SI: 'Supporting Influencer',
-            SC: 'Supporting Analyzer',
-            CD: 'Analyzing Driver',
-            CI: 'Analyzing Influencer',
-            CS: 'Analyzing Supporter',
-            D: 'Driver',
-            I: 'Influencer',
-            S: 'Supporter',
-            C: 'Analyzer',
-          };
-          setDiscStyleLabel(labels[`${top}${second}`] ?? labels[top] ?? `High ${top}`);
+          setDiscStyleLabel(
+            deriveStyleLabel(
+              Number(row.natural_d ?? 0),
+              Number(row.natural_i ?? 0),
+              Number(row.natural_s ?? 0),
+              Number(row.natural_c ?? 0)
+            )
+          );
+          setModalDiscStyle(
+            deriveStyleLetter(
+              Number(row.natural_d ?? 0),
+              Number(row.natural_i ?? 0),
+              Number(row.natural_s ?? 0),
+              Number(row.natural_c ?? 0)
+            )
+          );
         })
-        .catch(() => setDiscStyleLabel('—'));
+        .catch(() => {
+          setDiscStyleLabel('—');
+          setModalDiscStyle(client.disc.style);
+        });
       dbSelect<{
         one_year_vision: string;
         spouse_name: string;
@@ -231,19 +286,17 @@ function ClientDetailModal({
             ?? 'No statement yet';
           setYou2Vision(vision);
           const parseList = (raw: string | null | undefined): string[] => {
-            if (!raw) return [];
-            try {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) {
-                return parsed.map(String).filter(Boolean);
-              }
-            } catch {
-              // fallback below
+            const parsed = tryParseJson(raw);
+            if (Array.isArray(parsed)) {
+              return parsed.map(String).filter(Boolean);
             }
-            return raw
-              .split('\n')
-              .map((s) => s.trim())
-              .filter(Boolean);
+            if (typeof parsed === 'string') {
+              return parsed
+                .split('\n')
+                .map((s) => s.trim())
+                .filter(Boolean);
+            }
+            return [];
           };
           setYou2Details(
             row
@@ -286,6 +339,24 @@ function ClientDetailModal({
           }
         })
         .catch(() => setTumayData(null));
+      dbSelect<{
+        session_date: string | null;
+        session_number: number | null;
+        stage: string | null;
+        notes: string | null;
+        next_actions: string | null;
+        overall_clear_score: number | null;
+      }>(
+        `SELECT session_date, session_number,
+         stage, notes, next_actions,
+         overall_clear_score
+         FROM coaching_sessions
+         WHERE client_id = ?
+         ORDER BY session_date DESC`,
+        [client.id]
+      )
+        .then(setFathomSessions)
+        .catch(() => setFathomSessions([]));
     } else {
       setReadiness(null);
       setYou2Vision('No statement yet');
@@ -294,6 +365,8 @@ function ClientDetailModal({
       setReadinessScorePct(0);
       setContact({ email: null, phone: null, company: null });
       setDiscStyleLabel('—');
+      setModalDiscStyle('I');
+      setFathomSessions([]);
     }
   }, [client?.id, isOpen]);
 
@@ -505,10 +578,11 @@ function ClientDetailModal({
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <DISCBadge style={client.disc.style} />
+                  <DISCBadge style={modalDiscStyle} />
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <p className="text-sm font-semibold text-slate-700">{discStyleLabel}</p>
                 <p className="text-slate-600">{client.disc.description}</p>
                 {client.disc.traits.length > 0 && (
                   <div>
@@ -583,12 +657,12 @@ function ClientDetailModal({
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2 text-green-600">
                     <TrendingUp className="h-5 w-5" />
-                    Strengths & Opportunities
+                    Opportunities
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
-                      {[...you2Details.strengths, ...you2Details.opportunities].map((opp, i) => (
+                      {you2Details.opportunities.map((opp, i) => (
                         <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
                           <span className="text-green-500 mt-0.5">•</span>
                           {opp}
@@ -598,6 +672,23 @@ function ClientDetailModal({
                   </CardContent>
                 </Card>
               </div>
+            )}
+            {you2Details && you2Details.strengths.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Strengths</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2">
+                    {you2Details.strengths.map((strength, i) => (
+                      <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                        <span className="text-blue-500 mt-0.5">•</span>
+                        {strength}
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
 
@@ -632,7 +723,7 @@ function ClientDetailModal({
               </CardHeader>
               <CardContent>
                 <p className="text-slate-600">
-                  {client.visionStatement.paragraph || 'No vision statement yet.'}
+                  {client.visionStatement.paragraph || 'No vision yet.'}
                 </p>
               </CardContent>
             </Card>
@@ -644,9 +735,29 @@ function ClientDetailModal({
                 <CardTitle className="text-lg">Fathom Notes</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-slate-600">
-                  {client.fathomNotes.length === 0 ? 'No Fathom notes yet.' : 'See notes in Overview.'}
-                </p>
+                {fathomSessions.length === 0 ? (
+                  <p className="text-slate-600">No sessions recorded yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {fathomSessions.map((s, idx) => (
+                      <div key={`${s.session_date ?? 'session'}-${idx}`} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {s.session_date || 'Unknown date'}{s.session_number ? ` - Session ${s.session_number}` : ''}
+                          </p>
+                          {s.overall_clear_score !== null && (
+                            <Badge variant="outline" className="text-xs">
+                              CLEAR {Number(s.overall_clear_score).toFixed(1)}
+                            </Badge>
+                          )}
+                        </div>
+                        {s.stage && <p className="text-xs text-slate-500 mt-1">Stage: {s.stage}</p>}
+                        {s.notes && <p className="text-sm text-slate-700 mt-2">{s.notes}</p>}
+                        {s.next_actions && <p className="text-xs text-slate-500 mt-1">Next: {s.next_actions}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1392,17 +1503,50 @@ export default function ClientIntelligence() {
 
   const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
   const [readinessMap, setReadinessMap] = useState<Map<string, number>>(new Map());
+  const [discDerivedMap, setDiscDerivedMap] = useState<Map<string, { style: 'D' | 'I' | 'S' | 'C'; label: string }>>(new Map());
 
   const loadClients = () => {
     setLoading(true);
     setError(null);
-    Promise.all([getAllClients(), getDiscProfilesMap(), getAllStageReadiness()])
-      .then(([c, profiles, readiness]) => {
+    Promise.all([
+      getAllClients(),
+      getDiscProfilesMap(),
+      getAllStageReadiness(),
+      dbSelect<{
+        client_id: string;
+        natural_d: number | null;
+        natural_i: number | null;
+        natural_s: number | null;
+        natural_c: number | null;
+      }>(
+        `SELECT client_id, natural_d, natural_i, natural_s, natural_c
+         FROM client_disc_profiles`,
+        []
+      ),
+    ])
+      .then(([c, profiles, readiness, discRows]) => {
         setClients(c);
         setDiscProfiles(profiles);
         const rMap = new Map<string, number>();
         readiness.forEach((r) => rMap.set(r.client_id, r.readiness_score));
         setReadinessMap(rMap);
+        const dMap = new Map<string, { style: 'D' | 'I' | 'S' | 'C'; label: string }>();
+        discRows.forEach((row) => {
+          const style = deriveStyleLetter(
+            Number(row.natural_d ?? 0),
+            Number(row.natural_i ?? 0),
+            Number(row.natural_s ?? 0),
+            Number(row.natural_c ?? 0)
+          );
+          const label = deriveStyleLabel(
+            Number(row.natural_d ?? 0),
+            Number(row.natural_i ?? 0),
+            Number(row.natural_s ?? 0),
+            Number(row.natural_c ?? 0)
+          );
+          dMap.set(row.client_id, { style, label });
+        });
+        setDiscDerivedMap(dMap);
       })
       .catch((err) => {
         console.error(err);
@@ -1492,15 +1636,15 @@ export default function ClientIntelligence() {
     () =>
       filteredClients.map((client) =>
         clientToDisplay(client, {
-          disc: discProfiles.get(client.id),
+          disc: discDerivedMap.get(client.id) ?? discProfiles.get(client.id),
           readinessScore: readinessMap.get(client.id),
         })
       ),
-    [filteredClients, discProfiles, readinessMap]
+    [filteredClients, discDerivedMap, discProfiles, readinessMap]
   );
   const selectedDisplay = selectedClient
     ? clientToDisplay(selectedClient, {
-        disc: discProfiles.get(selectedClient.id),
+        disc: discDerivedMap.get(selectedClient.id) ?? discProfiles.get(selectedClient.id),
         readinessScore: readinessMap.get(selectedClient.id),
       })
     : null;
@@ -1650,6 +1794,9 @@ export default function ClientIntelligence() {
                     {client.persona}
                   </Badge>
                   <DISCBadge style={client.disc.style} />
+                  <Badge variant="secondary" className="text-xs">
+                    {discDerivedMap.get(client.id)?.label ?? client.disc.description}
+                  </Badge>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
