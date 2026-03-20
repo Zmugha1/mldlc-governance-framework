@@ -1404,6 +1404,28 @@ export async function processDocument(
       return extractFathomSession(clientId, truncatedText, fileName, filePath);
     case 'vision':
       return handleVisionStatement(clientId, fileName, filePath, truncatedText);
+    case ('tumay' as DocumentType): {
+      const text = await invoke<string>(
+        'extract_text', { filePath }
+      );
+      const parsed = await invoke<string>(
+        'parse_tumay', { text }
+      );
+      const tumayData = JSON.parse(parsed);
+
+      await dbExecute(
+        `UPDATE clients
+         SET tumay_data = $1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [JSON.stringify(tumayData), clientId]
+      );
+      return {
+        success: true,
+        data: null,
+        extraction_status: 'complete',
+      };
+    }
     default:
       return {
         success: false,

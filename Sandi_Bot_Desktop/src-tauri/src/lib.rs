@@ -4,6 +4,7 @@ mod backup;
 mod text_extractor;
 mod disc_parser;
 mod you2_parser;
+mod tumay_parser;
 
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -151,6 +152,12 @@ fn parse_disc_scores_from_text(text: String) -> Result<serde_json::Value, String
         "natural_c": scores.natural_c,
         "found": scores.found
     }))
+}
+
+#[tauri::command]
+fn parse_tumay(text: String) -> Result<String, String> {
+    let parsed = tumay_parser::parse_tumay_deterministic(&text);
+    serde_json::to_string(&parsed).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -790,6 +797,7 @@ pub fn run() {
             test_disc_extraction,
             test_you2_extraction,
             parse_disc_scores_from_text,
+            parse_tumay,
             bulk_import_folder,
             pdf_parser::parse_pdf,
             file_watcher::watch_folder,
