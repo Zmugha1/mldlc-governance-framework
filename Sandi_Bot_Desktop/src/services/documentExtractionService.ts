@@ -1256,20 +1256,38 @@ export async function handleVisionStatement(
   filePath: string,
   rawText: string
 ): Promise<ExtractionResult<null>> {
+  const extractedText = await extractVisionText(filePath, rawText);
+  const normalizedText = extractedText.trim();
+  const textLength = normalizedText.length;
   const isPptx =
     fileName.toLowerCase().endsWith('.pptx') ||
     fileName.toLowerCase().endsWith('.ppt');
 
-  // PPTX now extracts via Rust zip extractor
-  // Store raw text to notes — full extraction Phase 4
-  if (isPptx && rawText && rawText.trim().length > 20) {
+  if (isPptx && textLength > 20) {
+    await dbExecute(
+      `UPDATE clients
+       SET vision_statement = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [normalizedText, clientId]
+    );
+
+    await logEntry(
+      'vision_extraction',
+      clientId,
+      null,
+      null,
+      `Vision extracted from PPTX: ${fileName}, length: ${textLength} chars`,
+      'pptx_direct'
+    );
+
     await recordExtraction(
       clientId,
       'vision',
       filePath,
       fileName,
       'complete',
-      { raw_text: rawText }
+      { raw_text: normalizedText }
     );
     return {
       success: true,
@@ -1278,21 +1296,29 @@ export async function handleVisionStatement(
     };
   }
 
-  if (isPptx && (!rawText || rawText.trim().length <= 20)) {
+  if (isPptx && textLength <= 20) {
     await recordExtraction(
       clientId,
       'vision',
       filePath,
       fileName,
-      'skipped',
+      'failed',
       null,
       'PPTX vision statement — no text extracted'
+    );
+    await logEntry(
+      'vision_extraction',
+      clientId,
+      null,
+      null,
+      `Vision extraction failed from PPTX: ${fileName}, length: ${textLength} chars`,
+      'pptx_direct'
     );
     return {
       success: false,
       data: null,
       error: 'PPTX — no extractable text found',
-      extraction_status: 'skipped',
+      extraction_status: 'failed',
     };
   }
 
@@ -1310,6 +1336,41 @@ export async function handleVisionStatement(
     data: null,
     extraction_status: 'pending',
   };
+}
+
+async function extractVisionText(filePath: string, fallbackRawText: string): Promise<string> {
+  try {
+    const direct = await invoke<string>('extract_text', { filePath });
+    if (typeof direct === 'string' && direct.trim().length > 0) {
+      return direct;
+    }
+  } catch {
+    // Fallback command below.
+  }
+
+  try {
+    const response = await invoke<{
+      text: string;
+      success: boolean;
+      error?: string;
+    }>('extract_text_from_any_file', { filePath });
+    if (response.success && typeof response.text === 'string') {
+      return response.text;
+    }
+  } catch {
+    // Use fallbackRawText below.
+  }
+
+  return fallbackRawText ?? '';
+}
+
+export async function reExtractVision(
+  clientId: string,
+  filePath: string
+): Promise<boolean> {
+  const fileName = filePath.split(/[\\/]/).pop() || 'vision.pptx';
+  const result = await handleVisionStatement(clientId, fileName, filePath, '');
+  return result.success;
 }
 
 // ─────────────────────────────────────
