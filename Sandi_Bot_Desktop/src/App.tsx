@@ -27,6 +27,7 @@ import AdminStreamliner from '@/modules/AdminStreamliner';
 import AuditTransparency from '@/modules/AuditTransparency';
 import HowToUse from '@/modules/HowToUse';
 import { seedKnowledgeBase } from '@/services/knowledgeSeed';
+import StatusBar from '@/components/StatusBar';
 
 type ModuleType = 'dashboard' | 'clients' | 'pipeline' | 'coaching' | 'analysis' | 'admin' | 'audit' | 'help';
 
@@ -320,11 +321,14 @@ function App() {
       <MobileSidebar activeModule={activeModule} onModuleChange={setActiveModule} />
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0">
-        <div className="p-4 lg:p-8 max-w-7xl mx-auto">
-          {renderModule()}
-        </div>
-      </main>
+      <div className="flex-1 min-w-0 min-h-screen flex flex-col">
+        <main className="flex-1">
+          <div className="p-4 lg:p-8 max-w-7xl mx-auto">
+            {renderModule()}
+          </div>
+        </main>
+        <StatusBar />
+      </div>
     </div>
   );
 }

@@ -35,6 +35,8 @@ import { knowledgeGraph } from '@/data/sampleClients';
 import { bulkImportFolder, bulkImportRetryFailed, type BulkImportResult, type ImportProgress } from '@/services/bulkImportService';
 import { getAllClients, getRankedClients, getPushClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
 import { getAuditLog, auditEntriesToActivityLogs } from '@/services/auditService';
+import { dbSelect } from '@/services/db';
+import { createBackup, getLastBackup } from '@/services/backupService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import type { ActivityLog } from '@/types';
 import { cn } from '@/lib/utils';
@@ -128,6 +130,23 @@ export default function AdminStreamliner() {
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
   const [testDiscOutput, setTestDiscOutput] = useState<string | null>(null);
+  const [backupStatus, setBackupStatus] = useState<{
+    backup_count: number;
+    last_backup: string | null;
+    ever_succeeded: boolean;
+  }>({
+    backup_count: 0,
+    last_backup: null,
+    ever_succeeded: false,
+  });
+  const [backupRows, setBackupRows] = useState<Array<{
+    backup_path: string | null;
+    timestamp: string | null;
+    success: number;
+    error_message: string | null;
+  }>>([]);
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -144,6 +163,42 @@ export default function AdminStreamliner() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const loadBackupData = async () => {
+    const [summary, rows] = await Promise.all([
+      getLastBackup(),
+      dbSelect<{
+        backup_path: string | null;
+        timestamp: string | null;
+        success: number;
+        error_message: string | null;
+      }>(
+        `SELECT backup_path, timestamp, success, error_message
+         FROM backup_log
+         ORDER BY timestamp DESC
+         LIMIT 10`,
+        []
+      ),
+    ]);
+    setBackupStatus(summary);
+    setBackupRows(rows);
+  };
+
+  useEffect(() => {
+    loadBackupData().catch((err) => {
+      console.error('Failed to load backup data:', err);
+      setBackupMessage('Failed to load backup status');
+    });
+  }, []);
+
+  const handleBackupNow = async () => {
+    setBackupRunning(true);
+    setBackupMessage('Creating backup...');
+    const result = await createBackup();
+    await loadBackupData();
+    setBackupMessage(result.success ? 'Backup created successfully.' : 'Backup failed.');
+    setBackupRunning(false);
+  };
 
   const handleBulkImport = async () => {
     setImportRunning(true);
@@ -931,10 +986,37 @@ export default function AdminStreamliner() {
                 </div>
                 <div className="p-4 rounded-lg bg-slate-50">
                   <p className="font-medium mb-2">Backup</p>
-                  <p className="text-sm text-slate-500 mb-3">Last backup: Today at 3:00 AM</p>
-                  <Button variant="outline" size="sm">
-                    Create Backup Now
-                  </Button>
+                  <p className="text-sm text-slate-500 mb-3">
+                    Last backup: {backupStatus.last_backup ? new Date(backupStatus.last_backup).toLocaleString() : 'No backups yet'}
+                  </p>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Button variant="outline" size="sm" onClick={handleBackupNow} disabled={backupRunning}>
+                      {backupRunning ? 'Backing up...' : 'Backup Now'}
+                    </Button>
+                    {backupMessage && (
+                      <span className={cn('text-xs', backupMessage.includes('failed') ? 'text-red-600' : 'text-green-600')}>
+                        {backupMessage}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-600">Recent backups</p>
+                    {backupRows.length === 0 ? (
+                      <p className="text-xs text-slate-500">No backups recorded yet.</p>
+                    ) : (
+                      backupRows.map((row, index) => (
+                        <div key={`${row.timestamp ?? 'backup'}-${index}`} className="text-xs p-2 rounded border border-slate-200 bg-white">
+                          <p className="text-slate-700">
+                            {row.timestamp ? new Date(row.timestamp).toLocaleString() : 'Unknown time'}
+                          </p>
+                          <p className={row.success === 1 ? 'text-green-600' : 'text-red-600'}>
+                            {row.success === 1 ? 'Success' : `Failed${row.error_message ? `: ${row.error_message}` : ''}`}
+                          </p>
+                          <p className="text-slate-500 truncate">{row.backup_path || 'No path recorded'}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
