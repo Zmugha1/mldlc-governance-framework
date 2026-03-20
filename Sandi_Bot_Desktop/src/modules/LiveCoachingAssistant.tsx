@@ -29,15 +29,31 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { coachingScripts, recommendationConfig, knowledgeGraph } from '@/data/sampleClients';
 import { generateSourceCitations, generateResponseExplanation, type SourceCitation } from '@/data/auditLog';
-import { getAllClients } from '@/services/clientService';
+import { dbSelect } from '@/services/db';
 import { logEntry } from '@/services/auditService';
-import { clientToDisplay } from '@/services/clientAdapter';
 import { getDiscCoachingTips, getHomeworkByStage, getPinkFlagsByStage, calculateReadinessScore } from '@/services/coachingService';
 import { getRecommendationMessage } from '@/services/recommendationService';
 import { cn } from '@/lib/utils';
 
-/** Display format for client (ClientProfile-like) */
-type DisplayClient = ReturnType<typeof clientToDisplay>;
+type ActiveClient = {
+  id: string;
+  name: string;
+};
+
+type CoachingContext = {
+  id: string;
+  name: string;
+  inferred_stage: string;
+  natural_d: number;
+  natural_i: number;
+  natural_s: number;
+  natural_c: number;
+  one_year_vision: string;
+  dangers: string[];
+  opportunities: string[];
+  areas_of_interest: string[];
+  financial_net_worth_range: string;
+};
 
 // Chat Message Component with Source Citations
 interface ChatMessageProps {
@@ -209,18 +225,16 @@ function ExplanationDialog({
   query, 
   response, 
   sources, 
-  client,
   isOpen, 
   onClose 
 }: { 
   query: string;
   response: string;
   sources: SourceCitation[];
-  client?: DisplayClient;
   isOpen: boolean; 
   onClose: () => void;
 }) {
-  const explanation = generateResponseExplanation(query, response, sources, client);
+  const explanation = generateResponseExplanation(query, response, sources, undefined);
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -245,60 +259,47 @@ function ExplanationDialog({
   );
 }
 
-// Recommendation Card
-function RecommendationCard({ client }: { client: DisplayClient }) {
-  const config = recommendationConfig[client.recommendation];
-  const Icon = config.icon === 'ArrowUp' ? ArrowUp : config.icon === 'Heart' ? Heart : Pause;
-  
-  return (
-    <div 
-      className="rounded-xl p-4 border-2"
-      style={{ 
-        backgroundColor: config.bgColor, 
-        borderColor: config.color 
-      }}
-    >
-      <div className="flex items-center gap-3 mb-3">
-        <div 
-          className="h-10 w-10 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: config.color }}
-        >
-          <Icon className="h-5 w-5 text-white" />
-        </div>
-        <div>
-          <h4 className="font-bold text-lg" style={{ color: config.color }}>
-            {client.recommendation}
-          </h4>
-          <p className="text-sm opacity-75">{config.description}</p>
-        </div>
-        <div className="ml-auto text-right">
-          <p className="text-2xl font-bold" style={{ color: config.color }}>
-            {client.confidence}%
-          </p>
-          <p className="text-xs opacity-75">confidence</p>
-        </div>
-      </div>
-      
-      {/* Reasoning */}
-      <div className="bg-white/50 rounded-lg p-3">
-        <p className="text-sm font-medium mb-2">Why this recommendation?</p>
-        <ul className="space-y-1">
-          <li className="text-sm flex items-start gap-2">
-            <Sparkles className="h-4 w-4 mt-0.5 shrink-0" style={{ color: config.color }} />
-            <span>Readiness: {calculateReadinessScore(client.readiness)}%</span>
-          </li>
-          <li className="text-sm flex items-start gap-2">
-            <Sparkles className="h-4 w-4 mt-0.5 shrink-0" style={{ color: config.color }} />
-            <span>Persona: {client.persona} • DISC: {client.disc.style}</span>
-          </li>
-          <li className="text-sm flex items-start gap-2">
-            <Sparkles className="h-4 w-4 mt-0.5 shrink-0" style={{ color: config.color }} />
-            <span>Stage: {client.stage} • {client.nextAction}</span>
-          </li>
-        </ul>
-      </div>
-    </div>
-  );
+function deriveStyleLabel(d: number, i: number, s: number, c: number): string {
+  const scores: Record<string, number> = {
+    D: Number(d ?? 0),
+    I: Number(i ?? 0),
+    S: Number(s ?? 0),
+    C: Number(c ?? 0),
+  };
+  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const top = sorted[0]?.[0] ?? 'D';
+  const second = sorted[1]?.[0] ?? 'I';
+  const labels: Record<string, string> = {
+    DS: 'Driving Supporter',
+    DI: 'Driving Influencer',
+    DC: 'Driving Analyzer',
+    ID: 'Influencing Driver',
+    IS: 'Influencing Supporter',
+    IC: 'Influencing Analyzer',
+    SD: 'Supporting Driver',
+    SI: 'Supporting Influencer',
+    SC: 'Supporting Analyzer',
+    CD: 'Analyzing Driver',
+    CI: 'Analyzing Influencer',
+    CS: 'Analyzing Supporter',
+    D: 'Driver',
+    I: 'Influencer',
+    S: 'Supporter',
+    C: 'Analyzer',
+  };
+  return labels[`${top}${second}`] ?? labels[top] ?? `High ${top}`;
+}
+
+function parseJsonList(raw: unknown): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return raw.split('\n').map((s) => s.trim()).filter(Boolean);
+  }
 }
 
 // Script Card with Copy
@@ -474,8 +475,9 @@ const quickActions = [
 ];
 
 export default function LiveCoachingAssistant() {
-  const [clients, setClients] = useState<DisplayClient[]>([]);
-  const [selectedClient, setSelectedClient] = useState<DisplayClient | null>(null);
+  const [clients, setClients] = useState<ActiveClient[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedContext, setSelectedContext] = useState<CoachingContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Array<{
@@ -498,14 +500,70 @@ export default function LiveCoachingAssistant() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getAllClients()
-      .then((raw) => setClients(raw.map(clientToDisplay)))
+    dbSelect<ActiveClient>(
+      `SELECT id, name FROM clients
+       WHERE outcome_bucket = 'active'
+       ORDER BY name`,
+      []
+    )
+      .then((rows) => setClients(rows))
       .catch((err) => {
         console.error(err);
         setError(String(err?.message ?? err ?? 'Failed to load clients'));
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const loadClientContext = async (clientId: string) => {
+    const rows = await dbSelect<{
+      name: string;
+      inferred_stage: string | null;
+      natural_d: number | null;
+      natural_i: number | null;
+      natural_s: number | null;
+      natural_c: number | null;
+      one_year_vision: string | null;
+      dangers: string | null;
+      opportunities: string | null;
+      areas_of_interest: string | null;
+      financial_net_worth_range: string | null;
+    }>(
+      `SELECT
+        c.name, c.inferred_stage,
+        dp.natural_d, dp.natural_i,
+        dp.natural_s, dp.natural_c,
+        y.one_year_vision,
+        y.dangers, y.opportunities,
+        y.areas_of_interest,
+        y.financial_net_worth_range
+      FROM clients c
+      LEFT JOIN client_disc_profiles dp
+        ON dp.client_id = c.id
+      LEFT JOIN client_you2_profiles y
+        ON y.client_id = c.id
+      WHERE c.id = ?`,
+      [clientId]
+    );
+    const row = rows[0];
+    if (!row) {
+      setSelectedContext(null);
+      return;
+    }
+    setSelectedContext({
+      id: clientId,
+      name: row.name ?? 'Unknown Client',
+      inferred_stage: row.inferred_stage ?? 'IC',
+      natural_d: Number(row.natural_d ?? 0),
+      natural_i: Number(row.natural_i ?? 0),
+      natural_s: Number(row.natural_s ?? 0),
+      natural_c: Number(row.natural_c ?? 0),
+      one_year_vision: row.one_year_vision ?? '',
+      dangers: parseJsonList(row.dangers),
+      opportunities: parseJsonList(row.opportunities),
+      areas_of_interest: parseJsonList(row.areas_of_interest),
+      financial_net_worth_range: row.financial_net_worth_range ?? '',
+    });
+  };
 
   const sendMessage = (messageText: string) => {
     if (!messageText.trim()) return;
@@ -514,7 +572,7 @@ export default function LiveCoachingAssistant() {
 
     void logEntry(
       'CHAT_QUERY',
-      selectedClient?.id ?? null,
+      selectedContext?.id ?? null,
       query,
       null,
       null,
@@ -526,7 +584,7 @@ export default function LiveCoachingAssistant() {
     setCurrentQuery(query);
 
     // Generate sources
-    const sources = generateSourceCitations(query, selectedClient || undefined);
+    const sources = generateSourceCitations(query, undefined);
     setCurrentSources(sources);
 
     // Generate bot response
@@ -535,20 +593,24 @@ export default function LiveCoachingAssistant() {
       const lowerInput = query.toLowerCase();
 
       if (lowerInput.includes('push') || lowerInput.includes('pause')) {
-        if (selectedClient) {
-          const readiness = calculateReadinessScore(selectedClient.readiness);
-          const msg = getRecommendationMessage(selectedClient.recommendation);
-          response = `Based on ${selectedClient.name}'s profile:\n\n• Readiness: ${readiness}%\n• Persona: ${selectedClient.persona}\n• Stage: ${selectedClient.stage}\n\nRecommendation: **${selectedClient.recommendation}** (${selectedClient.confidence}% confidence)\n\n${msg}`;
+        if (selectedContext) {
+          const discStyle = deriveStyleLabel(
+            selectedContext.natural_d,
+            selectedContext.natural_i,
+            selectedContext.natural_s,
+            selectedContext.natural_c
+          );
+          response = `Based on ${selectedContext.name}'s profile:\n\n• Current stage: ${selectedContext.inferred_stage}\n• DISC style: ${discStyle}\n• Vision: ${selectedContext.one_year_vision || 'No statement yet'}\n• Key dangers: ${selectedContext.dangers.length}\n• Key opportunities: ${selectedContext.opportunities.length}\n\nUse CLEAR to guide next actions and commitment.`;
 
           void logEntry(
             'RECOMMENDATION_GENERATED',
-            selectedClient.id,
+            selectedContext.id,
             query,
             response,
             JSON.stringify([
-              `Readiness: ${readiness}%`,
-              `Persona: ${selectedClient.persona}`,
-              `Stage: ${selectedClient.stage}`,
+              `Stage: ${selectedContext.inferred_stage}`,
+              `Dangers: ${selectedContext.dangers.length}`,
+              `Opportunities: ${selectedContext.opportunities.length}`,
             ]),
             'deterministic'
           );
@@ -556,22 +618,31 @@ export default function LiveCoachingAssistant() {
           response = 'Please select a client first so I can analyze their specific situation.';
         }
       } else if (lowerInput.includes('say') || lowerInput.includes('script')) {
-        if (selectedClient) {
-          const tips = getDiscCoachingTips(selectedClient.disc.style);
+        if (selectedContext) {
+          const discStyle = deriveStyleLabel(
+            selectedContext.natural_d,
+            selectedContext.natural_i,
+            selectedContext.natural_s,
+            selectedContext.natural_c
+          );
+          const dominant = [selectedContext.natural_d, selectedContext.natural_i, selectedContext.natural_s, selectedContext.natural_c]
+            .indexOf(Math.max(selectedContext.natural_d, selectedContext.natural_i, selectedContext.natural_s, selectedContext.natural_c));
+          const discLetter = (['D', 'I', 'S', 'C'][dominant] ?? 'D') as 'D' | 'I' | 'S' | 'C';
+          const tips = getDiscCoachingTips(discLetter);
           const opening = tips[0] ?? 'Be direct and get to the point quickly';
           const avoid = tips[tips.length - 1] ?? "Don't waste time with small talk";
-          response = `For ${selectedClient.name} (${selectedClient.disc.style} style):\n\n**Opening approach:**\n${opening}\n\n**Key phrases to use:**\n• "${selectedClient.ilwe.income.target} in ${selectedClient.ilwe.income.timeline} is achievable with the right system"\n• "Let's talk about how this fits your goal to ${selectedClient.visionStatement.motivators.workLife.toLowerCase()}"\n\n**Avoid:**\n${avoid}`;
+          response = `For ${selectedContext.name} (${discStyle}):\n\n**Opening approach:**\n${opening}\n\n**Key phrases to use:**\n• "Let's align your next step in ${selectedContext.inferred_stage} with your one-year vision."\n• "We'll address the top danger and lock in a concrete action before ending this call."\n\n**Avoid:**\n${avoid}`;
         } else {
           response = 'Select a client to get persona-specific scripts and language recommendations.';
         }
       } else if (lowerInput.includes('homework')) {
-        const stage = selectedClient?.stage ?? '';
+        const stage = selectedContext?.inferred_stage ?? '';
         const homework = getHomeworkByStage(stage);
         response = 'Suggested homework based on their stage:\n\n' + homework.join('\n');
       } else if (lowerInput.includes('spouse')) {
         response = 'To address spouse concerns:\n\n1. **Include spouse in next call** - make them feel part of the process\n2. **Provide data and facts** - spouses often need concrete information\n3. **Address financial concerns** - show funding options and ROI projections\n4. **Share success stories** - other couples who made the transition\n5. **Give them time** - don\'t rush the decision';
       } else if (lowerInput.includes('pink flag')) {
-        const stage = selectedClient?.stage ?? '';
+        const stage = selectedContext?.inferred_stage ?? '';
         const flags = getPinkFlagsByStage(stage);
         const flagText = flags.length > 0
           ? flags.map((f) => `• ${f}`).join('\n')
@@ -585,7 +656,7 @@ export default function LiveCoachingAssistant() {
 
       void logEntry(
         'CHAT_RESPONSE',
-        selectedClient?.id ?? null,
+        selectedContext?.id ?? null,
         query,
         response,
         JSON.stringify(sources),
@@ -649,7 +720,8 @@ export default function LiveCoachingAssistant() {
                 <button
                   key={client.id}
                   onClick={() => {
-                    setSelectedClient(client);
+                    setSelectedClientId(client.id);
+                    void loadClientContext(client.id);
                     void logEntry(
                       'CLIENT_ACCESSED',
                       client.id,
@@ -661,39 +733,85 @@ export default function LiveCoachingAssistant() {
                   }}
                   className={cn(
                     "w-full flex items-center gap-3 p-3 text-left hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0",
-                    selectedClient?.id === client.id && "bg-blue-50 hover:bg-blue-50"
+                    selectedClientId === client.id && "bg-blue-50 hover:bg-blue-50"
                   )}
                 >
                   <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                    {client.avatar}
+                    {client.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className={cn(
                       "font-medium truncate",
-                      selectedClient?.id === client.id && "text-blue-700"
+                      selectedClientId === client.id && "text-blue-700"
                     )}>
                       {client.name}
                     </p>
-                    <p className="text-xs text-slate-500 truncate">{client.stage}</p>
+                    <p className="text-xs text-slate-500 truncate">Active client</p>
                   </div>
-                  <Badge 
-                    className="shrink-0"
-                    style={{ 
-                      backgroundColor: recommendationConfig[client.recommendation].bgColor,
-                      color: recommendationConfig[client.recommendation].color
-                    }}
-                  >
-                    {client.recommendation}
-                  </Badge>
                 </button>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        {/* Selected Client Info */}
-        {selectedClient && (
-          <RecommendationCard client={selectedClient} />
+        {/* Selected Client Context */}
+        {selectedContext ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Coaching Context</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-500">DISC style</p>
+                <p className="font-medium">
+                  {deriveStyleLabel(
+                    selectedContext.natural_d,
+                    selectedContext.natural_i,
+                    selectedContext.natural_s,
+                    selectedContext.natural_c
+                  )}
+                </p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-500">Current stage</p>
+                <p className="font-medium">{selectedContext.inferred_stage}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-500">Vision statement</p>
+                <p className="text-sm">{selectedContext.one_year_vision || 'No statement yet.'}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-500 mb-1">Key dangers</p>
+                {selectedContext.dangers.length > 0 ? (
+                  <ul className="space-y-1">
+                    {selectedContext.dangers.slice(0, 5).map((d, i) => (
+                      <li key={i} className="text-sm flex items-start gap-2"><span>•</span><span>{d}</span></li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-500">No data yet.</p>
+                )}
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-500 mb-1">Key opportunities</p>
+                {selectedContext.opportunities.length > 0 ? (
+                  <ul className="space-y-1">
+                    {selectedContext.opportunities.slice(0, 5).map((o, i) => (
+                      <li key={i} className="text-sm flex items-start gap-2"><span>•</span><span>{o}</span></li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-500">No data yet.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-slate-600">Select a client to begin coaching session</p>
+            </CardContent>
+          </Card>
         )}
 
         {/* CLEAR Framework */}
@@ -719,8 +837,8 @@ export default function LiveCoachingAssistant() {
                 <div>
                   <CardTitle className="text-lg">Sandi Bot</CardTitle>
                   <p className="text-xs text-slate-500">
-                    {selectedClient 
-                      ? `Coaching assistant for ${selectedClient.name}` 
+                    {selectedContext
+                      ? `Coaching assistant for ${selectedContext.name}` 
                       : 'Select a client to get personalized recommendations'}
                   </p>
                 </div>
@@ -794,7 +912,7 @@ export default function LiveCoachingAssistant() {
         </Card>
 
         {/* Scripts Section */}
-        {selectedClient && (
+        {selectedContext && (
           <Card className="mt-4">
             <CardHeader>
               <CardTitle className="text-lg">Recommended Scripts</CardTitle>
@@ -837,7 +955,6 @@ export default function LiveCoachingAssistant() {
         query={currentQuery}
         response={currentResponse}
         sources={currentSources}
-        client={selectedClient || undefined}
         isOpen={showExplanation}
         onClose={() => setShowExplanation(false)}
       />
