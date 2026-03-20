@@ -1437,11 +1437,12 @@ export async function bulkReExtractVisionAndTumay(
   tumay_success: number;
   errors: string[];
 }> {
-  const BASE = 'C:\\Users\\zumah\\SandiBot\\clients';
+  const BASE =
+    'C:\\Users\\zumah\\SandiBot\\clients';
   const BUCKETS: Record<string, string> = {
     active: 'Active',
     converted: 'WIN',
-    paused: 'Paused',
+    paused: 'Paused'
   };
 
   let vision_success = 0;
@@ -1451,52 +1452,70 @@ export async function bulkReExtractVisionAndTumay(
   for (const client of clients) {
     const bucket = BUCKETS[client.outcome_bucket]
       ?? 'Active';
-    const folderName = client.name
-      .replace(/\s+/g, '_');
-    const folderPath =
-      `${BASE}\\${bucket}\\${folderName}`;
+    const folderName =
+      client.name.replace(/\s+/g, '_');
 
-    try {
+    const searchPaths = [
+      `${BASE}\\${bucket}\\${folderName}`,
+      `${BASE}\\${bucket}`
+    ];
+
+    let visionDone = false;
+    let tumayDone = false;
+
+    for (const searchPath of searchPaths) {
       let files: string[] = [];
       try {
         files = await invoke<string[]>(
-          'list_directory', { path: folderPath }
+          'list_directory', { path: searchPath }
         );
       } catch {
-        files = await invoke<string[]>(
-          'list_directory_files', { path: folderPath }
-        );
+        continue;
       }
 
-      for (const filePath of files) {
+      const clientFiles = files.filter(f => {
+        const fname = f.split('\\').pop()
+          ?? f.split('/').pop() ?? '';
+        return fname.startsWith(client.name);
+      });
+
+      for (const filePath of clientFiles) {
         const lower = filePath.toLowerCase();
 
-        if (lower.includes('vision') &&
+        if (!visionDone &&
+            lower.includes('vision') &&
             lower.endsWith('.pptx')) {
-          const ok = await extractVisionFromFile(
-            client.id, filePath
-          );
-          if (ok) vision_success++;
-          else errors.push(
-            `Vision failed: ${client.name}`
-          );
+          const ok =
+            await extractVisionFromFile(
+              client.id, filePath
+            );
+          if (ok) {
+            vision_success++;
+            visionDone = true;
+          } else {
+            errors.push(
+              `Vision failed: ${client.name}`
+            );
+          }
         }
 
-        if (lower.includes('tumay') &&
+        if (!tumayDone &&
+            lower.includes('tumay') &&
             lower.endsWith('.pdf')) {
-          const ok = await extractTumayFromFile(
-            client.id, filePath
-          );
-          if (ok) tumay_success++;
-          else errors.push(
-            `TUMAY failed: ${client.name}`
-          );
+          const ok =
+            await extractTumayFromFile(
+              client.id, filePath
+            );
+          if (ok) {
+            tumay_success++;
+            tumayDone = true;
+          } else {
+            errors.push(
+              `TUMAY failed: ${client.name}`
+            );
+          }
         }
       }
-    } catch {
-      errors.push(
-        `Folder not found: ${folderPath}`
-      );
     }
   }
 
