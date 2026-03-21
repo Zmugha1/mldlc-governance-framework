@@ -501,11 +501,23 @@ export default function ExecutiveDashboard() {
             <p className="text-slate-500 text-sm">No VALIDATE clients yet. Create clients and recommendations will appear here.</p>
           ) : (
             <div className="space-y-3">
-              {priorityClients.map((client) => (
-                <div
-                  key={client.id}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100"
-                >
+              {priorityClients.map((client) => {
+                const normalizedRecommendation =
+                  client.recommendation === 'PUSH'
+                    ? 'VALIDATE'
+                    : client.recommendation === 'NURTURE'
+                      ? 'GATHER'
+                      : client.recommendation;
+                const style =
+                  recommendationStyleMap[
+                    normalizedRecommendation as keyof typeof recommendationStyleMap
+                  ] ?? recommendationStyleMap.GATHER;
+
+                return (
+                  <div
+                    key={client.id}
+                    className="flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100"
+                  >
                   <div
                     className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
                     style={{ backgroundColor: discColors[client.disc.style] }}
@@ -518,22 +530,23 @@ export default function ExecutiveDashboard() {
                       {client.tumay.industriesOfInterest[0]} • {client.stage}
                     </p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <Badge
-                      style={{
-                        backgroundColor: recommendationStyleMap[client.recommendation].bgColor,
-                        color: recommendationStyleMap[client.recommendation].color,
-                      }}
-                    >
-                      {client.recommendation}
-                    </Badge>
+                    <div className="flex items-center gap-4">
+                      <Badge
+                        style={{
+                          backgroundColor: style.bgColor,
+                          color: style.color,
+                        }}
+                      >
+                        {normalizedRecommendation}
+                      </Badge>
                     <div className="text-right">
                       <p className="text-lg font-bold text-green-600">{client.confidence}%</p>
                       <p className="text-xs text-slate-500">confidence</p>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
