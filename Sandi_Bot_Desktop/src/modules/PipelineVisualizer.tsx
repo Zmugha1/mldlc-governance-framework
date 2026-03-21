@@ -346,7 +346,7 @@ export default function PipelineVisualizer() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">5-Compartment Client Experience Journey</CardTitle>
-          <CardDescription>Based on TES Coaching Experience Framework</CardDescription>
+          <CardDescription>Based on Coaching Experience Framework</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">

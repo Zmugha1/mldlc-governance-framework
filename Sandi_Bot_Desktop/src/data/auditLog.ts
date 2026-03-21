@@ -424,7 +424,7 @@ export function generateResponseExplanation(
   
   // Methodology
   parts.push(`\n**Methodology:**`);
-  parts.push('This response was generated using the CLEAR Coaching Framework and TES Client Experience methodology.');
+  parts.push('This response was generated using the CLEAR Coaching Framework and Client Experience methodology.');
   
   return parts.join('\n');
 }

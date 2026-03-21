@@ -778,7 +778,7 @@ export default function AdminStreamliner() {
                   <Heart className="h-5 w-5" />
                   5-Compartment Journey
                 </CardTitle>
-                <CardDescription>TES Client Experience Framework</CardDescription>
+                <CardDescription>Client Experience coaching framework</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {knowledgeGraph.clientExperience.stages.map((stage) => (
@@ -1099,7 +1099,7 @@ export default function AdminStreamliner() {
                   <div>
                     <p className="font-semibold text-lg">Sandy Stahl</p>
                     <p className="text-sm text-slate-500">Franchise Coach</p>
-                    <p className="text-sm text-slate-500">The Entrepreneur's Source</p>
+                    <p className="text-sm text-slate-500">your coaching methodology</p>
                   </div>
                 </div>
                 <Button variant="outline" className="w-full">
