@@ -475,7 +475,7 @@ export default function AdminStreamliner() {
                 Bulk Import Client Files
               </CardTitle>
               <CardDescription>
-                Import from ~/SandiBot/clients (Active, Paused, WIN, Various folders)
+                Import from ~/CoachBot/clients (Active, Paused, WIN, Various folders)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1111,7 +1111,7 @@ export default function AdminStreamliner() {
             {/* About */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">About Sandi Bot</CardTitle>
+                <CardTitle className="text-lg">About Coach Bot</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 text-sm text-slate-600">

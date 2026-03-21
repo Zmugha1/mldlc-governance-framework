@@ -61,7 +61,7 @@ const navItems: NavItem[] = [
     id: 'coaching', 
     label: 'Live Coaching Assistant', 
     icon: MessageSquare,
-    description: 'Sandi Bot with CLEAR framework'
+    description: 'Coach Bot with CLEAR framework'
   },
   { 
     id: 'analysis', 
@@ -104,7 +104,7 @@ function Sidebar({
           <Bot className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h1 className="font-bold text-lg leading-tight">Sandi Bot</h1>
+          <h1 className="font-bold text-lg leading-tight">Coach Bot</h1>
           <p className="text-xs text-slate-400">Coaching Intelligence</p>
         </div>
       </div>
@@ -258,7 +258,7 @@ function App() {
           <ErrorBoundary moduleName="Live Coaching Assistant">
             <ModuleHeader 
               title="Live Coaching Assistant" 
-              description="Sandi Bot with CLEAR framework and source citations"
+              description="Coach Bot with CLEAR framework and source citations"
             />
             <LiveCoachingAssistant />
           </ErrorBoundary>

@@ -90,7 +90,7 @@ export default function HowToUse() {
       <div className="bg-gradient-to-r from-[#C4B7D9] to-[#D4C7E9] rounded-xl p-6 text-white">
         <div className="flex items-center gap-3 mb-3">
           <BookOpen className="h-8 w-8" />
-          <h1 className="text-2xl font-bold">How to Use Sandi Bot Dashboard</h1>
+          <h1 className="text-2xl font-bold">How to Use Coach Bot Dashboard</h1>
         </div>
         <p className="text-white/90 max-w-3xl">
           Your complete guide to leveraging AI-powered coaching intelligence. 

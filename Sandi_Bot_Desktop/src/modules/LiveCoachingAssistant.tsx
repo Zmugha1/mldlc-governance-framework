@@ -487,7 +487,7 @@ export default function LiveCoachingAssistant() {
   }>>([
     { 
       type: 'bot', 
-      content: `Hello! I'm Sandi Bot, your AI coaching assistant powered by the CLEAR framework. All my responses cite their sources for full transparency and auditability.\n\nSelect a client to get personalized recommendations with full source citations.` 
+      content: `Hello! I'm Coach Bot, your AI coaching assistant powered by the CLEAR framework. All my responses cite their sources for full transparency and auditability.\n\nSelect a client to get personalized recommendations with full source citations.` 
     }
   ]);
   const [input, setInput] = useState('');
@@ -835,7 +835,7 @@ export default function LiveCoachingAssistant() {
                   <Bot className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg">Sandi Bot</CardTitle>
+                  <CardTitle className="text-lg">Coach Bot</CardTitle>
                   <p className="text-xs text-slate-500">
                     {selectedContext
                       ? `Coaching assistant for ${selectedContext.name}` 
@@ -895,7 +895,7 @@ export default function LiveCoachingAssistant() {
           <div className="p-4 border-t border-slate-100">
             <div className="flex gap-2">
               <Input
-                placeholder="Ask Sandi Bot anything..."
+                placeholder="Ask Coach Bot anything..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
