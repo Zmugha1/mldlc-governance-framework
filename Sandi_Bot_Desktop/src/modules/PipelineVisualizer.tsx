@@ -51,8 +51,8 @@ function PinkFlagAlert({ flags }: { flags: string[] }) {
 type DisplayClient = ReturnType<typeof clientToDisplay>;
 
 const REC_COLORS: Record<string, string> = {
-  PUSH: '#22c55e',
-  NURTURE: '#f59e0b',
+  VALIDATE: '#22c55e',
+  GATHER: '#f59e0b',
   PAUSE: '#ef4444',
 };
 
@@ -105,7 +105,7 @@ function StageColumn({
       {/* Clients in Stage */}
       <div className="flex-1 p-3 space-y-2 min-h-[200px] max-h-[400px] overflow-auto">
         {clients.map((client) => {
-          const rec = clientRecommendations.get(client.id) ?? 'NURTURE';
+          const rec = clientRecommendations.get(client.id) ?? 'GATHER';
           const recColor = REC_COLORS[rec] ?? '#f59e0b';
           return (
             <div

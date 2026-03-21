@@ -25,7 +25,7 @@ import {
   Line
 } from 'recharts';
 import { SkeletonCard } from '@/components/SkeletonCard';
-import { stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
+import { stageConfig, discColors } from '@/data/sampleClients';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
 import { getDiscStyleBreakdown, getDiscProfilesMap } from '@/services/dashboardService';
 import { getAllStageReadiness } from '@/services/stageReadinessService';
@@ -42,6 +42,15 @@ const STAGES = [
   'Client Career 2.0',
   'Business Purchase',
 ];
+
+const recommendationStyleMap: Record<
+  'VALIDATE' | 'GATHER' | 'PAUSE',
+  { color: string; bgColor: string }
+> = {
+  VALIDATE: { color: '#22C55E', bgColor: '#DCFCE7' },
+  GATHER: { color: '#F59E0B', bgColor: '#FEF3C7' },
+  PAUSE: { color: '#6B7280', bgColor: '#F3F4F6' },
+};
 
 interface KPICardProps {
   title: string;
@@ -166,9 +175,9 @@ export default function ExecutiveDashboard() {
   const recommendationData = useMemo(() => {
     if (!stats) return [];
     return [
-      { name: 'PUSH', value: stats.pushCount, color: recommendationConfig.PUSH.color },
-      { name: 'NURTURE', value: stats.nurtureCount, color: recommendationConfig.NURTURE.color },
-      { name: 'PAUSE', value: stats.pauseCount, color: recommendationConfig.PAUSE.color },
+      { name: 'VALIDATE', value: stats.pushCount, color: recommendationStyleMap.VALIDATE.color },
+      { name: 'GATHER', value: stats.nurtureCount, color: recommendationStyleMap.GATHER.color },
+      { name: 'PAUSE', value: stats.pauseCount, color: recommendationStyleMap.PAUSE.color },
     ];
   }, [stats]);
 
@@ -199,22 +208,22 @@ export default function ExecutiveDashboard() {
     let cancelled = false;
     Promise.all([getAllStageReadiness(), getDiscProfilesMap()]).then(([readiness, profiles]) => {
       if (cancelled) return;
-      const pushIds = readiness
-        .filter((r) => r.recommendation === 'PUSH')
+      const validateIds = readiness
+        .filter((r) => r.recommendation === 'VALIDATE')
         .sort((a, b) => b.readiness_score - a.readiness_score)
         .slice(0, 3)
         .map((r) => r.client_id);
       const readinessById = new Map(readiness.map((r) => [r.client_id, r.readiness_score]));
-      const pushClients = clients
-        .filter((c) => pushIds.includes(c.id))
-        .sort((a, b) => pushIds.indexOf(a.id) - pushIds.indexOf(b.id))
+      const validateClients = clients
+        .filter((c) => validateIds.includes(c.id))
+        .sort((a, b) => validateIds.indexOf(a.id) - validateIds.indexOf(b.id))
         .map((c) =>
           clientToDisplay(c, {
             disc: profiles.get(c.id),
             readinessScore: readinessById.get(c.id),
           })
         );
-      setPriorityClients(pushClients);
+      setPriorityClients(validateClients);
       setDiscProfiles(profiles);
     });
     return () => { cancelled = true; };
@@ -484,12 +493,12 @@ export default function ExecutiveDashboard() {
       {/* Priority Clients */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Priority PUSH Clients</CardTitle>
+          <CardTitle className="text-lg">Validate Clients</CardTitle>
           <Zap className="h-5 w-5 text-yellow-500" />
         </CardHeader>
         <CardContent>
           {priorityClients.length === 0 ? (
-            <p className="text-slate-500 text-sm">No PUSH clients yet. Create clients and recommendations will appear here.</p>
+            <p className="text-slate-500 text-sm">No VALIDATE clients yet. Create clients and recommendations will appear here.</p>
           ) : (
             <div className="space-y-3">
               {priorityClients.map((client) => (
@@ -512,8 +521,8 @@ export default function ExecutiveDashboard() {
                   <div className="flex items-center gap-4">
                     <Badge
                       style={{
-                        backgroundColor: recommendationConfig[client.recommendation].bgColor,
-                        color: recommendationConfig[client.recommendation].color,
+                        backgroundColor: recommendationStyleMap[client.recommendation].bgColor,
+                        color: recommendationStyleMap[client.recommendation].color,
                       }}
                     >
                       {client.recommendation}

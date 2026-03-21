@@ -117,8 +117,8 @@ export interface DiscProfileEnrichment {
 }
 
 export interface DashboardKPIs {
-  push_count: number;
-  nurture_count: number;
+  validate_count: number;
+  gather_count: number;
   pause_count: number;
   avg_readiness: number;
 }
@@ -140,11 +140,11 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
     r => r.outcome_bucket !== 'converted'
   );
 
-  const push_count = activeOnly.filter(
-    r => r.recommendation === 'PUSH'
+  const validate_count = activeOnly.filter(
+    r => r.recommendation === 'VALIDATE'
   ).length;
-  const nurture_count = activeOnly.filter(
-    r => r.recommendation === 'NURTURE'
+  const gather_count = activeOnly.filter(
+    r => r.recommendation === 'GATHER'
   ).length;
   const pause_count = activeOnly.filter(
     r => r.recommendation === 'PAUSE'
@@ -160,7 +160,7 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
       )
     : 0;
 
-  return { push_count, nurture_count, pause_count, avg_readiness };
+  return { validate_count, gather_count, pause_count, avg_readiness };
 }
 
 export async function getHotProspects(
@@ -171,7 +171,7 @@ export async function getHotProspects(
 
   return allReadiness
     .filter(r =>
-      r.recommendation === 'PUSH' ||
+      r.recommendation === 'VALIDATE' ||
       r.readiness_score >= 50
     )
     .sort((a, b) =>

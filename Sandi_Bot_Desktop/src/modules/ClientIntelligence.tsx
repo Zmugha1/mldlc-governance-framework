@@ -27,7 +27,7 @@ import { FileUploadZone, type UploadedFile } from '@/components/FileUploadZone';
 import { LocalFileWatcher } from '@/components/LocalFileWatcher';
 import { parseDocument, generateClientFromDocuments } from '@/utils/documentParser';
 import { SkeletonCard } from '@/components/SkeletonCard';
-import { stageConfig, recommendationConfig, discColors } from '@/data/sampleClients';
+import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
 import { getAllClients, createClient, updateClient, deleteClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
@@ -133,10 +133,18 @@ function RecommendationBadge({
   action,
   confidence,
 }: {
-  action: 'PUSH' | 'NURTURE' | 'PAUSE';
+  action: 'VALIDATE' | 'GATHER' | 'PAUSE';
   confidence: number;
 }) {
-  const config = recommendationConfig[action];
+  const recommendationStyleMap: Record<
+    'VALIDATE' | 'GATHER' | 'PAUSE',
+    { bgColor: string; color: string }
+  > = {
+    VALIDATE: { bgColor: '#DCFCE7', color: '#22C55E' },
+    GATHER: { bgColor: '#FEF3C7', color: '#F59E0B' },
+    PAUSE: { bgColor: '#F3F4F6', color: '#6B7280' },
+  };
+  const config = recommendationStyleMap[action];
   return (
     <div
       className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-semibold text-sm"
@@ -493,9 +501,9 @@ function ClientDetailModal({
                     data-rec={readiness.recommendation}
                     style={{
                       backgroundColor:
-                        readiness.recommendation === 'PUSH'
+                        readiness.recommendation === 'VALIDATE'
                           ? '#22c55e'
-                          : readiness.recommendation === 'NURTURE'
+                          : readiness.recommendation === 'GATHER'
                             ? '#f59e0b'
                             : '#ef4444',
                       color: 'white',

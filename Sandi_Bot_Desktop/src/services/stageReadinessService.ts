@@ -4,7 +4,7 @@ export type PipelineStage =
   'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
 
 export type Recommendation =
-  'PUSH' | 'NURTURE' | 'PAUSE';
+  'VALIDATE' | 'GATHER' | 'PAUSE';
 
 export interface StageReadiness {
   client_id: string;
@@ -206,9 +206,9 @@ function calculateRecommendation(
   if (outcome_bucket === 'paused') {
     recommendation = 'PAUSE';
   } else if (has_disc && has_you2 && fathom_count >= 1) {
-    recommendation = 'PUSH';
+    recommendation = 'VALIDATE';
   } else {
-    recommendation = 'NURTURE';
+    recommendation = 'GATHER';
   }
   console.log(
     '[stageReadiness] recommendation',
@@ -270,11 +270,11 @@ function rowToStageReadiness(row: StageReadinessRow): StageReadiness {
       ? row.outcome_bucket === 'paused'
         ? 'PAUSE — Client is in paused bucket'
         : `PAUSE — ${pinkFlags.length} pink flags need resolution`
-      : rec === 'PUSH'
+      : rec === 'VALIDATE'
         ? nextStage
-          ? `PUSH — Ready to advance to ${STAGE_FULL_NAMES[nextStage]}`
-          : 'PUSH — Client has completed the journey'
-        : `NURTURE — ${whatIsNeeded[0] ?? 'Continue building readiness'}`;
+          ? `VALIDATE — Ready to advance to ${STAGE_FULL_NAMES[nextStage]}`
+          : 'VALIDATE — Client has completed the journey'
+        : `GATHER — ${whatIsNeeded[0] ?? 'Continue building readiness'}`;
 
   return {
     client_id: row.id,
@@ -286,7 +286,7 @@ function rowToStageReadiness(row: StageReadinessRow): StageReadiness {
     recommendation_reason: recommendationReason,
     readiness_score: readinessScore,
     why_here: whyHere,
-    ready_to_advance: rec === 'PUSH',
+    ready_to_advance: rec === 'VALIDATE',
     what_is_needed: whatIsNeeded,
     pink_flags: pinkFlags,
     next_stage: nextStage,

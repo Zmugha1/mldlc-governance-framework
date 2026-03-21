@@ -715,7 +715,7 @@ export default function AdminStreamliner() {
                     <p className="text-3xl font-bold text-green-600">
                       {getPushClients(clients).length}
                     </p>
-                    <p className="text-sm text-green-700">PUSH Ready</p>
+                    <p className="text-sm text-green-700">VALIDATE Ready</p>
                   </div>
                   <div className="p-4 rounded-xl bg-purple-50 border border-purple-100 text-center">
                     <p className="text-3xl font-bold text-purple-600">

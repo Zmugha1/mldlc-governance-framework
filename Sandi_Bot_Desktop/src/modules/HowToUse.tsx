@@ -326,11 +326,11 @@ export default function HowToUse() {
                   <div className="flex flex-wrap gap-3">
                     <div className="flex items-center gap-2 px-3 py-2 bg-green-100 rounded-lg">
                       <div className="h-3 w-3 rounded-full bg-green-500" />
-                      <span className="text-sm font-medium text-green-800">PUSH - Move forward</span>
+                      <span className="text-sm font-medium text-green-800">VALIDATE - Move forward</span>
                     </div>
                     <div className="flex items-center gap-2 px-3 py-2 bg-yellow-100 rounded-lg">
                       <div className="h-3 w-3 rounded-full bg-yellow-500" />
-                      <span className="text-sm font-medium text-yellow-800">NURTURE - Keep engaged</span>
+                      <span className="text-sm font-medium text-yellow-800">GATHER - Keep engaged</span>
                     </div>
                     <div className="flex items-center gap-2 px-3 py-2 bg-red-100 rounded-lg">
                       <div className="h-3 w-3 rounded-full bg-red-500" />
@@ -750,7 +750,7 @@ export default function HowToUse() {
                       <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
                       <div>
                         <p className="font-medium text-[#333333]">Recommendations</p>
-                        <p className="text-sm text-[#6B6B6B]">PUSH/NURTURE/PAUSE decisions with confidence scores</p>
+                        <p className="text-sm text-[#6B6B6B]">VALIDATE/GATHER/PAUSE decisions with confidence scores</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3 p-3 bg-[#FAFAFA] rounded-lg">
