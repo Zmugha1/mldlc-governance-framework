@@ -1422,6 +1422,20 @@ async function extractTumayFromFile(
        WHERE id = ?`,
       [JSON.stringify(tumayData), clientId]
     );
+    if (tumayData.email || tumayData.phone || tumayData.contact_name) {
+      await db.execute(
+        `UPDATE clients
+         SET email = COALESCE(NULLIF(email, ''), ?),
+             phone = COALESCE(NULLIF(phone, ''), ?),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [
+          tumayData.email || null,
+          tumayData.phone || null,
+          clientId
+        ]
+      );
+    }
     await db.execute(
       `UPDATE client_you2_profiles
        SET spouse_name = COALESCE(spouse_name, ?),
@@ -1577,11 +1591,19 @@ export async function bulkReExtractVisionAndTumay(
         continue;
       }
 
+      console.log('[TUMAY debug] searchPath:', searchPath);
+      console.log('[TUMAY debug] files found:', files);
+      console.log('[TUMAY debug] client.name:', client.name);
       const clientFiles = files.filter(f => {
         const fname = f.split('\\').pop()
           ?? f.split('/').pop() ?? '';
-        return fname.startsWith(client.name);
+        const normalizedName = client.name.toLowerCase().trim();
+        const normalizedFileName = fname.toLowerCase().trim();
+        const normalizedPath = f.toLowerCase();
+        return normalizedFileName.startsWith(normalizedName)
+          || normalizedPath.includes(normalizedName);
       });
+      console.log('[TUMAY debug] clientFiles after filter:', clientFiles);
 
       for (const filePath of clientFiles) {
         const lower = filePath.toLowerCase();
@@ -1674,6 +1696,20 @@ export async function processDocument(
          WHERE id = $2`,
         [JSON.stringify(tumayData), clientId]
       );
+      if (tumayData.email || tumayData.phone || tumayData.contact_name) {
+        await dbExecute(
+          `UPDATE clients
+           SET email = COALESCE(NULLIF(email, ''), $1),
+               phone = COALESCE(NULLIF(phone, ''), $2),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $3`,
+          [
+            tumayData.email || null,
+            tumayData.phone || null,
+            clientId
+          ]
+        );
+      }
       await dbExecute(
         `UPDATE client_you2_profiles
          SET spouse_name = COALESCE(spouse_name, $1),
