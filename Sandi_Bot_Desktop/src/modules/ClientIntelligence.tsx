@@ -29,7 +29,7 @@ import { parseDocument, generateClientFromDocuments } from '@/utils/documentPars
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
-import { getAllClients, createClient, updateClient, deleteClient } from '@/services/clientService';
+import { getAllClients, createClient, updateClient, inactivateClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { calculateReadinessScore } from '@/services/coachingService';
 import { dbSelect } from '@/services/db';
@@ -169,12 +169,12 @@ function ClientDetailModal({
   client,
   isOpen,
   onClose,
-  onDelete,
+  onInactivate,
 }: {
   client: DisplayClient | null;
   isOpen: boolean;
   onClose: () => void;
-  onDelete?: (id: string) => void;
+  onInactivate?: (id: string) => void;
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null);
   const [you2Vision, setYou2Vision] = useState('No statement yet');
@@ -207,6 +207,7 @@ function ClientDetailModal({
     next_actions: string | null;
     overall_clear_score: number | null;
   }>>([]);
+  const [showInactivateConfirm, setShowInactivateConfirm] = useState(false);
 
   useEffect(() => {
     if (client && isOpen) {
@@ -392,11 +393,10 @@ function ClientDetailModal({
   const stage = stageConfig[client.stage as keyof typeof stageConfig];
   if (!stage) return null;
 
-  const handleDelete = () => {
-    if (onDelete && confirm(`Delete ${client.name}?`)) {
-      onDelete(client.id);
-      onClose();
-    }
+  const handleInactivate = () => {
+    if (!onInactivate) return;
+    onInactivate(client.id);
+    setShowInactivateConfirm(false);
   };
 
   return (
@@ -418,13 +418,47 @@ function ClientDetailModal({
                 </p>
               </div>
             </div>
-            {onDelete && (
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                Delete
+            {onInactivate && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-slate-300 text-slate-700 hover:bg-slate-100"
+                onClick={() => setShowInactivateConfirm(true)}
+              >
+                Inactivate
               </Button>
             )}
           </DialogTitle>
         </DialogHeader>
+
+        <Dialog open={showInactivateConfirm} onOpenChange={setShowInactivateConfirm}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Inactivate {client.name}?</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-slate-600">
+              They will be removed from your active pipeline
+              but all data is preserved.
+              You can reactivate them at any time.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowInactivateConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-slate-600 hover:bg-slate-700 text-white"
+                onClick={handleInactivate}
+              >
+                Inactivate
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Tabs defaultValue="overview" className="mt-4">
           <TabsList className="grid grid-cols-6 mb-4">
@@ -1623,9 +1657,9 @@ export default function ClientIntelligence() {
     }
   };
 
-  const handleDeleteClient = async (id: string) => {
+  const handleInactivateClient = async (id: string) => {
     try {
-      await deleteClient(id);
+      await inactivateClient(id);
       setSelectedClient(null);
       setIsModalOpen(false);
       loadClients();
@@ -1868,7 +1902,7 @@ export default function ClientIntelligence() {
         client={selectedDisplay}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onDelete={handleDeleteClient}
+        onInactivate={handleInactivateClient}
       />
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>

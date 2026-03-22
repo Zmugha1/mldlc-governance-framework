@@ -1,4 +1,5 @@
-import { dbSelect, dbExecute } from './db';
+import { dbSelect, dbExecute, getDb } from './db';
+import { logEntry as logAuditEntry } from './auditService';
 import type { Client } from '../types';
 import { getRecommendation } from './recommendationService';
 import { getAllStageReadiness } from './stageReadinessService';
@@ -6,7 +7,9 @@ import type { DashboardStats } from '../types';
 
 export async function getAllClients(): Promise<Client[]> {
   return dbSelect<Client>(
-    `SELECT * FROM clients ORDER BY updated_at DESC`
+    `SELECT * FROM clients
+     WHERE outcome_bucket IN ('active', 'converted', 'paused')
+     ORDER BY updated_at DESC`
   );
 }
 
@@ -138,8 +141,46 @@ export async function updateClient(
   return { ...updated, recommendation: result.recommendation };
 }
 
-export async function deleteClient(id: string): Promise<void> {
-  await dbExecute(`DELETE FROM clients WHERE id = $1`, [id]);
+export async function inactivateClient(
+  clientId: string
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE clients
+     SET outcome_bucket = 'inactive',
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [clientId]
+  );
+  await logAuditEntry(
+    'client_inactivated',
+    clientId,
+    null,
+    'inactive',
+    'Client inactivated by coach. Data preserved.',
+    'deterministic'
+  );
+}
+
+export async function reactivateClient(
+  clientId: string
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE clients
+     SET outcome_bucket = 'active',
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [clientId]
+  );
+  await logAuditEntry(
+    'client_reactivated',
+    clientId,
+    null,
+    'active',
+    'Client reactivated by coach.',
+    'deterministic'
+  );
 }
 
 const DEFAULT_DASHBOARD_STATS: DashboardStats = {
