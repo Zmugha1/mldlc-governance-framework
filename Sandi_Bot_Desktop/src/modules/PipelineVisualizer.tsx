@@ -24,11 +24,17 @@ import {
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, discColors, knowledgeGraph } from '@/data/sampleClients';
 import { getAllClients } from '@/services/clientService';
-import { getAllStageReadiness, moveClientToPause } from '@/services/stageReadinessService';
+import {
+  getAllStageReadiness,
+  moveClientStage,
+  moveClientToPause,
+  type PipelineStage,
+} from '@/services/stageReadinessService';
 import { calculateConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import type { Client } from '@/types';
 import { cn } from '@/lib/utils';
+import { dbExecute, dbSelect } from '@/services/db';
 
 // Pink Flag Alert Component
 function PinkFlagAlert({ flags }: { flags: string[] }) {
@@ -60,21 +66,59 @@ const REC_COLORS: Record<string, string> = {
   PAUSE: '#ef4444',
 };
 
+const STAGE_DISPLAY_NAMES = [
+  'Initial Contact',
+  'Seeker Connection',
+  'Seeker Clarification',
+  'Possibilities',
+  'Client Career 2.0',
+  'Business Purchase',
+] as const;
+
+const DISPLAY_TO_STAGE_CODE: Record<(typeof STAGE_DISPLAY_NAMES)[number], PipelineStage> = {
+  'Initial Contact': 'IC',
+  'Seeker Connection': 'C1',
+  'Seeker Clarification': 'C2',
+  Possibilities: 'C3',
+  'Client Career 2.0': 'C4',
+  'Business Purchase': 'C5',
+};
+
+const NEXT_STAGE_CODE: Record<PipelineStage, PipelineStage | null> = {
+  IC: 'C1',
+  C1: 'C2',
+  C2: 'C3',
+  C3: 'C4',
+  C4: 'C5',
+  C5: null,
+};
+
+interface GateFacts {
+  has_disc: boolean;
+  has_you2: boolean;
+  has_vision: boolean;
+  fathom_count: number;
+}
+
 // Stage Column Component
 function StageColumn({
   stage,
   clients,
   clientRecommendations,
+  readinessById,
   isActive,
   onClick,
+  onMoveNext,
   onPauseClient,
   stats
 }: {
-  stage: string;
+  stage: (typeof STAGE_DISPLAY_NAMES)[number];
   clients: DisplayClient[];
   clientRecommendations: Map<string, string>;
+  readinessById: Map<string, number>;
   isActive: boolean;
   onClick: () => void;
+  onMoveNext: (clientId: string, clientName: string, stageDisplay: (typeof STAGE_DISPLAY_NAMES)[number]) => void;
   onPauseClient: (clientId: string, clientName: string) => void;
   stats?: { avgDaysInStage: number; conversionRate: number };
 }) {
@@ -110,7 +154,15 @@ function StageColumn({
 
       {/* Clients in Stage */}
       <div className="flex-1 p-3 space-y-2 min-h-[200px] max-h-[400px] overflow-auto">
-        {clients.map((client) => {
+        {!isActive ? (
+          <div className="text-xs text-slate-500 p-2">
+            Click this stage to view clients and actions.
+          </div>
+        ) : clients.length === 0 ? (
+          <div className="text-xs text-slate-500 p-2">
+            No clients in this stage.
+          </div>
+        ) : clients.map((client) => {
           const rec = clientRecommendations.get(client.id) ?? 'GATHER';
           const recColor = REC_COLORS[rec] ?? '#f59e0b';
           return (
@@ -137,6 +189,23 @@ function StageColumn({
                 >
                   {rec}
                 </span>
+                <span className="text-xs text-slate-600 font-medium">
+                  {Math.round(readinessById.get(client.id) ?? 0)}%
+                </span>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[10px]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveNext(client.id, client.name, stage);
+                  }}
+                >
+                  Move to next stage
+                </Button>
                 <Button
                   type="button"
                   size="sm"
@@ -147,7 +216,7 @@ function StageColumn({
                     onPauseClient(client.id, client.name);
                   }}
                 >
-                  Pause
+                  Move to PAUSE
                 </Button>
               </div>
             </div>
@@ -167,8 +236,6 @@ function StageColumn({
   );
 }
 
-const STAGES = ['Initial Contact', 'Seeker Connection', 'Seeker Clarification', 'Possibilities', 'Client Career 2.0', 'Business Purchase'];
-
 const STAGE_READINESS_TO_COLUMN: Record<string, string> = {
   'Coach Client Collaboration': 'Possibilities',
 };
@@ -176,11 +243,11 @@ const STAGE_READINESS_TO_COLUMN: Record<string, string> = {
 // Conversion Funnel Component
 function ConversionFunnel({ clients }: { clients: Client[] }) {
   const funnelData = useMemo(() => {
-    return STAGES.map(stage => {
+    return STAGE_DISPLAY_NAMES.map(stage => {
       const count = clients.filter(c => c.stage === stage).length;
       const config = stageConfig[stage as keyof typeof stageConfig];
       return {
-        stage: config?.label ?? stage,
+        stage,
         count,
         color: config?.color ?? '#94A3B8'
       };
@@ -219,6 +286,7 @@ export default function PipelineVisualizer() {
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [readiness, setReadiness] = useState<Awaited<ReturnType<typeof getAllStageReadiness>>>([]);
+  const [gateFactsByClient, setGateFactsByClient] = useState<Map<string, GateFacts>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
@@ -226,14 +294,56 @@ export default function PipelineVisualizer() {
   const [pauseReason, setPauseReason] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
   const [pauseError, setPauseError] = useState<string | null>(null);
+  const [gateModalOpen, setGateModalOpen] = useState(false);
+  const [pendingMove, setPendingMove] = useState<{
+    clientId: string;
+    clientName: string;
+    fromStage: PipelineStage;
+    toStage: PipelineStage;
+    missingRequirement: string;
+    warningMessage: string;
+  } | null>(null);
 
   const loadPipelineData = () => {
     setLoading(true);
     setError(null);
-    Promise.all([getAllClients(), getAllStageReadiness()])
-      .then(([c, r]) => {
+    Promise.all([
+      getAllClients(),
+      getAllStageReadiness(),
+      dbSelect<{
+        client_id: string;
+        has_disc: number;
+        has_you2: number;
+        has_vision: number;
+        fathom_count: number;
+      }>(
+        `SELECT
+           c.id as client_id,
+           CASE WHEN dp.client_id IS NOT NULL THEN 1 ELSE 0 END as has_disc,
+           CASE WHEN y.client_id IS NOT NULL THEN 1 ELSE 0 END as has_you2,
+           CASE WHEN y.one_year_vision IS NOT NULL AND LENGTH(y.one_year_vision) > 20 THEN 1 ELSE 0 END as has_vision,
+           COUNT(cs.id) as fathom_count
+         FROM clients c
+         LEFT JOIN client_disc_profiles dp ON dp.client_id = c.id
+         LEFT JOIN client_you2_profiles y ON y.client_id = c.id
+         LEFT JOIN coaching_sessions cs ON cs.client_id = c.id
+         GROUP BY c.id`,
+        []
+      ),
+    ])
+      .then(([c, r, gateRows]) => {
         setClients(c);
         setReadiness(r);
+        const m = new Map<string, GateFacts>();
+        gateRows.forEach((row) => {
+          m.set(row.client_id, {
+            has_disc: row.has_disc === 1,
+            has_you2: row.has_you2 === 1,
+            has_vision: row.has_vision === 1,
+            fathom_count: Number(row.fathom_count ?? 0),
+          });
+        });
+        setGateFactsByClient(m);
       })
       .catch((err) => {
         console.error(err);
@@ -290,9 +400,133 @@ export default function PipelineVisualizer() {
     loadPipelineData();
   };
 
+  const getGateDecision = (
+    fromStage: PipelineStage,
+    gateFacts: GateFacts,
+    clientName: string
+  ): {
+    met: boolean;
+    missingRequirement: string;
+    warningMessage: string;
+  } => {
+    if (fromStage === 'IC') {
+      return { met: true, missingRequirement: '', warningMessage: '' };
+    }
+    if (fromStage === 'C1') {
+      if (gateFacts.has_disc) {
+        return { met: true, missingRequirement: '', warningMessage: '' };
+      }
+      return {
+        met: false,
+        missingRequirement: 'DISC profile missing',
+        warningMessage: `DISC profile missing for ${clientName}. Move anyway?`,
+      };
+    }
+    if (fromStage === 'C2') {
+      if (gateFacts.has_disc && gateFacts.has_you2) {
+        return { met: true, missingRequirement: '', warningMessage: '' };
+      }
+      return {
+        met: false,
+        missingRequirement: !gateFacts.has_you2 ? 'You 2.0 profile missing' : 'DISC profile missing',
+        warningMessage: `You 2.0 profile missing for ${clientName}. Move anyway?`,
+      };
+    }
+    if (fromStage === 'C3') {
+      if (gateFacts.has_disc && gateFacts.has_you2 && gateFacts.fathom_count >= 1) {
+        return { met: true, missingRequirement: '', warningMessage: '' };
+      }
+      return {
+        met: false,
+        missingRequirement: gateFacts.fathom_count < 1 ? 'No coaching sessions recorded' : 'Required profile data missing',
+        warningMessage: `No coaching sessions recorded for ${clientName}. Move anyway?`,
+      };
+    }
+    if (fromStage === 'C4') {
+      if (gateFacts.has_disc && gateFacts.has_you2 && gateFacts.has_vision) {
+        return { met: true, missingRequirement: '', warningMessage: '' };
+      }
+      return {
+        met: false,
+        missingRequirement: !gateFacts.has_vision ? 'Vision statement missing' : 'Required profile data missing',
+        warningMessage: `Vision statement missing for ${clientName}. Move anyway?`,
+      };
+    }
+    return { met: true, missingRequirement: '', warningMessage: '' };
+  };
+
+  const handleMoveNext = async (
+    clientId: string,
+    clientName: string,
+    stageDisplay: (typeof STAGE_DISPLAY_NAMES)[number]
+  ) => {
+    const fromStage = DISPLAY_TO_STAGE_CODE[stageDisplay];
+    const toStage = NEXT_STAGE_CODE[fromStage];
+    if (!toStage) return;
+
+    const gateFacts = gateFactsByClient.get(clientId) ?? {
+      has_disc: false,
+      has_you2: false,
+      has_vision: false,
+      fathom_count: 0,
+    };
+
+    const gateDecision = getGateDecision(fromStage, gateFacts, clientName);
+    if (!gateDecision.met) {
+      setPendingMove({
+        clientId,
+        clientName,
+        fromStage,
+        toStage,
+        missingRequirement: gateDecision.missingRequirement,
+        warningMessage: gateDecision.warningMessage,
+      });
+      setGateModalOpen(true);
+      return;
+    }
+
+    const moved = await moveClientStage(
+      clientId,
+      toStage,
+      `Pipeline stage move from ${fromStage} to ${toStage}`,
+      'Sandi Stahl'
+    );
+    if (moved) loadPipelineData();
+  };
+
+  const handleOverrideMove = async () => {
+    if (!pendingMove) return;
+    const moved = await moveClientStage(
+      pendingMove.clientId,
+      pendingMove.toStage,
+      `Stage gate override from ${pendingMove.fromStage} to ${pendingMove.toStage}`,
+      'Sandi Stahl'
+    );
+    if (moved) {
+      await dbExecute(
+        `INSERT INTO audit_log
+         (client_id, action_type, reasoning, model_used)
+         VALUES (?, 'stage_gate_override', ?, 'deterministic')`,
+        [
+          pendingMove.clientId,
+          `${pendingMove.clientName} moved from ${pendingMove.fromStage} to ${pendingMove.toStage} without meeting gate requirement: ${pendingMove.missingRequirement}`
+        ]
+      );
+      setGateModalOpen(false);
+      setPendingMove(null);
+      loadPipelineData();
+    }
+  };
+
   const clientRecommendations = useMemo(() => {
     const m = new Map<string, string>();
     readiness.forEach(r => m.set(r.client_id, r.recommendation));
+    return m;
+  }, [readiness]);
+
+  const readinessById = useMemo(() => {
+    const m = new Map<string, number>();
+    readiness.forEach((r) => m.set(r.client_id, r.readiness_score));
     return m;
   }, [readiness]);
 
@@ -305,7 +539,7 @@ export default function PipelineVisualizer() {
   // Group clients by stage from readiness (display format for StageColumn)
   const clientsByStage = useMemo(() => {
     const defaults = getPipelineStageDefaults();
-    return STAGES.map(stage => ({
+    return STAGE_DISPLAY_NAMES.map(stage => ({
       stage,
       clients: readiness
         .filter(r => (STAGE_READINESS_TO_COLUMN[r.current_stage_full] ?? r.current_stage_full) === stage)
@@ -319,11 +553,11 @@ export default function PipelineVisualizer() {
   // Pipeline flow data from real clients
   const flowData = useMemo(() => {
     const defaults = getPipelineStageDefaults();
-    return STAGES.map(stage => {
+    return STAGE_DISPLAY_NAMES.map(stage => {
       const count = clients.filter(c => c.stage === stage).length;
       const config = stageConfig[stage as keyof typeof stageConfig];
       return {
-        name: config?.label ?? stage,
+        name: stage,
         clients: count,
         conversion: defaults.flowConversion
       };
@@ -460,8 +694,10 @@ export default function PipelineVisualizer() {
                 stage={stage}
                 clients={stageClients}
                 clientRecommendations={clientRecommendations}
+                readinessById={readinessById}
                 isActive={selectedStage === stage}
                 onClick={() => setSelectedStage(selectedStage === stage ? null : stage)}
+                onMoveNext={handleMoveNext}
                 onPauseClient={openPauseModal}
                 stats={stats}
               />
@@ -555,6 +791,42 @@ export default function PipelineVisualizer() {
           </p>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={gateModalOpen}
+        onOpenChange={(open) => {
+          setGateModalOpen(open);
+          if (!open) setPendingMove(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Stage gate warning</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-700">
+            {pendingMove?.warningMessage}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setGateModalOpen(false);
+                setPendingMove(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={handleOverrideMove}
+            >
+              Move anyway - log override
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={pauseModalOpen} onOpenChange={setPauseModalOpen}>
         <DialogContent className="max-w-md">
