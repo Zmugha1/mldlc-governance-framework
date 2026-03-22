@@ -303,8 +303,8 @@ async fn ollama_generate(
         "stream": false,
         "options": {
             "temperature": 0.1,
-            "num_ctx": 2048,
-            "num_predict": 512
+            "num_ctx": 4096,
+            "num_predict": 1024
         }
     });
     let resp = client
