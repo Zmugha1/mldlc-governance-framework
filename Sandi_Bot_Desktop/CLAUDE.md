@@ -1,275 +1,239 @@
-# Sandi Bot — CLAUDE.md
-## Dr. Data Decision Intelligence
-## Last Updated: March 2026
+# Coach Bot — Claude Session Memory
+## Dr. Data Decision Intelligence LLC
+## Last updated: March 2026
 
 ---
 
-## Project Overview
-Private airgapped coaching intelligence desktop
-application for franchise coaches.
-Built with Tauri v2, React 19, TypeScript, SQLite.
-Deployed on Windows and Mac for individual coaches.
-Zero internet required after one-time setup.
+## WHAT THIS PROJECT IS
 
-## Tech Stack
-- Tauri v2 — desktop shell (NOT Electron, never)
-- React 19 + TypeScript + Vite 5 — frontend
-- Tailwind CSS 3.4 — styling (DO NOT upgrade to v4)
-- shadcn/ui + Radix UI — components
-- SQLite via tauri-plugin-sql — database
-  (NOT better-sqlite3, never)
-- Ollama localhost:11434 — local LLM
-- Neo4j local — knowledge graph (Phase 5+)
+Coach Bot is a private airgapped desktop
+application for franchise coach Sandi Stahl.
+Built with Tauri v2 (Rust), React 19,
+TypeScript, SQLite, and Ollama local LLM.
 
-## Commands
-npm run tauri:dev     — launch desktop app
-npx tsc --noEmit      — TypeScript check only
-cargo check           — Rust compile check
-git checkout dev      — working branch
-
-## Architecture — 5 Layers (STZ Framework)
-
-L1 — PROMPTS
-Location: /prompts/*.txt
-Purpose: LLM reasoning templates per operation
-Rule: One file per named operation
-Examples: recommendation.txt, disc_extraction.txt
-Populate with real client examples after data arrives.
-
-L2 — SKILLS
-Location: src/services/*.ts
-Purpose: Named typed operations — one job each
-Rule: All business logic here. Never in modules.
-Key files:
-  clientService.ts       — client CRUD + pipeline
-  recommendationService.ts — PUSH/NURTURE/PAUSE
-  coachingService.ts     — DISC + readiness + homework
-  postCallService.ts     — CLEAR scoring + evaluation
-  pipelineService.ts     — conversion + stage metrics
-  auditService.ts        — governance logging
-  ollamaService.ts       — LLM calls (Phase 3)
-
-L3 — AGENTS
-Location: src/agents/*.ts
-Purpose: Orchestrated skill sequences
-Rule: Each agent has typed contract in/out
-Status: Stubs ready — Phase 3 implements
-Files:
-  documentAgent.ts       — Phase 3
-  coachingAgent.ts       — Phase 3
-  synthesisAgent.ts      — Phase 4, Fred only
-  outreachAgent.ts       — Phase 5, Fred only
-  patternAgent.ts        — Phase 5, Neo4j required
-  orchestrator.ts        — reads config, routes triggers
-
-L4 — CONTRACTS
-Location: TOOLS.md (project root)
-Purpose: Every named operation defined with typed
-         inputs, outputs, and approval gates
-Rule: Add to TOOLS.md BEFORE building any operation
-Rule: Never build what is not in TOOLS.md
-
-L5 — GOVERNANCE
-Location: audit_log table in SQLite
-Purpose: Every recommendation logged with reasoning
-Rule: Every operation marked Audit: always in
-      TOOLS.md must write to audit_log
-Rule: reasoning field is never a summary —
-      always step by step
-
-## Client Differentiation — The Config System
-New client = new JSON file in configs/
-The orchestrator reads the config at runtime.
-Never hardcode client-specific values in code.
-
-configs/sandi_stahl.json
-  agents: document, coaching, pattern only
-  external_integrations: all false
-  llm.model: phi3:mini
-  airgap: strict — no external calls ever
-  ui: recommendation_display expanded
-
-configs/fred_webster.json
-  agents: all five including synthesis + outreach
-  external_integrations: gmail true, linkedin true
-  llm.model: llama3.1:8b
-  airgap: permissioned — external calls logged
-  ui: recommendation_display collapsed
-
-configs/base_client.config.json
-  Template for all new clients
-  Copy and rename for each new engagement
-
-## Module Rules
-All 8 modules in src/modules/ are display only.
-Modules never contain business logic.
-Modules never query the database directly.
-Modules call services. Services do the work.
-If you find logic in a module, move it to a service.
-
-## New Feature Workflow — Always Follow This Order
-1. Define operation in TOOLS.md with typed contract
-2. Write prompt file in /prompts/ if LLM required
-3. Write service function in src/services/
-4. Write agent in src/agents/ if workflow required
-5. Update client config if behavior differs per client
-6. Wire to Rust IPC command in main.rs if needed
-7. Update module to call service — display only
-8. Verify audit logging is wired
-9. Run npx tsc --noEmit — must pass clean
-10. Run cargo check — must pass clean
-
-## Branch Structure
-main    — production, always deployable to client
-dev     — integration, all work merges here first
-feature/[name] — one branch per phase or feature
-
-Rule: Never push broken code to main.
-Rule: Always verify app runs on dev before merging.
-
-## Phase Status — March 2026
-Phase 1: DELIVERED — desktop app, 8 modules
-Phase 2: DELIVERED — SQLite persistence, real data
-Pre-Phase 3: DELIVERED — agents, configs, prompts,
-             TOOLS.md, services clean
-Phase 3: IN PROGRESS — document ingestion pipeline
-Phase 3B: COMPLETE — DISC deterministic extraction
-Phase 3C: IN PROGRESS — STZ human feedback loop
-Phase 3D: IN PROGRESS — PDF extraction hardening
-Phase 4: NEXT — installer, backup, polish
-Phase 5: RETAINER — Neo4j knowledge graph
-Phase 6: RETAINER — intelligence engine
-Phase 7: RETAINER — LLM upgrade
-Phase 8: YEAR 2 — productization, new clients
-
-## Critical Rules — Never Violate These
-1. Never use better-sqlite3 — use tauri-plugin-sql
-2. Never use Electron — Tauri v2 only
-3. Never upgrade Tailwind to v4
-4. Never use pdf-parse — use pdf-extract (Rust)
-5. Never modify POC repo (Sandi_Bot_Coaching_Intelligence)
-6. Never put business logic in modules
-7. Never hardcode client values — use configs/
-8. Never build without adding to TOOLS.md first
-9. Never return a recommendation without reasoning
-10. Always run cargo check before npm run tauri:dev
-
-## PDF Extraction Rules
-- Never use lopdf for TTI DISC reports
-- Always use extract_pdf_pages IPC command
-- pdfium-render is the primary extractor
-- Tesseract CLI is the OCR fallback
-- Temp images use BMP format not PNG
-- image crate needs png feature in Cargo.toml
-- pdfium.dll must be in src-tauri/
-
-## Model Rules
-- OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_k_m'
-- Never revert to llama3.1:8b
-- Never revert to qwen2.5:7b (non-instruct)
-- Full JSON schema always passed to Ollama
-- DISC_FORMAT_SCHEMA and YOU2_FORMAT_SCHEMA
-  defined in documentExtractionService.ts
-
-## Migration Rules
-- Migrations 1-47 complete — never edit
-- Migration 48 = extraction_corrections table
-  NOT YET RUN — run before next feature build
-- Next migration after 48 = 49+
-
-## File Path Rules
-- Client folders may use underscores or spaces
-- Always normalize: replace _ with space
-  when matching folder names to client names
-- Always use actual disk path for IPC calls
-- Never construct paths from client name alone
-
-## Known Working DISC Scores (Ground Truth)
-Use these to validate extraction is correct:
-
-Andrew Tait:
-  Natural:  D=42, I=15, S=84, C=71
-  Adapted:  D=38, I=18, S=78, C=75
-  Style: Supporting Coordinator
-  Date: 2026-01-28
-
-Dena Sauer:
-  Natural:  D=25, I=78, S=68, C=45
-  Adapted:  D=18, I=74, S=74, C=45
-  Style: Promoting Relater
-  Confirmed: pdfium extraction 2026-03-18
-
-Jeff Dayton:
-  Natural:  D=15, I=68, S=80, C=61
-  Adapted:  D=16, I=72, S=68, C=58
-  Confirmed: pdfium extraction 2026-03-18
-
-## Reference Files
-TOOLS.md               — named operations registry
-PRODUCTION_ROADMAP.md  — full phase plan + prompts
-configs/               — per-client configuration
-prompts/               — LLM reasoning templates
-src/agents/            — agent contracts and stubs
-src/services/          — all business logic
-
-## STZ Discovery Framework
-Before Phase 3 for any new client:
-Run DrData_Discovery_Interview_Guide.pdf
-20 questions — 5 sections — maps to 5 code layers
-Section 1 → /prompts/ files
-Section 2 → src/services/ skill functions
-Section 3 → src/agents/ orchestrator config
-Section 4 → TOOLS.md contract definitions
-Section 5 → audit_log KPIs and evaluation
-Rule: No client code before Sections 1-4 complete.
-
-## ADLC — Agentic Development Lifecycle
-This project follows ADLC not traditional SDLC.
-Agents participate in building, not just humans.
-Goal Definition → PRD → Agent Skills → Orchestration
-→ Autonomous Coding → Autonomous Testing
-→ Observability → Continuous Deployment
-
-## About This Project
-Architect: Dr. Zubia Mughal — Dr. Data Decision Intel
-Framework: Skill Threshold Zone (STZ)
-Client: Sandi Stahl — Franchise Coach (Founding Partner)
-Client: Fred Webster — Power User
 Repo: github.com/Zmugha1/Sandi_Bot_Desktop
-Contact: drdatadecisionintelligence.com
+Branch: dev — always work on dev only
+Push: git push sandi dev
+
+---
+
+## CRITICAL RULES — READ BEFORE EVERY SESSION
+
+1. Never use better-sqlite3. Use tauri-plugin-sql.
+2. Never use Electron. Tauri v2 only.
+3. Never upgrade Tailwind to v4. Stay on 3.4.
+4. Never edit migrations 1-48. New = 49+.
+5. client_id is TEXT/UUID never number.
+6. Database: sandi_bot.db via getDb().
+7. Never delete clients — inactivate them.
+   outcome_bucket = 'inactive'
+8. Never reference TES or Entrepreneur's
+   Source in any UI text or prompt.
+9. cargo check before npm run tauri:dev.
+10. Always push with: git push sandi dev.
+
+---
+
+## OLLAMA — RULE THAT CAUSES MOST LOST TIME
+
+NEVER call Ollama directly from TypeScript.
+Tauri v2 blocks ALL direct fetch() calls
+to localhost:11434. This is a security
+sandbox restriction that cannot be bypassed.
+
+ALWAYS use the Rust proxy:
+  const result = await invoke<string>(
+    'ollama_generate',
+    {
+      prompt: documentText,
+      system: systemPrompt,
+      model: 'qwen2.5:7b-instruct-q4_k_m'
+    }
+  );
+
+The ollama_generate command is in:
+  src-tauri/src/lib.rs (line ~306)
+  Registered in invoke_handler![]
+  Uses reqwest with 120 second timeout
+  Options: num_ctx 2048, num_predict 512
+
+If you try fetch() it silently fails.
+No error is thrown. Nothing happens.
+Always use invoke('ollama_generate').
+
+---
+
+## PDF EXTRACTION — RULE THAT CAUSES ERRORS
+
+NEVER use lopdf, pdfjs, or any JS PDF library.
+They return raw PDF operators not readable text.
+
+ALWAYS use Rust commands:
+  invoke('extract_pdf_pages', {
+    filePath, pageNumbers: [1,2,3,4,5]
+  })
+  or
+  invoke('extract_text', { filePath })
+
+These use pdfium-render which works correctly.
+
+---
+
+## EXTRACTION PATTERN — CONFIRMED WORKING
+
+Every document type follows this exact pattern:
+  1. TypeScript: invoke('extract_pdf_pages')
+  2. Rust: extracts text via pdfium-render
+  3. TypeScript: invoke('ollama_generate')
+     with extracted text + few-shot prompt
+  4. Rust: calls Ollama via reqwest
+  5. Rust: returns JSON string
+  6. TypeScript: parses JSON, writes to DB
+
+Confirmed working for:
+  DISC profiles: pages 23-25, 28, 34-36
+  You2 profiles: pages 1-5
+  TUMAY forms: pages 1-5
+  Fathom transcripts: full text
+
+For structured numeric fields (DISC scores):
+  Use deterministic Rust regex first.
+  LLM only for narrative fields.
+
+---
+
+## PROMPT SIZE LIMITS — CRITICAL
+
+num_ctx: 2048 (context window limit)
+num_predict: 512 (response length limit)
+Keep few-shot examples SHORT.
+Long prompts cause Ollama timeouts.
+One example per document type maximum.
+Add 500ms delay between clients in bulk ops.
+17 clients x 120s max = 34 min worst case.
+In practice 2-3 min if Ollama is warm.
+
+---
 
 ## CURRENT STATE — March 2026
 
-### Services built and passing (do not rebuild):
-- text_extractor.rs — pdf, docx, pptx, xlsx, csv, txt
-- documentExtractionService.ts — Ollama integration
-  LIVE at http://localhost:11434/api/generate
-  Model: qwen2.5:7b-instruct-q4_k_m — DO NOT rebuild Ollama calls
-- stageInferenceService.ts — bucket/stage mapping
-- profileBuilderService.ts — calls existing services
-- bulkImportService.ts — processes client folders
-- feedbackLogService.ts — STZ L1-L5 logging
+### Confirmed working (do not rebuild):
+- 17/17 DISC profiles extracted
+- 17/17 You2 profiles extracted
+- 45 coaching sessions extracted
+- Backup system working
+- VALIDATE/GATHER/PAUSE wired correctly
+- Dashboard showing real data
+- All 8 modules loading
+- Dena Sauer TUMAY confirmed working
 
-### Database migrations complete: 1-47
-### Next new migration number: 48 (extraction_corrections — not yet run)
+### Migrations completed:
+- Migrations 1-47: original schema
+- Migration 48: CLEAR scoring columns
+  in coaching_sessions
+- Migration 49: pause_reason,
+  follow_up_date, referral_source,
+  referred_by, referral_ask_sent
+  on clients table
 
-### Client folder base path:
+### P0 items status (Phase 4):
+- P0-5 Coach Bot rename ✅ b69e5cb
+- P0-6 TES references removed ✅ 9998c0c
+- P0-1 VALIDATE/GATHER/PAUSE ✅ 39b9794
+- P0-2 Delete → Inactivate ✅ a956e26
+- P0-3 Migration 49 + pause reason ✅ 002db09
+- P0-4 Pipeline clickable ✅ e0a4518
+- P0-7 TUMAY extraction IN PROGRESS
+- P0-8 Client card POC quality PENDING
+- P0-9 Windows installer PENDING
+- P0-10 StatusBar verification PENDING
+
+### Ground truth validation:
+Andrew Tait: natural_s=84 → dominant S
+  → GATHER (0 sessions)
+Alex Raiyn: natural_i=75 → dominant I
+  → VALIDATE (7 sessions)
+
+---
+
+## TECH STACK
+
+Tauri v2 (Rust backend)
+React 19 + TypeScript
+SQLite via tauri-plugin-sql
+pdfium-render for PDF extraction
+Tesseract CLI for image-based PDFs
+qwen2.5:7b-instruct-q4_k_m via Ollama
+Tailwind CSS 3.4
+shadcn/ui + Radix UI
+Cursor IDE
+
+---
+
+## FILE STRUCTURE (key files)
+
+src/services/
+  stageReadinessService.ts — VALIDATE/GATHER/PAUSE
+  dashboardService.ts — KPI calculations
+  documentExtractionService.ts — extraction pipeline
+  clientService.ts — CRUD + inactivate
+  ollamaService.ts — Ollama health check
+
+src/modules/
+  ExecutiveDashboard.tsx
+  ClientIntelligence.tsx
+  PipelineVisualizer.tsx
+  PostCallAnalysis.tsx
+  AdminStreamliner.tsx
+
+src-tauri/src/
+  lib.rs — all Tauri commands registered here
+  text_extractor.rs — PDF/PPTX/DOCX extraction
+  disc_parser.rs — deterministic DISC scores
+  you2_parser.rs — deterministic You2 extraction
+  tumay_parser.rs — TUMAY (now uses ollama_generate)
+
+---
+
+## SANDI'S PREFERENCES
+
+Language: VALIDATE not PUSH, GATHER not NURTURE
+Stages: IC C1 C2 C3 C4 C5
+  Display: Initial Contact, Seeker Connection,
+  Seeker Clarification, Possibilities,
+  Client Career 2.0, Business Purchase
+Never delete clients — always inactivate
+Pause requires reason + follow-up date
+Vision statement is created by Sandi via AI
+  not extracted from files
+Do not duplicate YouCanBookMe email sequences
+
+---
+
+## CLIENT DATA LOCATION
+
 C:\Users\zumah\SandiBot\clients\
-Subfolders: Active\ WIN\ Paused\ Various\
-Each bucket contains [ClientName]\ subfolders.
+  Active\     — 10 active clients
+  Paused\     — 4 paused clients
+  WIN\        — 3 converted clients
 
-### Folder to bucket mapping (in stageInferenceService.ts):
-Active  → active
-WIN     → converted
-Paused  → paused
-Various → various
+File naming: "Alex Raiyn - TUMAY.pdf"
+  Files are in client SUBFOLDER not bucket root
+  e.g. Active\Alex_Raiyn\Alex Raiyn - TUMAY.pdf
 
-### CRITICAL: Ollama must be running before
-any extraction or bulk import. Check with:
-ollama list
-Required model: qwen2.5:7b-instruct-q4_k_m
+DB location: C:\Users\zumah\AppData\Roaming\
+  com.sandibot.desktop\sandi_bot.db
 
-### Existing services to CALL not replace:
-- coachingService.calculateReadinessScore()
-- recommendationService.getRecommendation()
-- pipelineService — PipelineStage types
+Backup location: C:\Users\zumah\AppData\Roaming\
+  com.sandibot.desktop\backups\
+
+---
+
+## WHAT TO ASK BEFORE STARTING ANY SESSION
+
+1. Read this CLAUDE.md file
+2. Read TOOLS.md for registered commands
+3. Check current branch: git branch
+4. Run: npx tsc --noEmit
+   Fix any errors before proceeding
+5. Ask what P0 item or phase we are on

@@ -401,3 +401,33 @@ fred_webster.json — all agents + gmail + linkedin
 base_client.config.json — template for new clients
 
 ---
+
+## ollama_generate
+invoke('ollama_generate', {
+  prompt: string,
+  system: string,
+  model: string
+})
+Returns: Promise<string>
+Timeout: 120 seconds
+Options: num_ctx 2048, num_predict 512
+CRITICAL: Only way to call Ollama.
+Direct fetch() is blocked by Tauri v2.
+
+## check_ollama_status
+invoke('check_ollama_status')
+Returns: Promise<boolean>
+Use before any extraction.
+
+## extract_pdf_pages
+invoke('extract_pdf_pages', {
+  filePath: string,
+  pageNumbers: number[]
+})
+Returns: Promise<{ text: string, success: boolean }>
+Uses pdfium-render. Always use for PDFs.
+
+## extract_text
+invoke('extract_text', { filePath: string })
+Returns: Promise<string>
+Handles PDF, PPTX, DOCX, TXT, CSV.

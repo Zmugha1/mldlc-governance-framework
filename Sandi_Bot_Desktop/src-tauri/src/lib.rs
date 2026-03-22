@@ -303,13 +303,14 @@ async fn ollama_generate(
         "stream": false,
         "options": {
             "temperature": 0.1,
-            "num_ctx": 4096
+            "num_ctx": 2048,
+            "num_predict": 512
         }
     });
     let resp = client
         .post("http://localhost:11434/api/generate")
         .json(&body)
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_secs(120))
         .send()
         .await
         .map_err(|e| format!("Ollama connection failed: {}", e))?;
