@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import { BaseDirectory, readTextFile } from '@tauri-apps/plugin-fs';
 import { dbExecute, dbSelect, getDb } from './db';
 import { logEntry } from './auditService';
 import type {
@@ -1404,21 +1403,48 @@ async function extractTumayFromFile(
   filePath: string
 ): Promise<boolean> {
   try {
-    console.log('[TUMAY extract] filePath:', filePath);
+    console.log('[TUMAY-v2] starting for:', clientId);
+    console.log('[TUMAY-v2] filePath:', filePath);
     const text = await invoke<string>(
       'extract_text', { filePath }
     );
-    console.log('[TUMAY extract] text length:', text?.length);
-    console.log('[TUMAY extract] text preview:', text?.substring(0, 200));
+    console.log('[TUMAY-v2] text length:', text?.length);
     if (!text || text.trim().length < 20) {
-      console.log('[TUMAY extract] FAIL: text too short');
+      console.log('[TUMAY-v2] FAIL: text too short');
       return false;
     }
-    const promptTemplate = await readTextFile(
-      'prompts/tumay.txt',
-      { baseDir: BaseDirectory.Resource }
-    );
-    const fullPrompt = `${promptTemplate}\n${text}`;
+    const TUMAY_PROMPT = `You are extracting structured data from a franchise coaching intake form called "Tell Us More About You" (TUMAY).
+
+Here are two examples of correct extractions:
+
+EXAMPLE 1 — Alexander Raiyn:
+Name: Alexander Raiyn, Email: Alex.raiyn@gmail.com, Phone: (734) 395-5707, City: Pittsburg, State: California, Spouse: Sydne Raiyn, Spouse role: Yes, Spouse on calls: No, Spouse mindset: They love it and are hoping it will allow us to build on something together. Reasons: Tired of corporate world, Want independence, Increase income, Increase wealth, Additional income stream, Involve spouse, Own business. Location: Virtual work from anywhere. Time commitment: Semi-Absentee at Launch. Timeline: 6-12 months. Net worth: 250k-500k. Credit score: 760.
+
+Correct JSON:
+{"contact_name":"Alexander Raiyn","email":"Alex.raiyn@gmail.com","phone":"(734) 395-5707","city":"Pittsburg","state":"California","spouse_name":"Sydne Raiyn","spouse_role":"Yes","spouse_on_calls":"No","spouse_mindset":"They love it and are hoping it will allow us to build on something together","reasons_for_change":["Tired of corporate world","Want independence","Increase income","Increase wealth","Additional income stream","Involve spouse","Own business"],"location_preference":"Virtual - Work from anywhere","time_commitment":"Semi-Absentee at Launch","launch_timeline":"6 - 12 months","financial_net_worth_range":"250k - 500k","credit_score":"760","areas_of_interest":["Home Improvement","Real Estate","Cleaning","Logistics","Senior Care","Coaching","Technology","Business Consulting","Sports Fitness"],"self_sufficiency_explored":"Yes","self_sufficiency_excitement":"Be own boss, make decisions, empowerment","future_growth_interest":"Yes","funding_education_interest":"Yes"}
+
+EXAMPLE 2 — Dena Sauer:
+Name: Dena Sauer, Email: denasauer85@gmail.com, Phone: 14012589962, City: Oakland, State: New Jersey, Spouse: Josh, Spouse role: Unsure, Spouse on calls: No, Spouse mindset: My husband is already the part owner and current president of his family business. Reasons: Tired of corporate world, Want independence, Improve lifestyle, Increase income, Increase wealth, More flexibility. Location: Home based remote. Time commitment: Full-Time Owner Operated. Timeline: 6-12 months. Net worth: 1M+. Credit score: 800.
+
+Correct JSON:
+{"contact_name":"Dena Sauer","email":"denasauer85@gmail.com","phone":"14012589962","city":"Oakland","state":"New Jersey","spouse_name":"Josh","spouse_role":"Unsure","spouse_on_calls":"No","spouse_mindset":"My husband is already the part owner and current president of his family business","reasons_for_change":["Tired of corporate world","Want independence","Improve lifestyle","Increase income","Increase wealth","More flexibility"],"location_preference":"Home based / remote","time_commitment":"Full-Time - Owner Operated","launch_timeline":"6 - 12 months","financial_net_worth_range":"1M+","credit_score":"800","areas_of_interest":["Health and Wellness","Real Estate","Logistics","Senior Care","Coaching","Business Consulting","Travel"],"self_sufficiency_explored":"No","self_sufficiency_excitement":"Prospective of having it all, income and time is exciting","future_growth_interest":"Yes","funding_education_interest":"Yes"}
+
+Now extract the same fields from this TUMAY document. Return ONLY valid JSON with no explanation, no markdown, no code blocks.
+
+Document text:
+`;
+    console.log('[TUMAY-v2] prompt template length:', TUMAY_PROMPT.length);
+
+    try {
+      const ping = await fetch(
+        'http://localhost:11434/api/tags'
+      );
+      console.log('[TUMAY-v2] Ollama ping status:', ping.status);
+    } catch (pingErr) {
+      console.log('[TUMAY-v2] Ollama OFFLINE:', String(pingErr));
+    }
+
+    const fullPrompt = TUMAY_PROMPT + '\n' + text;
 
     let ollamaData: { response?: string };
     try {
@@ -1435,13 +1461,18 @@ async function extractTumayFromFile(
           })
         }
       );
+      console.log('[TUMAY-v2] ollama status:', ollamaResponse.status);
       if (!ollamaResponse.ok) {
-        console.log('[TUMAY] Ollama request failed:', ollamaResponse.status);
+        console.log('[TUMAY-v2] Ollama request failed:', ollamaResponse.status);
         return false;
       }
       ollamaData = await ollamaResponse.json() as { response?: string };
+      console.log(
+        '[TUMAY-v2] ollama response:',
+        JSON.stringify(ollamaData).substring(0, 500)
+      );
     } catch (fetchErr) {
-      console.log('[TUMAY] Ollama unavailable:', fetchErr);
+      console.log('[TUMAY-v2] Ollama unavailable:', String(fetchErr));
       return false;
     }
 
@@ -1449,13 +1480,14 @@ async function extractTumayFromFile(
       ?.replace(/```json/g, '')
       ?.replace(/```/g, '')
       ?.trim();
-    console.log('[TUMAY extract] parsed result:', rawJson);
+    console.log('[TUMAY-v2] rawJson length:', rawJson?.length);
+    console.log('[TUMAY-v2] rawJson preview:', rawJson?.substring(0, 200));
     if (!rawJson || rawJson.length < 5) {
-      console.log('[TUMAY extract] FAIL: parsed empty');
+      console.log('[TUMAY-v2] FAIL: parsed empty');
       return false;
     }
     const tumayData = parseTumayJson(rawJson);
-    console.log('[TUMAY extract] tumayData:', tumayData);
+    console.log('[TUMAY-v2] tumayData:', tumayData);
     const parsedCreditScore = Number.parseInt(tumayData.credit_score, 10);
     const db = await getDb();
     await db.execute(
@@ -1509,10 +1541,10 @@ async function extractTumayFromFile(
         clientId
       ]
     );
-    console.log('[TUMAY extract] SUCCESS for', clientId);
+    console.log('[TUMAY-v2] SUCCESS for', clientId);
     return true;
   } catch (e) {
-    console.log('[TUMAY extract] ERROR:', e);
+    console.log('[TUMAY-v2] ERROR:', String(e));
     return false;
   }
 }
