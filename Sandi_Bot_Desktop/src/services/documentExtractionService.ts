@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { BaseDirectory, readTextFile } from '@tauri-apps/plugin-fs';
 import { dbExecute, dbSelect, getDb } from './db';
 import { logEntry } from './auditService';
 import type {
@@ -1403,16 +1404,58 @@ async function extractTumayFromFile(
   filePath: string
 ): Promise<boolean> {
   try {
+    console.log('[TUMAY extract] filePath:', filePath);
     const text = await invoke<string>(
       'extract_text', { filePath }
     );
+    console.log('[TUMAY extract] text length:', text?.length);
+    console.log('[TUMAY extract] text preview:', text?.substring(0, 200));
     if (!text || text.trim().length < 20) {
+      console.log('[TUMAY extract] FAIL: text too short');
       return false;
     }
-    const parsed = await invoke<string>(
-      'parse_tumay', { text }
+    const promptTemplate = await readTextFile(
+      'prompts/tumay.txt',
+      { baseDir: BaseDirectory.Resource }
     );
-    const tumayData = parseTumayJson(parsed);
+    const fullPrompt = `${promptTemplate}\n${text}`;
+
+    let ollamaData: { response?: string };
+    try {
+      const ollamaResponse = await fetch(
+        'http://localhost:11434/api/generate',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'qwen2.5:7b-instruct-q4_k_m',
+            prompt: fullPrompt,
+            stream: false,
+            options: { temperature: 0.1 }
+          })
+        }
+      );
+      if (!ollamaResponse.ok) {
+        console.log('[TUMAY] Ollama request failed:', ollamaResponse.status);
+        return false;
+      }
+      ollamaData = await ollamaResponse.json() as { response?: string };
+    } catch (fetchErr) {
+      console.log('[TUMAY] Ollama unavailable:', fetchErr);
+      return false;
+    }
+
+    const rawJson = ollamaData.response
+      ?.replace(/```json/g, '')
+      ?.replace(/```/g, '')
+      ?.trim();
+    console.log('[TUMAY extract] parsed result:', rawJson);
+    if (!rawJson || rawJson.length < 5) {
+      console.log('[TUMAY extract] FAIL: parsed empty');
+      return false;
+    }
+    const tumayData = parseTumayJson(rawJson);
+    console.log('[TUMAY extract] tumayData:', tumayData);
     const parsedCreditScore = Number.parseInt(tumayData.credit_score, 10);
     const db = await getDb();
     await db.execute(
@@ -1420,7 +1463,7 @@ async function extractTumayFromFile(
        SET tumay_data = ?,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [JSON.stringify(tumayData), clientId]
+      [rawJson, clientId]
     );
     if (tumayData.email || tumayData.phone || tumayData.contact_name) {
       await db.execute(
@@ -1466,8 +1509,10 @@ async function extractTumayFromFile(
         clientId
       ]
     );
+    console.log('[TUMAY extract] SUCCESS for', clientId);
     return true;
-  } catch {
+  } catch (e) {
+    console.log('[TUMAY extract] ERROR:', e);
     return false;
   }
 }
@@ -1680,66 +1725,15 @@ export async function processDocument(
     case 'vision':
       return handleVisionStatement(clientId, fileName, filePath, truncatedText);
     case ('tumay' as DocumentType): {
-      const text = await invoke<string>(
-        'extract_text', { filePath }
-      );
-      const parsed = await invoke<string>(
-        'parse_tumay', { text }
-      );
-      const tumayData = parseTumayJson(parsed);
-      const parsedCreditScore = Number.parseInt(tumayData.credit_score, 10);
-
-      await dbExecute(
-        `UPDATE clients
-         SET tumay_data = $1,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2`,
-        [JSON.stringify(tumayData), clientId]
-      );
-      if (tumayData.email || tumayData.phone || tumayData.contact_name) {
-        await dbExecute(
-          `UPDATE clients
-           SET email = COALESCE(NULLIF(email, ''), $1),
-               phone = COALESCE(NULLIF(phone, ''), $2),
-               updated_at = CURRENT_TIMESTAMP
-           WHERE id = $3`,
-          [
-            tumayData.email || null,
-            tumayData.phone || null,
-            clientId
-          ]
-        );
+      const ok = await extractTumayFromFile(clientId, filePath);
+      if (!ok) {
+        return {
+          success: false,
+          data: null,
+          error: 'TUMAY extraction failed (Ollama unavailable or invalid JSON)',
+          extraction_status: 'failed',
+        };
       }
-      await dbExecute(
-        `UPDATE client_you2_profiles
-         SET spouse_name = COALESCE(spouse_name, $1),
-             spouse_role = COALESCE(spouse_role, $2),
-             spouse_on_calls = COALESCE(spouse_on_calls, $3),
-             spouse_mindset = COALESCE(spouse_mindset, $4),
-             financial_net_worth_range = COALESCE(
-               financial_net_worth_range, $5),
-             credit_score = COALESCE(credit_score, $6),
-             launch_timeline = COALESCE(launch_timeline, $7),
-             areas_of_interest = COALESCE(areas_of_interest, $8),
-             reasons_for_change = COALESCE(
-               reasons_for_change, $9),
-             time_commitment = COALESCE(time_commitment, $10),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE client_id = $11`,
-        [
-          tumayData.spouse_name,
-          tumayData.spouse_role,
-          tumayData.spouse_on_calls,
-          tumayData.spouse_mindset,
-          tumayData.financial_net_worth_range,
-          Number.isNaN(parsedCreditScore) ? null : parsedCreditScore,
-          tumayData.launch_timeline,
-          JSON.stringify(tumayData.areas_of_interest),
-          JSON.stringify(tumayData.reasons_for_change),
-          tumayData.time_commitment,
-          clientId
-        ]
-      );
       return {
         success: true,
         data: null,

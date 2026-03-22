@@ -1,0 +1,159 @@
+---
+You are extracting structured data from a
+franchise coaching intake form called
+"Tell Us More About You" (TUMAY).
+
+Here are two examples of correct extractions:
+
+EXAMPLE 1 — Alexander Raiyn:
+Form text excerpt:
+"Name: Alexander Raiyn
+Email Address: Alex.raiyn@gmail.com
+Best Phone: (734) 395-5707
+Address: 5 Brookdale Ct
+City: Pittsburg
+State / Province: California
+Zip: 94565
+Name: Sydne Raiyn
+Will your spouse...have a role: Yes/No/Unsure: Yes
+Will they be involved in future calls: Yes/No: No
+Their mindset about business ownership:
+They love it and are hoping it will allow us
+to build on something together.
+I'm tired of the corporate world: Yes
+I want more independence: Yes
+I'd like to increase my income: Yes
+I want to increase my wealth & equity: Yes
+I want an additional income stream: Yes
+I'd like to involve my spouse or family: Yes
+I'd like to own my own business: Yes
+Virtual - Work from anywhere: 1
+Mobile: 2
+Selected: Semi-Absentee at Launch
+Selected: 6 - 12 months
+I feel more confident...outside the job market:
+Strongly Agree
+Estimated Net Worth: 250k - 500k
+Estimated Credit Score: 760"
+
+Correct extraction:
+{
+  "contact_name": "Alexander Raiyn",
+  "email": "Alex.raiyn@gmail.com",
+  "phone": "(734) 395-5707",
+  "city": "Pittsburg",
+  "state": "California",
+  "spouse_name": "Sydne Raiyn",
+  "spouse_role": "Yes",
+  "spouse_on_calls": "No",
+  "spouse_mindset": "They love it and are hoping it will allow us to build on something together and leverage one another's skillsets.",
+  "reasons_for_change": [
+    "Tired of corporate world",
+    "Want more independence",
+    "Increase income",
+    "Increase wealth and equity",
+    "Additional income stream",
+    "Involve spouse or family",
+    "Own own business"
+  ],
+  "location_preference": "Virtual - Work from anywhere",
+  "time_commitment": "Semi-Absentee at Launch",
+  "launch_timeline": "6 - 12 months",
+  "confidence_level": "Strongly Agree",
+  "financial_net_worth_range": "250k - 500k",
+  "credit_score": "760",
+  "areas_of_interest": [
+    "Home Improvement, Repair or Maintenance",
+    "Real Estate or Property Management",
+    "Cleaning and Maintenance",
+    "Logistics and Distribution",
+    "Laundry and Dry Cleaning",
+    "Senior Care and Services",
+    "Storage Services, Moving, and Packing",
+    "Automotive",
+    "Coaching / Training",
+    "Beauty and Personal Care",
+    "Technology",
+    "Business Consulting / Business Broker",
+    "Sports, Fitness and Recreation"
+  ],
+  "self_sufficiency_explored": "Yes",
+  "self_sufficiency_excitement": "Putting our own personality into an opportunity would be amazing. Be own boss, make decisions, confident can have success.",
+  "future_growth_interest": "Yes",
+  "funding_education_interest": "Yes"
+}
+
+EXAMPLE 2 — Dena Sauer:
+Form text excerpt:
+"Name: Dena Sauer
+Email Address: denasauer85@gmail.com
+Best Phone: 14012589962
+City: Oakland
+State / Province: New Jersey
+Name: Josh
+Will your spouse...have a role: Yes/No/Unsure: Unsure
+Will they be involved in future calls: Yes/No: No
+Their mindset about business ownership:
+My husband is already the part owner and
+current president of his family business.
+I'm tired of the corporate world: Yes
+I want more independence: Yes
+Improving my lifestyle is important: Yes
+I'd like to increase my income: Yes
+I want to increase my wealth & equity: Yes
+I desire more flexibility: Yes
+Virtual - Work from anywhere: 2
+Home based / remote: 1
+Selected: Full-Time - Owner Operated
+Selected: 6 - 12 months
+Estimated Net Worth: 1M+
+Estimated Credit Score: 800"
+
+Correct extraction:
+{
+  "contact_name": "Dena Sauer",
+  "email": "denasauer85@gmail.com",
+  "phone": "14012589962",
+  "city": "Oakland",
+  "state": "New Jersey",
+  "spouse_name": "Josh",
+  "spouse_role": "Unsure",
+  "spouse_on_calls": "No",
+  "spouse_mindset": "My husband is already the part owner and current president of his family business.",
+  "reasons_for_change": [
+    "Tired of corporate world",
+    "Want more independence",
+    "Improve lifestyle",
+    "Increase income",
+    "Increase wealth and equity",
+    "More flexibility"
+  ],
+  "location_preference": "Home based / remote",
+  "time_commitment": "Full-Time - Owner Operated",
+  "launch_timeline": "6 - 12 months",
+  "confidence_level": "Agree",
+  "financial_net_worth_range": "1M+",
+  "credit_score": "800",
+  "areas_of_interest": [
+    "Health and Wellness",
+    "Real Estate or Property Management",
+    "Logistics and Distribution",
+    "Senior Care and Services",
+    "Coaching / Training",
+    "Business Consulting / Business Broker",
+    "Travel and Cruises"
+  ],
+  "self_sufficiency_explored": "No",
+  "self_sufficiency_excitement": "Our discussions opened my mind to other options. Prospective of having it all, income and time is exciting.",
+  "future_growth_interest": "Yes",
+  "funding_education_interest": "Yes"
+}
+
+Now extract the same fields from this
+TUMAY document. Return ONLY valid JSON
+with no explanation, no markdown,
+no code blocks. Match the exact field
+names shown in the examples above.
+
+Document text:
+---
