@@ -808,6 +808,16 @@ pub fn run() {
                   ALTER TABLE coaching_sessions ADD COLUMN call_duration TEXT;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 49,
+            description: "add_pause_and_referral_fields_to_clients",
+            sql: "ALTER TABLE clients ADD COLUMN pause_reason TEXT;
+                  ALTER TABLE clients ADD COLUMN follow_up_date DATE;
+                  ALTER TABLE clients ADD COLUMN referral_source TEXT;
+                  ALTER TABLE clients ADD COLUMN referred_by TEXT;
+                  ALTER TABLE clients ADD COLUMN referral_ask_sent DATE;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

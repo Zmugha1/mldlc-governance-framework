@@ -421,3 +421,36 @@ export async function moveClientStage(
     return false;
   }
 }
+
+export async function moveClientToPause(
+  clientId: string,
+  pauseReason: string,
+  followUpDate: string
+): Promise<boolean> {
+  try {
+    await dbExecute(
+      `UPDATE clients
+       SET outcome_bucket = 'paused',
+           pause_reason = ?,
+           follow_up_date = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [pauseReason, followUpDate, clientId]
+    );
+
+    await dbExecute(
+      `INSERT INTO audit_log
+       (client_id, action_type, reasoning, model_used)
+       VALUES (?, 'client_paused', ?, 'deterministic')`,
+      [
+        clientId,
+        `Client paused. Reason: ${pauseReason}. Follow up: ${followUpDate}`
+      ]
+    );
+
+    return true;
+  } catch (error) {
+    console.error('Pause move failed:', error);
+    return false;
+  }
+}

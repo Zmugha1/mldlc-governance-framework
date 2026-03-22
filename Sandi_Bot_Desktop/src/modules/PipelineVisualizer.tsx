@@ -8,6 +8,10 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { 
   BarChart, 
   Bar, 
@@ -20,7 +24,7 @@ import {
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, discColors, knowledgeGraph } from '@/data/sampleClients';
 import { getAllClients } from '@/services/clientService';
-import { getAllStageReadiness } from '@/services/stageReadinessService';
+import { getAllStageReadiness, moveClientToPause } from '@/services/stageReadinessService';
 import { calculateConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import type { Client } from '@/types';
@@ -63,6 +67,7 @@ function StageColumn({
   clientRecommendations,
   isActive,
   onClick,
+  onPauseClient,
   stats
 }: {
   stage: string;
@@ -70,6 +75,7 @@ function StageColumn({
   clientRecommendations: Map<string, string>;
   isActive: boolean;
   onClick: () => void;
+  onPauseClient: (clientId: string, clientName: string) => void;
   stats?: { avgDaysInStage: number; conversionRate: number };
 }) {
   const config = stageConfig[stage as keyof typeof stageConfig];
@@ -131,6 +137,18 @@ function StageColumn({
                 >
                   {rec}
                 </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[10px] border-amber-300 text-amber-700 hover:bg-amber-50"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPauseClient(client.id, client.name);
+                  }}
+                >
+                  Pause
+                </Button>
               </div>
             </div>
           );
@@ -203,8 +221,13 @@ export default function PipelineVisualizer() {
   const [readiness, setReadiness] = useState<Awaited<ReturnType<typeof getAllStageReadiness>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pauseModalOpen, setPauseModalOpen] = useState(false);
+  const [pauseClient, setPauseClient] = useState<{ id: string; name: string } | null>(null);
+  const [pauseReason, setPauseReason] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [pauseError, setPauseError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadPipelineData = () => {
     setLoading(true);
     setError(null);
     Promise.all([getAllClients(), getAllStageReadiness()])
@@ -217,7 +240,55 @@ export default function PipelineVisualizer() {
         setError(String(err?.message ?? err ?? 'Failed to load pipeline'));
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadPipelineData();
   }, []);
+
+  const tomorrow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const isReasonValid = pauseReason.trim().length >= 10;
+  const isDateValid = followUpDate.length > 0 && followUpDate >= tomorrow;
+  const canConfirmPause = isReasonValid && isDateValid;
+
+  const openPauseModal = (clientId: string, clientName: string) => {
+    setPauseClient({ id: clientId, name: clientName });
+    setPauseReason('');
+    setFollowUpDate('');
+    setPauseError(null);
+    setPauseModalOpen(true);
+  };
+
+  const closePauseModal = () => {
+    setPauseModalOpen(false);
+    setPauseClient(null);
+    setPauseReason('');
+    setFollowUpDate('');
+    setPauseError(null);
+  };
+
+  const handleConfirmPause = async () => {
+    if (!pauseClient || !canConfirmPause) {
+      setPauseError('Please provide a valid reason and a future follow-up date.');
+      return;
+    }
+    const ok = await moveClientToPause(
+      pauseClient.id,
+      pauseReason.trim(),
+      followUpDate
+    );
+    if (!ok) {
+      setPauseError('Failed to pause client. Please try again.');
+      return;
+    }
+    closePauseModal();
+    loadPipelineData();
+  };
 
   const clientRecommendations = useMemo(() => {
     const m = new Map<string, string>();
@@ -391,6 +462,7 @@ export default function PipelineVisualizer() {
                 clientRecommendations={clientRecommendations}
                 isActive={selectedStage === stage}
                 onClick={() => setSelectedStage(selectedStage === stage ? null : stage)}
+                onPauseClient={openPauseModal}
                 stats={stats}
               />
             ))}
@@ -483,6 +555,57 @@ export default function PipelineVisualizer() {
           </p>
         </CardContent>
       </Card>
+
+      <Dialog open={pauseModalOpen} onOpenChange={setPauseModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pause {pauseClient?.name ?? 'client'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="pause-reason">Reason for pause</Label>
+              <Textarea
+                id="pause-reason"
+                value={pauseReason}
+                onChange={(e) => setPauseReason(e.target.value)}
+                placeholder="e.g. Family situation — follow up in 2 months"
+                rows={3}
+              />
+              {pauseReason.length > 0 && !isReasonValid && (
+                <p className="text-xs text-red-600">Reason must be at least 10 characters.</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pause-follow-up">Follow-up reminder date</Label>
+              <input
+                id="pause-follow-up"
+                type="date"
+                min={tomorrow}
+                value={followUpDate}
+                onChange={(e) => setFollowUpDate(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+              {followUpDate.length > 0 && !isDateValid && (
+                <p className="text-xs text-red-600">Follow-up date must be a future date.</p>
+              )}
+            </div>
+            {pauseError && <p className="text-sm text-red-600">{pauseError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={closePauseModal}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-60"
+                onClick={handleConfirmPause}
+                disabled={!canConfirmPause}
+              >
+                Confirm Pause
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
