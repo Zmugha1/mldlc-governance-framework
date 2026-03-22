@@ -410,9 +410,14 @@ invoke('ollama_generate', {
 })
 Returns: Promise<string>
 Timeout: 120 seconds
-Options: num_ctx 2048, num_predict 512
+Options: num_ctx 4096, num_predict 1024
 CRITICAL: Only way to call Ollama.
 Direct fetch() is blocked by Tauri v2.
+CONFIRMED WORKING: These options extracted
+17/17 TUMAY profiles successfully.
+num_predict: 512 causes JSON truncation errors.
+num_ctx: 2048 is too small for full TUMAY docs.
+Always use num_predict: 1024, num_ctx: 4096.
 
 ## check_ollama_status
 invoke('check_ollama_status')

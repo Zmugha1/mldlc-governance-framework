@@ -55,7 +55,7 @@ The ollama_generate command is in:
   src-tauri/src/lib.rs (line ~306)
   Registered in invoke_handler![]
   Uses reqwest with 120 second timeout
-  Options: num_ctx 2048, num_predict 512
+  Options: num_ctx 4096, num_predict 1024
 
 If you try fetch() it silently fails.
 No error is thrown. Nothing happens.
@@ -104,14 +104,24 @@ For structured numeric fields (DISC scores):
 
 ## PROMPT SIZE LIMITS — CRITICAL
 
-num_ctx: 2048 (context window limit)
-num_predict: 512 (response length limit)
+num_ctx: 4096 (context window limit)
+num_predict: 1024 (response length limit)
 Keep few-shot examples SHORT.
 Long prompts cause Ollama timeouts.
 One example per document type maximum.
 Add 500ms delay between clients in bulk ops.
 17 clients x 120s max = 34 min worst case.
 In practice 2-3 min if Ollama is warm.
+
+CONFIRMED WORKING OLLAMA OPTIONS:
+  num_ctx: 4096
+  num_predict: 1024
+  temperature: 0.1
+  timeout: 120 seconds
+
+Do NOT use num_predict: 512 — truncates JSON.
+Do NOT use num_ctx: 2048 — too small for TUMAY.
+These values confirmed working for all 17 clients.
 
 ---
 
@@ -125,7 +135,11 @@ In practice 2-3 min if Ollama is warm.
 - VALIDATE/GATHER/PAUSE wired correctly
 - Dashboard showing real data
 - All 8 modules loading
-- Dena Sauer TUMAY confirmed working
+- 17/17 TUMAY profiles extracted
+- 17/17 email/phone populated (16/17 email,
+  Mike Brooks has no email in source doc)
+- financial_net_worth_range populated for
+  all clients in client_you2_profiles
 
 ### Migrations completed:
 - Migrations 1-47: original schema
@@ -143,7 +157,9 @@ In practice 2-3 min if Ollama is warm.
 - P0-2 Delete → Inactivate ✅ a956e26
 - P0-3 Migration 49 + pause reason ✅ 002db09
 - P0-4 Pipeline clickable ✅ e0a4518
-- P0-7 TUMAY extraction IN PROGRESS
+- P0-7 TUMAY extraction ✅ 17/17 complete
+  email + phone + financial data populated
+  commit: 9888017
 - P0-8 Client card POC quality PENDING
 - P0-9 Windows installer PENDING
 - P0-10 StatusBar verification PENDING

@@ -780,6 +780,21 @@ ACCEPTANCE TEST:
 - App passes 3-day UAT with Sandy using real files
 ```
 
+## P0 Items Status — Phase 4
+
+- P0-7 TUMAY/extraction ✅ 17/17 complete
+
+### Phase 4 TUMAY Extraction Note
+
+RESOLVED March 2026:
+Root cause: Tauri v2 blocks direct fetch()
+to localhost:11434 from TypeScript.
+Fix: Rust proxy command ollama_generate
+using reqwest. Confirmed pattern for all
+future LLM calls from TypeScript.
+Key settings: num_ctx 4096, num_predict 1024,
+timeout 120s. Lower values cause truncation.
+
 ## Phase 4 Acceptance Checklist
 
 ```
