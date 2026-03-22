@@ -6,8 +6,21 @@ mod disc_parser;
 mod you2_parser;
 mod tumay_parser;
 
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
+
+#[derive(Serialize)]
+struct OllamaRequest {
+    model: String,
+    prompt: String,
+    stream: bool,
+}
+
+#[derive(Deserialize)]
+struct OllamaResponse {
+    response: String,
+}
 
 #[tauri::command]
 fn greet(name: String) -> String {
@@ -287,6 +300,51 @@ fn get_app_dir(_app: tauri::AppHandle) -> Result<String, String> {
     let home = std::env::var("HOME").map_err(|e| e.to_string())?;
     let sandi_bot = std::path::Path::new(&home).join("SandiBot");
     Ok(sandi_bot.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn ollama_generate(
+    model: String,
+    prompt: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let body = OllamaRequest {
+        model,
+        prompt,
+        stream: false,
+    };
+    let resp = client
+        .post("http://localhost:11434/api/generate")
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await
+        .map_err(|e| format!("Ollama connection failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Ollama returned status: {}", resp.status()
+        ));
+    }
+    let parsed: OllamaResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!(
+            "Failed to parse Ollama response: {}", e
+        ))?;
+    Ok(parsed.response)
+}
+
+#[tauri::command]
+async fn check_ollama_status() -> bool {
+    let client = reqwest::Client::new();
+    client
+        .get("http://localhost:11434/api/tags")
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -847,6 +905,8 @@ pub fn run() {
             test_you2_extraction,
             parse_disc_scores_from_text,
             parse_tumay,
+            ollama_generate,
+            check_ollama_status,
             bulk_import_folder,
             pdf_parser::parse_pdf,
             file_watcher::watch_folder,

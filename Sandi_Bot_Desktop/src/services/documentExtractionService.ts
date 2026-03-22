@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { dbExecute, dbSelect, getDb } from './db';
 import { logEntry } from './auditService';
+import { callOllama as callOllamaProxy, isOllamaRunning } from './ollamaService';
 import type {
   DiscProfile,
   You2Profile,
@@ -10,7 +11,6 @@ import type {
   ExtractionStatus,
 } from '../types/extractions';
 
-const OLLAMA_URL = 'http://localhost:11434/api/generate';
 const OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_k_m';
 
 const DISC_FORMAT_SCHEMA = {
@@ -178,49 +178,10 @@ async function callOllama(
   userContent: string,
   formatSchema?: object
 ): Promise<string> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 240000); // 4 minutes
-
-  try {
-    const requestBody: Record<string, unknown> = {
-      model: OLLAMA_MODEL,
-      prompt: `${systemPrompt}\n\nDocument text:\n${userContent}\n\nIMPORTANT: Your response must be ONLY a valid JSON object. No explanation. No preamble. No markdown. Start with { and end with }.`,
-      stream: false,
-      format: formatSchema ?? 'json',
-      options: {
-        temperature: 0,
-        seed: 42,
-        num_predict: 4000,
-      },
-    };
-
-    const response = await fetch(OLLAMA_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify(requestBody),
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Ollama request failed: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    if (!data.response) {
-      throw new Error('Ollama returned empty response.');
-    }
-    return data.response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    const isAbort = error instanceof Error && error.name === 'AbortError';
-    const isAbortByName = error && typeof error === 'object' && 'name' in error && (error as { name: string }).name === 'AbortError';
-    if (isAbort || isAbortByName) {
-      throw new Error('Ollama timeout after 4 minutes');
-    }
-    throw error;
-  }
+  const _schema = formatSchema; // preserve signature for existing call sites
+  void _schema;
+  const prompt = `${systemPrompt}\n\nDocument text:\n${userContent}\n\nIMPORTANT: Your response must be ONLY a valid JSON object. No explanation. No preamble. No markdown. Start with { and end with }.`;
+  return callOllamaProxy(prompt, OLLAMA_MODEL);
 }
 
 function parseExtractionResponse<T>(
@@ -719,49 +680,12 @@ async function callOllamaYou2(
   userContent: string,
   formatSchema?: object
 ): Promise<string> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), YOU2_LLM_TIMEOUT_MS);
-
-  try {
-    const requestBody: Record<string, unknown> = {
-      model: OLLAMA_MODEL,
-      prompt: `${systemPrompt}\n\nDocument text:\n${userContent}\n\nIMPORTANT: Your response must be ONLY a valid JSON object. No explanation. No preamble. No markdown. Start with { and end with }.`,
-      stream: false,
-      format: formatSchema ?? 'json',
-      options: {
-        temperature: 0,
-        seed: 42,
-        num_predict: 4000,
-      },
-    };
-
-    const response = await fetch(OLLAMA_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify(requestBody),
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Ollama request failed: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    if (!data.response) {
-      throw new Error('Ollama returned empty response.');
-    }
-    return data.response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    const isAbort = error instanceof Error && error.name === 'AbortError';
-    const isAbortByName = error && typeof error === 'object' && 'name' in error && (error as { name: string }).name === 'AbortError';
-    if (isAbort || isAbortByName) {
-      throw new Error('You2 extraction timeout after 2 minutes');
-    }
-    throw error;
-  }
+  const _schema = formatSchema;
+  void _schema;
+  const _timeout = YOU2_LLM_TIMEOUT_MS;
+  void _timeout;
+  const prompt = `${systemPrompt}\n\nDocument text:\n${userContent}\n\nIMPORTANT: Your response must be ONLY a valid JSON object. No explanation. No preamble. No markdown. Start with { and end with }.`;
+  return callOllamaProxy(prompt, OLLAMA_MODEL);
 }
 
 export async function extractYou2Profile(
@@ -1435,71 +1359,32 @@ Document text:
 `;
     console.log('[TUMAY-v2] prompt template length:', TUMAY_PROMPT.length);
 
-    try {
-      const ping = await fetch(
-        'http://localhost:11434/api/tags'
-      );
-      console.log('[TUMAY-v2] Ollama ping status:', ping.status);
-    } catch (pingErr) {
-      console.log('[TUMAY-v2] Ollama OFFLINE:', String(pingErr));
-    }
+    console.log('[TUMAY-v2] checking Ollama...');
+    const ollamaUp = await isOllamaRunning();
+    console.log('[TUMAY-v2] Ollama running:', ollamaUp);
 
-    const fullPrompt = TUMAY_PROMPT + '\n' + text;
-
-    let ollamaData: { response?: string };
-    try {
-      try {
-        const invokeResult = await invoke<string>(
-          'ollama_generate',
-          {
-            prompt: fullPrompt,
-            model: 'qwen2.5:7b-instruct-q4_k_m'
-          }
-        );
-        ollamaData = { response: invokeResult };
-        console.log('[TUMAY-v2] ollama via invoke: success');
-      } catch (invokeErr) {
-        console.log('[TUMAY-v2] ollama via invoke unavailable:', String(invokeErr));
-        const ollamaResponse = await fetch(
-          'http://localhost:11434/api/generate',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'qwen2.5:7b-instruct-q4_k_m',
-              prompt: fullPrompt,
-              stream: false,
-              options: { temperature: 0.1 }
-            })
-          }
-        );
-        console.log('[TUMAY-v2] ollama status:', ollamaResponse.status);
-        if (!ollamaResponse.ok) {
-          console.log('[TUMAY-v2] Ollama request failed:', ollamaResponse.status);
-          return false;
-        }
-        ollamaData = await ollamaResponse.json() as { response?: string };
-      }
-      console.log(
-        '[TUMAY-v2] ollama response:',
-        JSON.stringify(ollamaData).substring(0, 500)
-      );
-    } catch (fetchErr) {
-      console.log('[TUMAY-v2] Ollama unavailable:', String(fetchErr));
+    if (!ollamaUp) {
+      console.log('[TUMAY-v2] Ollama offline — skip');
       return false;
     }
 
-    const rawJson = ollamaData.response
+    console.log('[TUMAY-v2] calling Ollama...');
+    const rawJson = await callOllamaProxy(
+      TUMAY_PROMPT + '\n' + text
+    );
+    console.log('[TUMAY-v2] raw response:',
+      rawJson?.substring(0, 300));
+
+    const cleaned = rawJson
       ?.replace(/```json/g, '')
       ?.replace(/```/g, '')
       ?.trim();
-    console.log('[TUMAY-v2] rawJson length:', rawJson?.length);
-    console.log('[TUMAY-v2] rawJson preview:', rawJson?.substring(0, 200));
-    if (!rawJson || rawJson.length < 5) {
+
+    if (!cleaned || cleaned.length < 5) {
       console.log('[TUMAY-v2] FAIL: parsed empty');
       return false;
     }
-    const tumayData = parseTumayJson(rawJson);
+    const tumayData = parseTumayJson(cleaned);
     console.log('[TUMAY-v2] tumayData:', tumayData);
     const parsedCreditScore = Number.parseInt(tumayData.credit_score, 10);
     const db = await getDb();
@@ -1508,7 +1393,7 @@ Document text:
        SET tumay_data = ?,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [rawJson, clientId]
+      [cleaned, clientId]
     );
     if (tumayData.email || tumayData.phone || tumayData.contact_name) {
       await db.execute(
