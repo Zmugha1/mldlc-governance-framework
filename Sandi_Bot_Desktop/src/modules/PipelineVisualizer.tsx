@@ -94,10 +94,11 @@ const NEXT_STAGE_CODE: Record<PipelineStage, PipelineStage | null> = {
 };
 
 interface GateFacts {
+  name: string;
   has_disc: boolean;
   has_you2: boolean;
-  has_vision: boolean;
   fathom_count: number;
+  vision_statement: string | null;
 }
 
 // Stage Column Component
@@ -311,22 +312,39 @@ export default function PipelineVisualizer() {
       getAllClients(),
       getAllStageReadiness(),
       dbSelect<{
-        client_id: string;
+        id: string;
+        name: string;
+        inferred_stage: string | null;
+        outcome_bucket: string | null;
+        readiness_score: number | null;
+        pink_flags: string | null;
+        vision_statement: string | null;
         has_disc: number;
         has_you2: number;
-        has_vision: number;
         fathom_count: number;
       }>(
         `SELECT
-           c.id as client_id,
-           CASE WHEN dp.client_id IS NOT NULL THEN 1 ELSE 0 END as has_disc,
-           CASE WHEN y.client_id IS NOT NULL THEN 1 ELSE 0 END as has_you2,
-           CASE WHEN y.one_year_vision IS NOT NULL AND LENGTH(y.one_year_vision) > 20 THEN 1 ELSE 0 END as has_vision,
+           c.id,
+           c.name,
+           c.inferred_stage,
+           c.outcome_bucket,
+           c.readiness_score,
+           c.pink_flags,
+           c.vision_statement,
+           CASE WHEN dp.client_id IS NOT NULL
+             THEN 1 ELSE 0 END as has_disc,
+           CASE WHEN y.client_id IS NOT NULL
+             THEN 1 ELSE 0 END as has_you2,
            COUNT(cs.id) as fathom_count
          FROM clients c
-         LEFT JOIN client_disc_profiles dp ON dp.client_id = c.id
-         LEFT JOIN client_you2_profiles y ON y.client_id = c.id
-         LEFT JOIN coaching_sessions cs ON cs.client_id = c.id
+         LEFT JOIN client_disc_profiles dp
+           ON dp.client_id = c.id
+         LEFT JOIN client_you2_profiles y
+           ON y.client_id = c.id
+         LEFT JOIN coaching_sessions cs
+           ON cs.client_id = c.id
+         WHERE c.outcome_bucket IN
+           ('active', 'converted', 'paused')
          GROUP BY c.id`,
         []
       ),
@@ -336,11 +354,12 @@ export default function PipelineVisualizer() {
         setReadiness(r);
         const m = new Map<string, GateFacts>();
         gateRows.forEach((row) => {
-          m.set(row.client_id, {
+          m.set(row.id, {
+            name: row.name,
             has_disc: row.has_disc === 1,
             has_you2: row.has_you2 === 1,
-            has_vision: row.has_vision === 1,
             fathom_count: Number(row.fathom_count ?? 0),
+            vision_statement: row.vision_statement ?? null,
           });
         });
         setGateFactsByClient(m);
@@ -400,59 +419,50 @@ export default function PipelineVisualizer() {
     loadPipelineData();
   };
 
-  const getGateDecision = (
+  const checkStageGate = (
+    client: GateFacts,
     fromStage: PipelineStage,
-    gateFacts: GateFacts,
-    clientName: string
+    toStage: PipelineStage
   ): {
-    met: boolean;
+    requiresWarning: boolean;
     missingRequirement: string;
-    warningMessage: string;
+    message: string;
   } => {
-    if (fromStage === 'IC') {
-      return { met: true, missingRequirement: '', warningMessage: '' };
-    }
-    if (fromStage === 'C1') {
-      if (gateFacts.has_disc) {
-        return { met: true, missingRequirement: '', warningMessage: '' };
-      }
+    if (toStage === 'C2' && !client.has_disc) {
       return {
-        met: false,
+        requiresWarning: true,
         missingRequirement: 'DISC profile missing',
-        warningMessage: `DISC profile missing for ${clientName}. Move anyway?`,
+        message: `DISC profile missing for ${client.name}. Move anyway?`,
       };
     }
-    if (fromStage === 'C2') {
-      if (gateFacts.has_disc && gateFacts.has_you2) {
-        return { met: true, missingRequirement: '', warningMessage: '' };
-      }
+    if (toStage === 'C3' && (!client.has_disc || !client.has_you2)) {
       return {
-        met: false,
-        missingRequirement: !gateFacts.has_you2 ? 'You 2.0 profile missing' : 'DISC profile missing',
-        warningMessage: `You 2.0 profile missing for ${clientName}. Move anyway?`,
+        requiresWarning: true,
+        missingRequirement: !client.has_you2 ? 'You 2.0 profile missing' : 'DISC profile missing',
+        message: `You 2.0 profile missing for ${client.name}. Move anyway?`,
       };
     }
-    if (fromStage === 'C3') {
-      if (gateFacts.has_disc && gateFacts.has_you2 && gateFacts.fathom_count >= 1) {
-        return { met: true, missingRequirement: '', warningMessage: '' };
-      }
+    if (
+      toStage === 'C4' &&
+      (!client.has_disc || !client.has_you2 || client.fathom_count < 1)
+    ) {
       return {
-        met: false,
-        missingRequirement: gateFacts.fathom_count < 1 ? 'No coaching sessions recorded' : 'Required profile data missing',
-        warningMessage: `No coaching sessions recorded for ${clientName}. Move anyway?`,
+        requiresWarning: true,
+        missingRequirement: client.fathom_count < 1 ? 'No coaching sessions recorded' : 'Required profile data missing',
+        message: `No coaching sessions recorded for ${client.name}. Move anyway?`,
       };
     }
-    if (fromStage === 'C4') {
-      if (gateFacts.has_disc && gateFacts.has_you2 && gateFacts.has_vision) {
-        return { met: true, missingRequirement: '', warningMessage: '' };
-      }
+    if (
+      toStage === 'C5' &&
+      (!client.has_disc || !client.has_you2 || !client.vision_statement)
+    ) {
       return {
-        met: false,
-        missingRequirement: !gateFacts.has_vision ? 'Vision statement missing' : 'Required profile data missing',
-        warningMessage: `Vision statement missing for ${clientName}. Move anyway?`,
+        requiresWarning: true,
+        missingRequirement: !client.vision_statement ? 'Vision statement missing' : 'Required profile data missing',
+        message: `Vision statement missing for ${client.name}. Move anyway?`,
       };
     }
-    return { met: true, missingRequirement: '', warningMessage: '' };
+    return { requiresWarning: false, missingRequirement: '', message: '' };
   };
 
   const handleMoveNext = async (
@@ -465,21 +475,22 @@ export default function PipelineVisualizer() {
     if (!toStage) return;
 
     const gateFacts = gateFactsByClient.get(clientId) ?? {
+      name: clientName,
       has_disc: false,
       has_you2: false,
-      has_vision: false,
       fathom_count: 0,
+      vision_statement: null,
     };
 
-    const gateDecision = getGateDecision(fromStage, gateFacts, clientName);
-    if (!gateDecision.met) {
+    const gateDecision = checkStageGate(gateFacts, fromStage, toStage);
+    if (gateDecision.requiresWarning) {
       setPendingMove({
         clientId,
         clientName,
         fromStage,
         toStage,
         missingRequirement: gateDecision.missingRequirement,
-        warningMessage: gateDecision.warningMessage,
+        warningMessage: gateDecision.message,
       });
       setGateModalOpen(true);
       return;
@@ -509,7 +520,7 @@ export default function PipelineVisualizer() {
          VALUES (?, 'stage_gate_override', ?, 'deterministic')`,
         [
           pendingMove.clientId,
-          `${pendingMove.clientName} moved from ${pendingMove.fromStage} to ${pendingMove.toStage} without meeting gate requirement: ${pendingMove.missingRequirement}`
+          `${pendingMove.clientName} moved from ${pendingMove.fromStage} to ${pendingMove.toStage} without meeting gate. Missing: ${pendingMove.missingRequirement}`
         ]
       );
       setGateModalOpen(false);
@@ -801,7 +812,7 @@ export default function PipelineVisualizer() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Stage gate warning</DialogTitle>
+            <DialogTitle>Stage Gate Warning</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-slate-700">
             {pendingMove?.warningMessage}
