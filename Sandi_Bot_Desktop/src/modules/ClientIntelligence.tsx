@@ -133,7 +133,7 @@ function RecommendationBadge({
   action,
   confidence,
 }: {
-  action: 'VALIDATE' | 'GATHER' | 'PAUSE';
+  action: string;
   confidence: number;
 }) {
   const recommendationStyleMap: Record<
@@ -144,13 +144,22 @@ function RecommendationBadge({
     GATHER: { bgColor: '#FEF3C7', color: '#F59E0B' },
     PAUSE: { bgColor: '#F3F4F6', color: '#6B7280' },
   };
-  const config = recommendationStyleMap[action];
+  const normalizedRecommendation =
+    action === 'PUSH'
+      ? 'VALIDATE'
+      : action === 'NURTURE'
+        ? 'GATHER'
+        : action;
+  const config =
+    recommendationStyleMap[
+      normalizedRecommendation as keyof typeof recommendationStyleMap
+    ] ?? recommendationStyleMap.GATHER;
   return (
     <div
       className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-semibold text-sm"
       style={{ backgroundColor: config.bgColor, color: config.color }}
     >
-      <span>{action}</span>
+      <span>{normalizedRecommendation}</span>
       <span className="text-xs opacity-75">{confidence}%</span>
     </div>
   );
