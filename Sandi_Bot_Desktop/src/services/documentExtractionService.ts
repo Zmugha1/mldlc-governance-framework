@@ -1448,25 +1448,38 @@ Document text:
 
     let ollamaData: { response?: string };
     try {
-      const ollamaResponse = await fetch(
-        'http://localhost:11434/api/generate',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'qwen2.5:7b-instruct-q4_k_m',
+      try {
+        const invokeResult = await invoke<string>(
+          'ollama_generate',
+          {
             prompt: fullPrompt,
-            stream: false,
-            options: { temperature: 0.1 }
-          })
+            model: 'qwen2.5:7b-instruct-q4_k_m'
+          }
+        );
+        ollamaData = { response: invokeResult };
+        console.log('[TUMAY-v2] ollama via invoke: success');
+      } catch (invokeErr) {
+        console.log('[TUMAY-v2] ollama via invoke unavailable:', String(invokeErr));
+        const ollamaResponse = await fetch(
+          'http://localhost:11434/api/generate',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'qwen2.5:7b-instruct-q4_k_m',
+              prompt: fullPrompt,
+              stream: false,
+              options: { temperature: 0.1 }
+            })
+          }
+        );
+        console.log('[TUMAY-v2] ollama status:', ollamaResponse.status);
+        if (!ollamaResponse.ok) {
+          console.log('[TUMAY-v2] Ollama request failed:', ollamaResponse.status);
+          return false;
         }
-      );
-      console.log('[TUMAY-v2] ollama status:', ollamaResponse.status);
-      if (!ollamaResponse.ok) {
-        console.log('[TUMAY-v2] Ollama request failed:', ollamaResponse.status);
-        return false;
+        ollamaData = await ollamaResponse.json() as { response?: string };
       }
-      ollamaData = await ollamaResponse.json() as { response?: string };
       console.log(
         '[TUMAY-v2] ollama response:',
         JSON.stringify(ollamaData).substring(0, 500)
@@ -1645,6 +1658,7 @@ export async function bulkReExtractVisionAndTumay(
   const errors: string[] = [];
 
   for (const client of clients) {
+    console.log('[TUMAY-v2] bulk client:', client.id, client.name, client.outcome_bucket);
     const bucket = BUCKETS[client.outcome_bucket]
       ?? 'Active';
     const folderName =
@@ -1659,12 +1673,17 @@ export async function bulkReExtractVisionAndTumay(
     let tumayDone = false;
 
     for (const searchPath of searchPaths) {
+      console.log('[TUMAY-v2] bulk searchPath:', searchPath);
       let files: string[] = [];
       try {
         files = await invoke<string[]>(
           'list_directory', { path: searchPath }
         );
-      } catch {
+        console.log('[TUMAY-v2] bulk files found:', files.length);
+      } catch (e) {
+        const msg = `[TUMAY-v2] list_directory failed for ${searchPath}: ${String(e)}`;
+        console.log(msg);
+        errors.push(msg);
         continue;
       }
 
@@ -1681,6 +1700,10 @@ export async function bulkReExtractVisionAndTumay(
           || normalizedPath.includes(normalizedName);
       });
       console.log('[TUMAY debug] clientFiles after filter:', clientFiles);
+      if (clientFiles.length === 0) {
+        const msg = `[TUMAY-v2] no matched files for ${client.name} in ${searchPath}`;
+        console.log(msg);
+      }
 
       for (const filePath of clientFiles) {
         const lower = filePath.toLowerCase();
