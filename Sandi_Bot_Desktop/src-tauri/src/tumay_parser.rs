@@ -2,107 +2,159 @@ use regex::Regex;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
-pub struct TumayResult {
-    pub candidate_name: String,
-    pub current_occupation: String,
-    pub reason_for_change: String,
-    pub ideal_work_environment: String,
-    pub income_goal: String,
-    pub investment_range: String,
-    pub timeline: String,
-    pub key_motivators: Vec<String>,
-    pub concerns: Vec<String>,
+pub struct TumayData {
+    pub contact_name: String,
+    pub email: String,
+    pub phone: String,
+    pub city: String,
+    pub state: String,
+    pub spouse_name: String,
+    pub spouse_role: String,
+    pub spouse_on_calls: String,
+    pub spouse_mindset: String,
+    pub reasons_for_change: Vec<String>,
+    pub location_preference: String,
+    pub time_commitment: String,
+    pub self_sufficiency_explored: String,
+    pub self_sufficiency_excitement: String,
+    pub launch_timeline: String,
+    pub areas_of_interest: Vec<String>,
+    pub financial_net_worth_range: String,
+    pub credit_score: String,
 }
 
-impl Default for TumayResult {
+impl Default for TumayData {
     fn default() -> Self {
         Self {
-            candidate_name: String::new(),
-            current_occupation: String::new(),
-            reason_for_change: String::new(),
-            ideal_work_environment: String::new(),
-            income_goal: String::new(),
-            investment_range: String::new(),
-            timeline: String::new(),
-            key_motivators: Vec::new(),
-            concerns: Vec::new(),
+            contact_name: String::new(),
+            email: String::new(),
+            phone: String::new(),
+            city: String::new(),
+            state: String::new(),
+            spouse_name: String::new(),
+            spouse_role: String::new(),
+            spouse_on_calls: String::new(),
+            spouse_mindset: String::new(),
+            reasons_for_change: Vec::new(),
+            location_preference: String::new(),
+            time_commitment: String::new(),
+            self_sufficiency_explored: String::new(),
+            self_sufficiency_excitement: String::new(),
+            launch_timeline: String::new(),
+            areas_of_interest: Vec::new(),
+            financial_net_worth_range: String::new(),
+            credit_score: String::new(),
         }
     }
 }
 
-pub fn parse_tumay_deterministic(text: &str) -> TumayResult {
+pub fn parse_tumay_deterministic(text: &str) -> TumayData {
     match std::panic::catch_unwind(|| parse_tumay_impl(text)) {
         Ok(result) => result,
-        Err(_) => TumayResult::default(),
+        Err(_) => TumayData::default(),
     }
 }
 
-fn parse_tumay_impl(text: &str) -> TumayResult {
-    let mut result = TumayResult::default();
+fn parse_tumay_impl(text: &str) -> TumayData {
+    let mut result = TumayData::default();
     let normalized = text.replace('\r', "");
+    let q2_section = extract_section(
+        &normalized,
+        r"(?im)^\s*Q2\s*[-:]\s*Who Else\??\s*$",
+        r"(?im)^\s*Q3\s*[-:]",
+    );
+    let q8_section = extract_section(
+        &normalized,
+        r"(?im)^\s*Q8\s*[-:]\s*Self-Sufficiency.*$",
+        r"(?im)^\s*Q9\s*[-:]",
+    );
+    let q11_section = extract_section(
+        &normalized,
+        r"(?im)^\s*Q11\s*[-:]\s*Areas of Interest.*$",
+        r"(?im)^\s*Q13\s*[-:]",
+    );
 
-    result.candidate_name = extract_single(
+    result.contact_name = extract_single(
+        &normalized,
+        &[r"(?im)^\s*Name\s*:\s*(.+)$"],
+    );
+    result.email = extract_single(
+        &normalized,
+        &[r"(?im)^\s*Email\s*Address\s*:\s*(.+)$"],
+    );
+    result.phone = extract_single(
+        &normalized,
+        &[r"(?im)^\s*Best\s*Phone\s*:\s*(.+)$"],
+    );
+
+    let address = extract_single(
+        &normalized,
+        &[r"(?im)^\s*Address/City/State/Zip\s*:\s*(.+)$"],
+    );
+    if let Ok(address_re) =
+        Regex::new(r"(?i)^\s*[^,]+,\s*([^,]+),\s*([A-Za-z]{2})\b")
+    {
+        if let Some(caps) = address_re.captures(&address) {
+            result.city = clean(caps.get(1).map_or("", |m| m.as_str()));
+            result.state = clean(caps.get(2).map_or("", |m| m.as_str())).to_uppercase();
+        }
+    }
+
+    result.spouse_name = extract_single(
+        &q2_section,
+        &[r"(?im)^\s*Name\s*:\s*(.+)$"],
+    );
+    result.spouse_role = extract_single(
+        &q2_section,
+        &[r"(?im)^\s*Will your spouse.*have a role.*:\s*(Yes|No|Unsure)\s*$"],
+    );
+    result.spouse_on_calls = extract_single(
+        &q2_section,
+        &[r"(?im)^\s*Will they be involved in future calls.*:\s*(Yes|No)\s*$"],
+    );
+    result.spouse_mindset = extract_single(
+        &q2_section,
+        &[r"(?im)^\s*Their mindset about business ownership\s*:\s*(.+)$"],
+    );
+
+    result.reasons_for_change = extract_yes_lines(
         &normalized,
         &[
-            r"(?im)^\s*(?:candidate\s*name|name)\s*[:\-]\s*(.+)$",
-            r"(?im)^\s*client\s*name\s*[:\-]\s*(.+)$",
+            "I'm tired of the corporate world",
+            "I want more independence",
+            "Improving my lifestyle is important",
+            "I'd like to increase my income",
+            "I want to increase my wealth & equity",
+            "I'd like to own my own business",
+            "I desire more flexibility",
         ],
     );
-    result.current_occupation = extract_single(
+
+    result.location_preference = extract_location_preference(&normalized);
+    result.time_commitment = extract_single(
         &normalized,
-        &[
-            r"(?im)^\s*(?:current\s*occupation|occupation)\s*[:\-]\s*(.+)$",
-            r"(?im)^\s*what\s+do\s+you\s+currently\s+do\??\s*[:\-]\s*(.+)$",
-        ],
+        &[r"(?im)^\s*Q7.*?\n[\s\S]*?^\s*Selected\s*:\s*(.+)$"],
     );
-    result.reason_for_change = extract_block(
-        &normalized,
-        &[
-            r"(?im)^\s*(?:reason(?:s)?\s*for\s*change|why\s+are\s+you\s+looking\s+for\s+a\s+change)\s*[:\-]?\s*$",
-            r"(?im)^\s*reason(?:s)?\s*for\s*change\s*[:\-]\s*(.+)$",
-        ],
+    result.self_sufficiency_explored = extract_single(
+        &q8_section,
+        &[r"(?im)^\s*Yes/No\s*:\s*(Yes|No)\s*$"],
     );
-    result.ideal_work_environment = extract_block(
-        &normalized,
-        &[
-            r"(?im)^\s*(?:ideal\s*work\s*environment|preferred\s*work\s*environment)\s*[:\-]?\s*$",
-            r"(?im)^\s*ideal\s*work\s*environment\s*[:\-]\s*(.+)$",
-        ],
+    result.self_sufficiency_excitement = extract_single(
+        &q8_section,
+        &[r"(?im)^\s*.*what excites you.*:\s*(.+)$"],
     );
-    result.income_goal = extract_single(
+    result.launch_timeline = extract_single(
         &normalized,
-        &[
-            r"(?im)^\s*(?:income\s*goal|target\s*income)\s*[:\-]\s*(.+)$",
-            r"(?im)^\s*what\s+is\s+your\s+income\s+goal\??\s*[:\-]\s*(.+)$",
-        ],
+        &[r"(?im)^\s*Q9.*?\n[\s\S]*?^\s*Selected\s*:\s*(.+)$"],
     );
-    result.investment_range = extract_single(
+    result.areas_of_interest = extract_yes_fields(&q11_section);
+    result.financial_net_worth_range = extract_single(
         &normalized,
-        &[
-            r"(?im)^\s*(?:investment\s*range|investment)\s*[:\-]\s*(.+)$",
-            r"(?im)^\s*financial\s*investment\s*range\s*[:\-]\s*(.+)$",
-        ],
+        &[r"(?im)^\s*Estimated\s*Net\s*Worth\s*:\s*(.+)$"],
     );
-    result.timeline = extract_single(
+    result.credit_score = extract_single(
         &normalized,
-        &[
-            r"(?im)^\s*(?:timeline|launch\s*timeline|timeframe)\s*[:\-]\s*(.+)$",
-            r"(?im)^\s*when\s+would\s+you\s+like\s+to\s+start\??\s*[:\-]\s*(.+)$",
-        ],
-    );
-    result.key_motivators = extract_list(
-        &normalized,
-        &[
-            r"(?im)^\s*(?:key\s*motivators|motivators)\s*[:\-]?\s*$",
-            r"(?im)^\s*what\s+motivates\s+you\??\s*[:\-]?\s*$",
-        ],
-    );
-    result.concerns = extract_list(
-        &normalized,
-        &[
-            r"(?im)^\s*(?:concerns|primary\s*concerns)\s*[:\-]?\s*$",
-            r"(?im)^\s*what\s+are\s+your\s+concerns\??\s*[:\-]?\s*$",
-        ],
+        &[r"(?im)^\s*Estimated\s*Credit\s*Score\s*:\s*([0-9]{3,4})\s*$"],
     );
 
     result
@@ -124,111 +176,80 @@ fn extract_single(text: &str, patterns: &[&str]) -> String {
     String::new()
 }
 
-fn extract_block(text: &str, patterns: &[&str]) -> String {
-    let lines: Vec<&str> = text.lines().collect();
-    for pattern in patterns {
-        if let Ok(re) = Regex::new(pattern) {
-            for idx in 0..lines.len() {
-                let line = lines[idx];
-                if let Some(caps) = re.captures(line) {
-                    if let Some(m) = caps.get(1) {
-                        let inline = clean(m.as_str());
-                        if !inline.is_empty() {
-                            return inline;
-                        }
-                    }
-                    let mut collected: Vec<String> = Vec::new();
-                    let mut j = idx + 1;
-                    while j < lines.len() {
-                        let candidate = clean(lines[j]);
-                        if candidate.is_empty() {
-                            if !collected.is_empty() {
-                                break;
-                            }
-                            j += 1;
-                            continue;
-                        }
-                        if is_heading(&candidate) && !collected.is_empty() {
-                            break;
-                        }
-                        collected.push(candidate);
-                        if collected.len() >= 4 {
-                            break;
-                        }
-                        j += 1;
-                    }
-                    if !collected.is_empty() {
-                        return clean(&collected.join(" "));
+fn extract_section(text: &str, start_pattern: &str, end_pattern: &str) -> String {
+    let start = if let Ok(start_re) = Regex::new(start_pattern) {
+        start_re.find(text).map(|m| m.end()).unwrap_or(0)
+    } else {
+        0
+    };
+    if start == 0 || start >= text.len() {
+        return String::new();
+    }
+    let tail = &text[start..];
+    if let Ok(end_re) = Regex::new(end_pattern) {
+        if let Some(m) = end_re.find(tail) {
+            return tail[..m.start()].to_string();
+        }
+    }
+    tail.to_string()
+}
+
+fn extract_yes_lines(text: &str, prompts: &[&str]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for prompt in prompts {
+        let pattern = format!(r"(?im)^\s*{}\s*:\s*(Yes|No)\s*$", regex::escape(prompt));
+        if let Ok(re) = Regex::new(&pattern) {
+            if let Some(caps) = re.captures(text) {
+                let answer = caps.get(1).map_or("", |m| m.as_str());
+                if answer.eq_ignore_ascii_case("yes") {
+                    out.push((*prompt).to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn extract_location_preference(text: &str) -> String {
+    let options = [
+        "Virtual - Work from anywhere",
+        "Home based / remote",
+        "Office space / building",
+        "Brick and Mortar",
+        "Mobile",
+    ];
+    let mut ranked: Vec<(String, i32)> = Vec::new();
+    for opt in options {
+        let pattern = format!(r"(?im)^\s*{}\s*:\s*([0-9]+)\s*$", regex::escape(opt));
+        if let Ok(re) = Regex::new(&pattern) {
+            if let Some(caps) = re.captures(text) {
+                if let Some(rank_match) = caps.get(1) {
+                    if let Ok(rank) = rank_match.as_str().trim().parse::<i32>() {
+                        ranked.push((opt.to_string(), rank));
                     }
                 }
             }
         }
     }
-    String::new()
+    if ranked.is_empty() {
+        return String::new();
+    }
+    ranked.sort_by_key(|(_, rank)| *rank);
+    ranked.first().map(|(label, _)| label.clone()).unwrap_or_default()
 }
 
-fn extract_list(text: &str, patterns: &[&str]) -> Vec<String> {
-    let lines: Vec<&str> = text.lines().collect();
-    for pattern in patterns {
-        if let Ok(re) = Regex::new(pattern) {
-            for idx in 0..lines.len() {
-                let line = clean(lines[idx]);
-                if re.is_match(&line) {
-                    let mut items: Vec<String> = Vec::new();
-                    let mut j = idx + 1;
-                    while j < lines.len() {
-                        let candidate = clean(lines[j]);
-                        if candidate.is_empty() {
-                            if !items.is_empty() {
-                                break;
-                            }
-                            j += 1;
-                            continue;
-                        }
-                        if is_heading(&candidate) && !items.is_empty() {
-                            break;
-                        }
-                        let normalized = candidate
-                            .trim_start_matches(['-', '*', '•', '·'])
-                            .trim()
-                            .to_string();
-                        if !normalized.is_empty() {
-                            items.push(normalized);
-                        }
-                        if items.len() >= 8 {
-                            break;
-                        }
-                        j += 1;
-                    }
-                    if !items.is_empty() {
-                        return items;
-                    }
-                }
+fn extract_yes_fields(section: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Ok(re) = Regex::new(r"(?im)^\s*([A-Za-z0-9/&,\-().+ ]+)\s*:\s*(Yes|No)\s*$") {
+        for caps in re.captures_iter(section) {
+            let field = clean(caps.get(1).map_or("", |m| m.as_str()));
+            let answer = clean(caps.get(2).map_or("", |m| m.as_str()));
+            if !field.is_empty() && answer.eq_ignore_ascii_case("yes") {
+                out.push(field);
             }
         }
     }
-    Vec::new()
-}
-
-fn is_heading(s: &str) -> bool {
-    let lower = s.to_lowercase();
-    [
-        "candidate name",
-        "name",
-        "occupation",
-        "current occupation",
-        "reason for change",
-        "reasons for change",
-        "ideal work environment",
-        "income goal",
-        "investment range",
-        "timeline",
-        "key motivators",
-        "motivators",
-        "concerns",
-    ]
-    .iter()
-    .any(|h| lower.starts_with(h))
+    out
 }
 
 fn clean(s: &str) -> String {

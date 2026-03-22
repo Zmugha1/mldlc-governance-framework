@@ -1412,17 +1412,121 @@ async function extractTumayFromFile(
     const parsed = await invoke<string>(
       'parse_tumay', { text }
     );
+    const tumayData = parseTumayJson(parsed);
+    const parsedCreditScore = Number.parseInt(tumayData.credit_score, 10);
     const db = await getDb();
     await db.execute(
       `UPDATE clients
        SET tumay_data = ?,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [parsed, clientId]
+      [JSON.stringify(tumayData), clientId]
+    );
+    await db.execute(
+      `UPDATE client_you2_profiles
+       SET spouse_name = COALESCE(spouse_name, ?),
+           spouse_role = COALESCE(spouse_role, ?),
+           spouse_on_calls = COALESCE(spouse_on_calls, ?),
+           spouse_mindset = COALESCE(spouse_mindset, ?),
+           financial_net_worth_range = COALESCE(
+             financial_net_worth_range, ?),
+           credit_score = COALESCE(credit_score, ?),
+           launch_timeline = COALESCE(launch_timeline, ?),
+           areas_of_interest = COALESCE(areas_of_interest, ?),
+           reasons_for_change = COALESCE(
+             reasons_for_change, ?),
+           time_commitment = COALESCE(time_commitment, ?),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE client_id = ?`,
+      [
+        tumayData.spouse_name,
+        tumayData.spouse_role,
+        tumayData.spouse_on_calls,
+        tumayData.spouse_mindset,
+        tumayData.financial_net_worth_range,
+        Number.isNaN(parsedCreditScore) ? null : parsedCreditScore,
+        tumayData.launch_timeline,
+        JSON.stringify(tumayData.areas_of_interest),
+        JSON.stringify(tumayData.reasons_for_change),
+        tumayData.time_commitment,
+        clientId
+      ]
     );
     return true;
   } catch {
     return false;
+  }
+}
+
+interface TumayParsedData {
+  contact_name: string;
+  email: string;
+  phone: string;
+  city: string;
+  state: string;
+  spouse_name: string;
+  spouse_role: string;
+  spouse_on_calls: string;
+  spouse_mindset: string;
+  reasons_for_change: string[];
+  location_preference: string;
+  time_commitment: string;
+  self_sufficiency_explored: string;
+  self_sufficiency_excitement: string;
+  launch_timeline: string;
+  areas_of_interest: string[];
+  financial_net_worth_range: string;
+  credit_score: string;
+}
+
+function parseTumayJson(parsed: string): TumayParsedData {
+  try {
+    const raw = JSON.parse(parsed) as Partial<TumayParsedData>;
+    return {
+      contact_name: String(raw.contact_name ?? ''),
+      email: String(raw.email ?? ''),
+      phone: String(raw.phone ?? ''),
+      city: String(raw.city ?? ''),
+      state: String(raw.state ?? ''),
+      spouse_name: String(raw.spouse_name ?? ''),
+      spouse_role: String(raw.spouse_role ?? ''),
+      spouse_on_calls: String(raw.spouse_on_calls ?? ''),
+      spouse_mindset: String(raw.spouse_mindset ?? ''),
+      reasons_for_change: Array.isArray(raw.reasons_for_change)
+        ? raw.reasons_for_change.map(v => String(v))
+        : [],
+      location_preference: String(raw.location_preference ?? ''),
+      time_commitment: String(raw.time_commitment ?? ''),
+      self_sufficiency_explored: String(raw.self_sufficiency_explored ?? ''),
+      self_sufficiency_excitement: String(raw.self_sufficiency_excitement ?? ''),
+      launch_timeline: String(raw.launch_timeline ?? ''),
+      areas_of_interest: Array.isArray(raw.areas_of_interest)
+        ? raw.areas_of_interest.map(v => String(v))
+        : [],
+      financial_net_worth_range: String(raw.financial_net_worth_range ?? ''),
+      credit_score: String(raw.credit_score ?? ''),
+    };
+  } catch {
+    return {
+      contact_name: '',
+      email: '',
+      phone: '',
+      city: '',
+      state: '',
+      spouse_name: '',
+      spouse_role: '',
+      spouse_on_calls: '',
+      spouse_mindset: '',
+      reasons_for_change: [],
+      location_preference: '',
+      time_commitment: '',
+      self_sufficiency_explored: '',
+      self_sufficiency_excitement: '',
+      launch_timeline: '',
+      areas_of_interest: [],
+      financial_net_worth_range: '',
+      credit_score: '',
+    };
   }
 }
 
@@ -1560,7 +1664,8 @@ export async function processDocument(
       const parsed = await invoke<string>(
         'parse_tumay', { text }
       );
-      const tumayData = JSON.parse(parsed);
+      const tumayData = parseTumayJson(parsed);
+      const parsedCreditScore = Number.parseInt(tumayData.credit_score, 10);
 
       await dbExecute(
         `UPDATE clients
@@ -1568,6 +1673,36 @@ export async function processDocument(
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $2`,
         [JSON.stringify(tumayData), clientId]
+      );
+      await dbExecute(
+        `UPDATE client_you2_profiles
+         SET spouse_name = COALESCE(spouse_name, $1),
+             spouse_role = COALESCE(spouse_role, $2),
+             spouse_on_calls = COALESCE(spouse_on_calls, $3),
+             spouse_mindset = COALESCE(spouse_mindset, $4),
+             financial_net_worth_range = COALESCE(
+               financial_net_worth_range, $5),
+             credit_score = COALESCE(credit_score, $6),
+             launch_timeline = COALESCE(launch_timeline, $7),
+             areas_of_interest = COALESCE(areas_of_interest, $8),
+             reasons_for_change = COALESCE(
+               reasons_for_change, $9),
+             time_commitment = COALESCE(time_commitment, $10),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE client_id = $11`,
+        [
+          tumayData.spouse_name,
+          tumayData.spouse_role,
+          tumayData.spouse_on_calls,
+          tumayData.spouse_mindset,
+          tumayData.financial_net_worth_range,
+          Number.isNaN(parsedCreditScore) ? null : parsedCreditScore,
+          tumayData.launch_timeline,
+          JSON.stringify(tumayData.areas_of_interest),
+          JSON.stringify(tumayData.reasons_for_change),
+          tumayData.time_commitment,
+          clientId
+        ]
       );
       return {
         success: true,
