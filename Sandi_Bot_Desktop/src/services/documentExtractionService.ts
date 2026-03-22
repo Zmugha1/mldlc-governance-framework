@@ -1327,16 +1327,6 @@ async function extractTumayFromFile(
   filePath: string
 ): Promise<boolean> {
   try {
-    console.log('[TUMAY-v2] starting for:', clientId);
-    console.log('[TUMAY-v2] filePath:', filePath);
-    const text = await invoke<string>(
-      'extract_text', { filePath }
-    );
-    console.log('[TUMAY-v2] text length:', text?.length);
-    if (!text || text.trim().length < 20) {
-      console.log('[TUMAY-v2] FAIL: text too short');
-      return false;
-    }
     const TUMAY_PROMPT = `You are extracting structured data from a franchise coaching intake form called "Tell Us More About You" (TUMAY).
 
 Here are two examples of correct extractions:
@@ -1357,92 +1347,139 @@ Now extract the same fields from this TUMAY document. Return ONLY valid JSON wit
 
 Document text:
 `;
-    console.log('[TUMAY-v2] prompt template length:', TUMAY_PROMPT.length);
+    console.log('[TUMAY] starting:', filePath);
 
-    console.log('[TUMAY-v2] checking Ollama...');
-    const ollamaUp = await isOllamaRunning();
-    console.log('[TUMAY-v2] Ollama running:', ollamaUp);
+    // Use same pattern as DISC and You2
+    // extract_pdf_pages -> Rust pdfium
+    const pageResult = await invoke<{
+      text: string;
+      success: boolean;
+    }>('extract_pdf_pages', {
+      filePath: filePath,
+      pageNumbers: [1, 2, 3, 4, 5]
+    });
 
-    if (!ollamaUp) {
-      console.log('[TUMAY-v2] Ollama offline — skip');
+    console.log('[TUMAY] page extract success:',
+      pageResult.success);
+    console.log('[TUMAY] text length:',
+      pageResult.text?.length);
+
+    if (!pageResult.success ||
+        !pageResult.text ||
+        pageResult.text.length < 50) {
+      console.log('[TUMAY] text extraction failed');
       return false;
     }
 
-    console.log('[TUMAY-v2] calling Ollama...');
-    const rawJson = await callOllamaProxy(
-      TUMAY_PROMPT + '\n' + text
-    );
-    console.log('[TUMAY-v2] raw response:',
-      rawJson?.substring(0, 300));
+    const systemPrompt = `You are extracting structured data from a franchise coaching intake form called Tell Us More About You. Extract all fields and return ONLY valid JSON with no explanation no markdown no code blocks.`;
 
-    const cleaned = rawJson
+    console.log('[TUMAY] calling ollama_generate...');
+
+    const rawResponse = await invoke<string>(
+      'ollama_generate',
+      {
+        prompt: TUMAY_PROMPT + '\n\nDocument text:\n' + pageResult.text,
+        system: systemPrompt,
+        model: 'qwen2.5:7b-instruct-q4_k_m'
+      }
+    );
+
+    console.log('[TUMAY] ollama response length:',
+      rawResponse?.length);
+    console.log('[TUMAY] response preview:',
+      rawResponse?.substring(0, 200));
+
+    const cleaned = rawResponse
       ?.replace(/```json/g, '')
       ?.replace(/```/g, '')
       ?.trim();
 
     if (!cleaned || cleaned.length < 5) {
-      console.log('[TUMAY-v2] FAIL: parsed empty');
+      console.log('[TUMAY] empty response from ollama');
       return false;
     }
-    const tumayData = parseTumayJson(cleaned);
-    console.log('[TUMAY-v2] tumayData:', tumayData);
-    const parsedCreditScore = Number.parseInt(tumayData.credit_score, 10);
+
+    const tumayData = JSON.parse(cleaned);
+    console.log('[TUMAY] parsed successfully');
+
     const db = await getDb();
+
+    // Write to clients.tumay_data
     await db.execute(
       `UPDATE clients
        SET tumay_data = ?,
-         updated_at = CURRENT_TIMESTAMP
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [cleaned, clientId]
+      [JSON.stringify(tumayData), clientId]
     );
-    if (tumayData.email || tumayData.phone || tumayData.contact_name) {
+
+    // Write contact info if empty
+    if (tumayData.email || tumayData.phone) {
       await db.execute(
         `UPDATE clients
-         SET email = COALESCE(NULLIF(email, ''), ?),
-             phone = COALESCE(NULLIF(phone, ''), ?),
+         SET email = COALESCE(NULLIF(email,''), ?),
+             phone = COALESCE(NULLIF(phone,''), ?),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
         [
-          tumayData.email || null,
-          tumayData.phone || null,
+          tumayData.email ?? null,
+          tumayData.phone ?? null,
           clientId
         ]
       );
     }
+
+    // Write to client_you2_profiles
     await db.execute(
       `UPDATE client_you2_profiles
-       SET spouse_name = COALESCE(spouse_name, ?),
-           spouse_role = COALESCE(spouse_role, ?),
-           spouse_on_calls = COALESCE(spouse_on_calls, ?),
-           spouse_mindset = COALESCE(spouse_mindset, ?),
-           financial_net_worth_range = COALESCE(
-             financial_net_worth_range, ?),
-           credit_score = COALESCE(credit_score, ?),
-           launch_timeline = COALESCE(launch_timeline, ?),
-           areas_of_interest = COALESCE(areas_of_interest, ?),
-           reasons_for_change = COALESCE(
-             reasons_for_change, ?),
-           time_commitment = COALESCE(time_commitment, ?),
-           updated_at = CURRENT_TIMESTAMP
+       SET spouse_name =
+         COALESCE(NULLIF(spouse_name,''), ?),
+       spouse_role =
+         COALESCE(NULLIF(spouse_role,''), ?),
+       spouse_on_calls =
+         COALESCE(NULLIF(spouse_on_calls,''), ?),
+       spouse_mindset =
+         COALESCE(NULLIF(spouse_mindset,''), ?),
+       financial_net_worth_range =
+         COALESCE(
+           NULLIF(financial_net_worth_range,''), ?),
+       credit_score =
+         COALESCE(NULLIF(CAST(credit_score AS TEXT),
+           '0'), NULLIF(?, '')),
+       launch_timeline =
+         COALESCE(NULLIF(launch_timeline,''), ?),
+       areas_of_interest =
+         COALESCE(NULLIF(areas_of_interest,''), ?),
+       reasons_for_change =
+         COALESCE(NULLIF(reasons_for_change,''), ?),
+       time_commitment =
+         COALESCE(NULLIF(time_commitment,''), ?),
+       updated_at = CURRENT_TIMESTAMP
        WHERE client_id = ?`,
       [
-        tumayData.spouse_name,
-        tumayData.spouse_role,
-        tumayData.spouse_on_calls,
-        tumayData.spouse_mindset,
-        tumayData.financial_net_worth_range,
-        Number.isNaN(parsedCreditScore) ? null : parsedCreditScore,
-        tumayData.launch_timeline,
-        JSON.stringify(tumayData.areas_of_interest),
-        JSON.stringify(tumayData.reasons_for_change),
-        tumayData.time_commitment,
+        tumayData.spouse_name ?? null,
+        tumayData.spouse_role ?? null,
+        tumayData.spouse_on_calls ?? null,
+        tumayData.spouse_mindset ?? null,
+        tumayData.financial_net_worth_range ?? null,
+        tumayData.credit_score ?? null,
+        tumayData.launch_timeline ?? null,
+        JSON.stringify(
+          tumayData.areas_of_interest ?? []
+        ),
+        JSON.stringify(
+          tumayData.reasons_for_change ?? []
+        ),
+        tumayData.time_commitment ?? null,
         clientId
       ]
     );
-    console.log('[TUMAY-v2] SUCCESS for', clientId);
+
+    console.log('[TUMAY] SUCCESS for', clientId);
     return true;
+
   } catch (e) {
-    console.log('[TUMAY-v2] ERROR:', String(e));
+    console.error('[TUMAY] ERROR:', String(e));
     return false;
   }
 }

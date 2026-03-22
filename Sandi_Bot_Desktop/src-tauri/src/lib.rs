@@ -6,21 +6,8 @@ mod disc_parser;
 mod you2_parser;
 mod tumay_parser;
 
-use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
-
-#[derive(Serialize)]
-struct OllamaRequest {
-    model: String,
-    prompt: String,
-    stream: bool,
-}
-
-#[derive(Deserialize)]
-struct OllamaResponse {
-    response: String,
-}
 
 #[tauri::command]
 fn greet(name: String) -> String {
@@ -304,15 +291,21 @@ fn get_app_dir(_app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 async fn ollama_generate(
-    model: String,
     prompt: String,
+    system: String,
+    model: String,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let body = OllamaRequest {
-        model,
-        prompt,
-        stream: false,
-    };
+    let body = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+        "system": system,
+        "stream": false,
+        "options": {
+            "temperature": 0.1,
+            "num_ctx": 4096
+        }
+    });
     let resp = client
         .post("http://localhost:11434/api/generate")
         .json(&body)
@@ -326,13 +319,16 @@ async fn ollama_generate(
             "Ollama returned status: {}", resp.status()
         ));
     }
-    let parsed: OllamaResponse = resp
+    let data: serde_json::Value = resp
         .json()
         .await
         .map_err(|e| format!(
-            "Failed to parse Ollama response: {}", e
+            "Parse error: {}", e
         ))?;
-    Ok(parsed.response)
+    Ok(data["response"]
+        .as_str()
+        .unwrap_or("")
+        .to_string())
 }
 
 #[tauri::command]
