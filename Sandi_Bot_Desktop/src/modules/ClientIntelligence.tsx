@@ -32,7 +32,7 @@ import type { Client } from '@/types';
 import { getAllClients, createClient, updateClient, inactivateClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { calculateReadinessScore } from '@/services/coachingService';
-import { dbSelect } from '@/services/db';
+import { dbExecute, dbSelect } from '@/services/db';
 import {
   getAllClientsForReview,
   getClientYou2ForReview,
@@ -273,50 +273,49 @@ function clampFive(value: number): number {
   return Math.max(1, Math.min(5, Math.round(value)));
 }
 
-function parseListField(field: unknown): string[] {
+function parseListField(
+  field: unknown,
+  primaryKey?: string
+): string[] {
   if (!field) return [];
+
+  let arr: unknown[] = [];
+
   if (typeof field === 'string') {
     try {
       const parsed = JSON.parse(field);
-      if (Array.isArray(parsed)) {
-        return parsed
-          .map((item) =>
-            typeof item === 'object' && item !== null
-              ? String(
-                  (item as { text?: unknown; value?: unknown; name?: unknown }).text
-                    ?? (item as { text?: unknown; value?: unknown; name?: unknown }).value
-                    ?? (item as { text?: unknown; value?: unknown; name?: unknown }).name
-                    ?? JSON.stringify(item)
-                )
-              : String(item)
-          )
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
-      return [String(parsed)];
+      arr = Array.isArray(parsed) ? parsed : [parsed];
     } catch {
       return field
         .split('\n')
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
     }
+  } else if (Array.isArray(field)) {
+    arr = field;
+  } else {
+    return [String(field)];
   }
-  if (Array.isArray(field)) {
-    return field
-      .map((item) =>
-        typeof item === 'object' && item !== null
-          ? String(
-              (item as { text?: unknown; value?: unknown; name?: unknown }).text
-                ?? (item as { text?: unknown; value?: unknown; name?: unknown }).value
-                ?? (item as { text?: unknown; value?: unknown; name?: unknown }).name
-                ?? JSON.stringify(item)
-            )
-          : String(item)
-      )
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [];
+
+  return arr
+    .map((item) => {
+      if (typeof item === 'string') return item;
+      if (typeof item === 'object' && item !== null) {
+        const obj = item as Record<string, unknown>;
+        if (primaryKey && obj[primaryKey]) return String(obj[primaryKey]);
+        if (obj.text) return String(obj.text);
+        if (obj.value) return String(obj.value);
+        if (obj.name) return String(obj.name);
+        if (obj.danger) return String(obj.danger);
+        if (obj.opportunity) return String(obj.opportunity);
+        if (obj.strength) return String(obj.strength);
+        const firstVal = Object.values(obj).find((v) => typeof v === 'string');
+        return firstVal ? String(firstVal) : JSON.stringify(obj);
+      }
+      return String(item);
+    })
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 function ClientDetailModal({
@@ -355,6 +354,26 @@ function ClientDetailModal({
   const [discStyleLabel, setDiscStyleLabel] = useState<string>('—');
   const [modalDiscStyle, setModalDiscStyle] = useState<'D' | 'I' | 'S' | 'C'>(client?.disc?.style ?? 'I');
   const [discScores, setDiscScores] = useState<{ d: number; i: number; s: number; c: number } | null>(null);
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [contactDraft, setContactDraft] = useState<{ email: string; phone: string; company: string }>({
+    email: '',
+    phone: '',
+    company: '',
+  });
+  const [isSavingContact, setIsSavingContact] = useState(false);
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState<{
+    session_date: string;
+    stage: 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
+    notes: string;
+    next_actions: string;
+  }>({
+    session_date: new Date().toISOString().split('T')[0],
+    stage: 'IC',
+    notes: '',
+    next_actions: '',
+  });
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const [fathomSessions, setFathomSessions] = useState<Array<{
     session_date: string | null;
     session_number: number | null;
@@ -367,6 +386,8 @@ function ClientDetailModal({
 
   useEffect(() => {
     if (client && isOpen) {
+      const stageForDraft = normalizeStageCode(client.inferred_stage ?? client.stage);
+      setNoteDraft((prev) => ({ ...prev, stage: stageForDraft }));
       getStageReadiness(client.id).then(setReadiness);
       getAllStageReadiness()
         .then((allReadiness) => {
@@ -389,9 +410,15 @@ function ClientDetailModal({
             phone: rows[0]?.phone ?? null,
             company: rows[0]?.company ?? null,
           });
+          setContactDraft({
+            email: rows[0]?.email ?? '',
+            phone: rows[0]?.phone ?? '',
+            company: rows[0]?.company ?? '',
+          });
         })
         .catch(() => {
           setContact({ email: null, phone: null, company: null });
+          setContactDraft({ email: '', phone: '', company: '' });
         });
       dbSelect<{
         natural_d: number | null;
@@ -458,9 +485,9 @@ function ClientDetailModal({
                   financial_net_worth_range: String(row.financial_net_worth_range ?? ''),
                   credit_score: typeof row.credit_score === 'number' ? row.credit_score : Number(row.credit_score ?? 0) || null,
                   launch_timeline: String(row.launch_timeline ?? ''),
-                  dangers: parseListField(row.top_3_dangers ?? row.dangers),
-                  strengths: parseListField(row.top_3_strengths ?? row.strengths),
-                  opportunities: parseListField(row.top_3_opportunities ?? row.opportunities),
+                  dangers: parseListField(row.top_3_dangers ?? row.dangers, 'danger'),
+                  strengths: parseListField(row.top_3_strengths ?? row.strengths, 'strength'),
+                  opportunities: parseListField(row.top_3_opportunities ?? row.opportunities, 'opportunity'),
                   areas_of_interest: parseListField(row.areas_of_interest),
                   skills: parseListField(row.skills),
                   time_commitment: String(row.time_commitment ?? ''),
@@ -518,10 +545,13 @@ function ClientDetailModal({
       setTumayData(null);
       setReadinessScorePct(0);
       setContact({ email: null, phone: null, company: null });
+      setContactDraft({ email: '', phone: '', company: '' });
       setDiscStyleLabel('—');
       setModalDiscStyle('I');
       setDiscScores(null);
       setFathomSessions([]);
+      setIsEditingContact(false);
+      setShowAddNote(false);
     }
   }, [client?.id, isOpen]);
 
@@ -537,9 +567,88 @@ function ClientDetailModal({
     setShowInactivateConfirm(false);
   };
 
+  const loadFathomSessions = async () => {
+    const rows = await dbSelect<{
+      session_date: string | null;
+      session_number: number | null;
+      stage: string | null;
+      notes: string | null;
+      next_actions: string | null;
+      overall_clear_score: number | null;
+    }>(
+      `SELECT session_date, session_number,
+       stage, notes, next_actions,
+       overall_clear_score
+       FROM coaching_sessions
+       WHERE client_id = ?
+       ORDER BY session_date DESC`,
+      [client.id]
+    );
+    setFathomSessions(rows);
+  };
+
+  const handleSaveContact = async () => {
+    setIsSavingContact(true);
+    try {
+      await dbExecute(
+        `UPDATE clients
+         SET email = ?,
+             phone = ?,
+             company = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [contactDraft.email, contactDraft.phone, contactDraft.company, client.id]
+      );
+      const rows = await dbSelect<{
+        email: string | null;
+        phone: string | null;
+        company: string | null;
+      }>(
+        `SELECT email, phone, company FROM clients
+         WHERE id = ?`,
+        [client.id]
+      );
+      setContact({
+        email: rows[0]?.email ?? null,
+        phone: rows[0]?.phone ?? null,
+        company: rows[0]?.company ?? null,
+      });
+      setContactDraft({
+        email: rows[0]?.email ?? '',
+        phone: rows[0]?.phone ?? '',
+        company: rows[0]?.company ?? '',
+      });
+      setIsEditingContact(false);
+    } finally {
+      setIsSavingContact(false);
+    }
+  };
+
+  const handleSaveNote = async () => {
+    setIsSavingNote(true);
+    try {
+      await dbExecute(
+        `INSERT INTO coaching_sessions
+         (client_id, session_date, stage, notes, next_actions)
+         VALUES (?, ?, ?, ?, ?)`,
+        [client.id, noteDraft.session_date, noteDraft.stage, noteDraft.notes, noteDraft.next_actions]
+      );
+      await loadFathomSessions();
+      setShowAddNote(false);
+      setNoteDraft({
+        session_date: new Date().toISOString().split('T')[0],
+        stage: inferredStageCode,
+        notes: '',
+        next_actions: '',
+      });
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-auto">
+      <DialogContent className="w-[95vw] max-w-4xl h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -598,7 +707,7 @@ function ClientDetailModal({
           </DialogContent>
         </Dialog>
 
-        <Tabs defaultValue="overview" className="mt-4">
+        <Tabs defaultValue="overview" className="mt-4 h-full flex flex-col">
           <TabsList className="grid grid-cols-6 mb-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="disc">DISC</TabsTrigger>
@@ -608,7 +717,7 @@ function ClientDetailModal({
             <TabsTrigger value="fathom">Fathom</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="overview" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
                 <CardHeader className="pb-2">
@@ -653,21 +762,77 @@ function ClientDetailModal({
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Contact Information</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Contact Information</CardTitle>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setContactDraft({
+                        email: contact.email ?? '',
+                        phone: contact.phone ?? '',
+                        company: contact.company ?? '',
+                      });
+                      setIsEditingContact((v) => !v);
+                    }}
+                  >
+                    {isEditingContact ? 'Cancel' : 'Edit'}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{contact.email || '—'}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{contact.phone || '—'}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Briefcase className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{contact.company || '—'}</span>
-                </div>
+                {isEditingContact ? (
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Email</Label>
+                      <Input
+                        value={contactDraft.email}
+                        onChange={(e) => setContactDraft((prev) => ({ ...prev, email: e.target.value }))}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Phone</Label>
+                      <Input
+                        value={contactDraft.phone}
+                        onChange={(e) => setContactDraft((prev) => ({ ...prev, phone: e.target.value }))}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Company</Label>
+                      <Input
+                        value={contactDraft.company}
+                        onChange={(e) => setContactDraft((prev) => ({ ...prev, company: e.target.value }))}
+                        className="mt-1"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      className="bg-teal-600 hover:bg-teal-700 text-white"
+                      onClick={handleSaveContact}
+                      disabled={isSavingContact}
+                    >
+                      {isSavingContact ? 'Saving...' : 'Save'}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <Mail className="h-4 w-4 text-slate-400" />
+                      <span className="text-sm">{contact.email || '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Phone className="h-4 w-4 text-slate-400" />
+                      <span className="text-sm">{contact.phone || '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Briefcase className="h-4 w-4 text-slate-400" />
+                      <span className="text-sm">{contact.company || '—'}</span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -763,7 +928,7 @@ function ClientDetailModal({
             </Card>
           </TabsContent>
 
-          <TabsContent value="disc" className="space-y-4">
+          <TabsContent value="disc" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -831,7 +996,7 @@ function ClientDetailModal({
             </Card>
           </TabsContent>
 
-          <TabsContent value="you2" className="space-y-4">
+          <TabsContent value="you2" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">You 2.0 Statement</CardTitle>
@@ -956,7 +1121,7 @@ function ClientDetailModal({
             )}
           </TabsContent>
 
-          <TabsContent value="tumay" className="space-y-4">
+          <TabsContent value="tumay" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">TUMAY Data</CardTitle>
@@ -1041,7 +1206,7 @@ function ClientDetailModal({
             </Card>
           </TabsContent>
 
-          <TabsContent value="vision" className="space-y-4">
+          <TabsContent value="vision" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Vision Statement</CardTitle>
@@ -1054,12 +1219,83 @@ function ClientDetailModal({
             </Card>
           </TabsContent>
 
-          <TabsContent value="fathom" className="space-y-4">
+          <TabsContent value="fathom" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Fathom Notes</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Fathom Notes</CardTitle>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddNote((v) => !v)}
+                  >
+                    {showAddNote ? 'Cancel' : 'Add Note'}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
+                {showAddNote && (
+                  <div className="mb-4 p-3 rounded-lg border bg-white space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label>Session Date</Label>
+                        <Input
+                          type="date"
+                          value={noteDraft.session_date}
+                          onChange={(e) => setNoteDraft((prev) => ({ ...prev, session_date: e.target.value }))}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Stage</Label>
+                        <select
+                          className="mt-1 w-full border rounded-md h-10 px-3 text-sm"
+                          value={noteDraft.stage}
+                          onChange={(e) =>
+                            setNoteDraft((prev) => ({
+                              ...prev,
+                              stage: e.target.value as 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5',
+                            }))
+                          }
+                        >
+                          <option value="IC">IC</option>
+                          <option value="C1">C1</option>
+                          <option value="C2">C2</option>
+                          <option value="C3">C3</option>
+                          <option value="C4">C4</option>
+                          <option value="C5">C5</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Notes</Label>
+                      <Textarea
+                        rows={3}
+                        value={noteDraft.notes}
+                        onChange={(e) => setNoteDraft((prev) => ({ ...prev, notes: e.target.value }))}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Next Steps</Label>
+                      <Textarea
+                        rows={2}
+                        value={noteDraft.next_actions}
+                        onChange={(e) => setNoteDraft((prev) => ({ ...prev, next_actions: e.target.value }))}
+                        className="mt-1"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      className="bg-teal-600 hover:bg-teal-700 text-white"
+                      onClick={handleSaveNote}
+                      disabled={isSavingNote}
+                    >
+                      {isSavingNote ? 'Saving...' : 'Save'}
+                    </Button>
+                  </div>
+                )}
                 {fathomSessions.length === 0 ? (
                   <p className="text-slate-600">No sessions recorded yet.</p>
                 ) : (
