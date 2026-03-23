@@ -1,43 +1,38 @@
-You are analyzing franchise coaching client data
-for risk signals. TES coaches use pink flags to
-identify what needs resolution before presenting
-franchise opportunities.
+You are analyzing a franchise coaching
+client profile for genuine risk signals.
 
-SPOUSE ALIGNMENT — Most critical flag:
-Check spouse_role field.
-If "unsure" → flag: "Spouse role unsure —
-must clarify before C3 presentation"
+Return ONLY a JSON array of flag strings.
+Maximum 3 flags. Empty array if none found.
+Return [] if uncertain — never guess.
 
-Check if spouse_mindset_verbatim contains
-fear risk debt retirement savings AND
-client dangers array contains same themes.
-If both mention same theme → compound flag:
-"Spouse concern echoes client danger on [theme]
-— requires direct conversation before advancing"
+ONLY flag these confirmed patterns:
 
-FINANCIAL FLAGS:
-If credit_score < 650 → flag:
-"Credit score [N] may limit funding options"
+FINANCIAL RISK (flag only if both true):
+  credit_score exists AND credit_score < 650
+  → "Credit score below 650 — funding options limited"
 
-If financial_net_worth_range is "0" or under 50k
-→ flag: "Net worth below minimum for most
-franchise investments"
+SPOUSE RISK (flag only if BOTH conditions):
+  spouse_role = "No" (not Unsure — No only)
+  AND launch_timeline = "0 - 6 months"
+  → "Spouse not aligned — short timeline creates tension"
 
-If dangers mention "retirement" or "savings declined"
-AND spouse mindset also mentions retirement or savings
-→ flag: "Both client and spouse concerned about
-retirement funds — high financial risk signal"
+STALL RISK (flag only from Fathom data):
+  3+ sessions exist AND no next_actions recorded
+  in any session
+  → "No commitments after 3+ sessions — review engagement"
 
-TIMELINE FLAGS:
-If launch_timeline is "12+ months" or "1-2 years"
-→ flag: "Extended timeline may indicate
-hesitation not readiness"
+GHOSTING RISK (flag only from Fathom data):
+  last session was 30+ days ago
+  AND client is active (not paused)
+  → "No contact in 30+ days — re-engagement needed"
 
-ENGAGEMENT FLAGS:
-Only flag from Fathom session data.
-If multiple sessions exist with no commitments
-→ flag: "No commitments recorded after [N] sessions"
+DO NOT flag:
+  spouse_role = "Unsure" — this is normal
+  net worth ranges — Sandi has not confirmed thresholds
+  extended timelines — preference not a flag
+  anything you are not certain about
 
-Return flags as specific actionable strings.
-Maximum 5 flags. Only flag what evidence supports.
-Return empty array if no flags found.
+Return format:
+["flag string 1", "flag string 2"]
+or
+[]
