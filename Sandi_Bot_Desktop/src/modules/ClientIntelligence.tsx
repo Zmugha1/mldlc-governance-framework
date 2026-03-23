@@ -273,6 +273,52 @@ function clampFive(value: number): number {
   return Math.max(1, Math.min(5, Math.round(value)));
 }
 
+function parseListField(field: unknown): string[] {
+  if (!field) return [];
+  if (typeof field === 'string') {
+    try {
+      const parsed = JSON.parse(field);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) =>
+            typeof item === 'object' && item !== null
+              ? String(
+                  (item as { text?: unknown; value?: unknown; name?: unknown }).text
+                    ?? (item as { text?: unknown; value?: unknown; name?: unknown }).value
+                    ?? (item as { text?: unknown; value?: unknown; name?: unknown }).name
+                    ?? JSON.stringify(item)
+                )
+              : String(item)
+          )
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      return [String(parsed)];
+    } catch {
+      return field
+        .split('\n')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
+  }
+  if (Array.isArray(field)) {
+    return field
+      .map((item) =>
+        typeof item === 'object' && item !== null
+          ? String(
+              (item as { text?: unknown; value?: unknown; name?: unknown }).text
+                ?? (item as { text?: unknown; value?: unknown; name?: unknown }).value
+                ?? (item as { text?: unknown; value?: unknown; name?: unknown }).name
+                ?? JSON.stringify(item)
+            )
+          : String(item)
+      )
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function ClientDetailModal({
   client,
   isOpen,
@@ -297,6 +343,7 @@ function ClientDetailModal({
     areas_of_interest: string[];
     skills: string[];
     time_commitment: string;
+    reasons_for_change: string[];
   } | null>(null);
   const [tumayData, setTumayData] = useState<Record<string, unknown> | null>(null);
   const [readinessScorePct, setReadinessScorePct] = useState(0);
@@ -307,6 +354,7 @@ function ClientDetailModal({
   });
   const [discStyleLabel, setDiscStyleLabel] = useState<string>('—');
   const [modalDiscStyle, setModalDiscStyle] = useState<'D' | 'I' | 'S' | 'C'>(client?.disc?.style ?? 'I');
+  const [discScores, setDiscScores] = useState<{ d: number; i: number; s: number; c: number } | null>(null);
   const [fathomSessions, setFathomSessions] = useState<Array<{
     session_date: string | null;
     session_number: number | null;
@@ -361,8 +409,15 @@ function ClientDetailModal({
           if (!row) {
             setDiscStyleLabel('—');
             setModalDiscStyle(client.disc.style);
+            setDiscScores(null);
             return;
           }
+          setDiscScores({
+            d: Number(row.natural_d ?? 0),
+            i: Number(row.natural_i ?? 0),
+            s: Number(row.natural_s ?? 0),
+            c: Number(row.natural_c ?? 0),
+          });
           setDiscStyleLabel(
             deriveStyleLabel(
               Number(row.natural_d ?? 0),
@@ -383,60 +438,33 @@ function ClientDetailModal({
         .catch(() => {
           setDiscStyleLabel('—');
           setModalDiscStyle(client.disc.style);
+          setDiscScores(null);
         });
-      dbSelect<{
-        one_year_vision: string;
-        spouse_name: string;
-        financial_net_worth_range: string;
-        credit_score: number;
-        launch_timeline: string;
-        dangers: string;
-        strengths: string;
-        opportunities: string;
-        areas_of_interest: string;
-        skills: string;
-        time_commitment: string;
-      }>(
-        `SELECT one_year_vision, spouse_name,
-         financial_net_worth_range, credit_score,
-         launch_timeline, dangers, strengths,
-         opportunities, areas_of_interest,
-         skills, time_commitment
+      dbSelect<Record<string, unknown>>(
+        `SELECT *
          FROM client_you2_profiles
          WHERE client_id = ?`,
         [client.id]
       )
         .then((you2Result) => {
           const row = you2Result[0];
-          const vision = row?.one_year_vision
+          const vision = String(row?.one_year_vision ?? '')
             ?? 'No statement yet';
-          setYou2Vision(vision);
-          const parseList = (raw: string | null | undefined): string[] => {
-            const parsed = tryParseJson(raw);
-            if (Array.isArray(parsed)) {
-              return parsed.map(String).filter(Boolean);
-            }
-            if (typeof parsed === 'string') {
-              return parsed
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean);
-            }
-            return [];
-          };
+          setYou2Vision(vision || 'No statement yet');
           setYou2Details(
             row
               ? {
-                  spouse_name: row.spouse_name ?? '',
-                  financial_net_worth_range: row.financial_net_worth_range ?? '',
-                  credit_score: row.credit_score ?? null,
-                  launch_timeline: row.launch_timeline ?? '',
-                  dangers: parseList(row.dangers),
-                  strengths: parseList(row.strengths),
-                  opportunities: parseList(row.opportunities),
-                  areas_of_interest: parseList(row.areas_of_interest),
-                  skills: parseList(row.skills),
-                  time_commitment: row.time_commitment ?? '',
+                  spouse_name: String(row.spouse_name ?? ''),
+                  financial_net_worth_range: String(row.financial_net_worth_range ?? ''),
+                  credit_score: typeof row.credit_score === 'number' ? row.credit_score : Number(row.credit_score ?? 0) || null,
+                  launch_timeline: String(row.launch_timeline ?? ''),
+                  dangers: parseListField(row.top_3_dangers ?? row.dangers),
+                  strengths: parseListField(row.top_3_strengths ?? row.strengths),
+                  opportunities: parseListField(row.top_3_opportunities ?? row.opportunities),
+                  areas_of_interest: parseListField(row.areas_of_interest),
+                  skills: parseListField(row.skills),
+                  time_commitment: String(row.time_commitment ?? ''),
+                  reasons_for_change: parseListField(row.reasons_for_change),
                 }
               : null
           );
@@ -492,14 +520,16 @@ function ClientDetailModal({
       setContact({ email: null, phone: null, company: null });
       setDiscStyleLabel('—');
       setModalDiscStyle('I');
+      setDiscScores(null);
       setFathomSessions([]);
     }
   }, [client?.id, isOpen]);
 
   if (!client) return null;
 
-  const stage = stageConfig[client.stage as keyof typeof stageConfig];
-  if (!stage) return null;
+  const inferredStageCode = normalizeStageCode(client.inferred_stage ?? client.stage);
+  const stageLabel = stageLabelFromCode(inferredStageCode);
+  const stageCompartment = compartmentFromStageCode(inferredStageCode);
 
   const handleInactivate = () => {
     if (!onInactivate) return;
@@ -585,10 +615,10 @@ function ClientDetailModal({
                   <CardTitle className="text-sm text-slate-500">Stage</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Badge className="text-white" style={{ backgroundColor: stage.color }}>
-                    {stage.label}
+                  <Badge className="text-white" style={{ backgroundColor: '#2563EB' }}>
+                    {stageLabel}
                   </Badge>
-                  <p className="text-xs text-slate-500 mt-2">{stage.compartment}</p>
+                  <p className="text-xs text-slate-500 mt-2">Compartment {stageCompartment}</p>
                 </CardContent>
               </Card>
               <Card>
@@ -742,18 +772,60 @@ function ClientDetailModal({
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm font-semibold text-slate-700">{discStyleLabel}</p>
-                <p className="text-slate-600">{client.disc.description}</p>
-                {client.disc.traits.length > 0 && (
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 mb-2">Key Traits:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {client.disc.traits.map((trait, i) => (
-                        <Badge key={i} variant="secondary">
-                          {trait}
-                        </Badge>
-                      ))}
-                    </div>
+                <p className="text-slate-600">{DISC_STYLE_DESCRIPTIONS[modalDiscStyle]}</p>
+
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 mb-2">Key Traits</p>
+                  <div className="flex flex-wrap gap-2">
+                    {DISC_TRAITS[modalDiscStyle].map((trait, i) => (
+                      <Badge key={i} variant="secondary" className="rounded-full">
+                        {trait}
+                      </Badge>
+                    ))}
                   </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 mb-2">Scores</p>
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: 'D', value: Number(discScores?.d ?? 0), color: '#DC2626' },
+                      { label: 'I', value: Number(discScores?.i ?? 0), color: '#D97706' },
+                      { label: 'S', value: Number(discScores?.s ?? 0), color: '#16A34A' },
+                      { label: 'C', value: Number(discScores?.c ?? 0), color: '#2563EB' },
+                    ].map((score) => (
+                      <div key={score.label} className="rounded-lg border p-2">
+                        <div className="text-xs font-semibold text-slate-600 mb-2">{score.label}</div>
+                        <div className="h-28 w-full rounded bg-slate-100 relative overflow-hidden">
+                          <div
+                            className="absolute bottom-0 left-0 right-0"
+                            style={{
+                              height: `${Math.max(0, Math.min(100, score.value))}%`,
+                              backgroundColor: score.color,
+                            }}
+                          />
+                        </div>
+                        <div className="mt-1 text-center text-xs font-medium text-slate-700">{score.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 mb-2">Coaching Tips</p>
+                  <ul className="space-y-1">
+                    {DISC_COACHING_TIPS[modalDiscStyle].map((tip, i) => (
+                      <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                        <span className="text-slate-400">•</span>
+                        <span>{tip}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {discScores === null && (
+                  <p className="text-xs text-slate-500">
+                    No DISC scores recorded yet.
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -784,10 +856,43 @@ function ClientDetailModal({
                   {you2Details.launch_timeline && <p><span className="font-semibold">Launch timeline:</span> {you2Details.launch_timeline}</p>}
                   {you2Details.time_commitment && <p><span className="font-semibold">Time commitment:</span> {you2Details.time_commitment}</p>}
                   {you2Details.areas_of_interest.length > 0 && (
-                    <p><span className="font-semibold">Areas of interest:</span> {you2Details.areas_of_interest.join(', ')}</p>
+                    <div>
+                      <p className="font-semibold mb-1">Areas of interest:</p>
+                      <ul className="space-y-1">
+                        {you2Details.areas_of_interest.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-teal-600">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                   {you2Details.skills.length > 0 && (
-                    <p><span className="font-semibold">Skills:</span> {you2Details.skills.join(', ')}</p>
+                    <div>
+                      <p className="font-semibold mb-1">Skills:</p>
+                      <ul className="space-y-1">
+                        {you2Details.skills.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-teal-600">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {you2Details.reasons_for_change.length > 0 && (
+                    <div>
+                      <p className="font-semibold mb-1">Reasons for change:</p>
+                      <ul className="space-y-1">
+                        {you2Details.reasons_for_change.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="text-teal-600">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -858,15 +963,76 @@ function ClientDetailModal({
               </CardHeader>
               <CardContent>
                 {tumayData ? (
-                  <div className="space-y-2 text-sm text-slate-700">
-                    {Object.entries(tumayData).map(([key, value]) => (
-                      <p key={key}>
-                        <span className="font-semibold">{key}:</span>{' '}
-                        {typeof value === 'string'
-                          ? value
-                          : JSON.stringify(value)}
-                      </p>
-                    ))}
+                  <div className="space-y-5 text-sm text-slate-700">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 mb-2">Personal Info</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div><span className="font-medium">Contact Name:</span> {toDisplayValue(tumayData.contact_name ?? client.name)}</div>
+                        <div><span className="font-medium">Email:</span> {toDisplayValue(tumayData.email ?? contact.email)}</div>
+                        <div><span className="font-medium">Phone:</span> {toDisplayValue(tumayData.phone ?? contact.phone)}</div>
+                        <div><span className="font-medium">City + State:</span> {toDisplayValue([tumayData.city, tumayData.state].filter(Boolean).join(', '))}</div>
+                        <div><span className="font-medium">Timeline:</span> {toDisplayValue(tumayData.launch_timeline)}</div>
+                        <div><span className="font-medium">Time Commitment:</span> {toDisplayValue(tumayData.time_commitment)}</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 mb-2">Financial Profile</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><span className="font-medium">Credit Score:</span> {toDisplayValue(tumayData.credit_score)}</div>
+                        <div><span className="font-medium">Net Worth Range:</span> {toDisplayValue(tumayData.financial_net_worth_range)}</div>
+                        <div><span className="font-medium">Future Growth:</span> {toDisplayValue(tumayData.future_growth)}</div>
+                        <div><span className="font-medium">Funding Education:</span> {toDisplayValue(tumayData.funding_education)}</div>
+                      </div>
+                    </div>
+
+                    {String(tumayData.spouse_name ?? '').trim() ? (
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 mb-2">Spouse/Partner</p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div><span className="font-medium">Name:</span> {toDisplayValue(tumayData.spouse_name)}</div>
+                          <div><span className="font-medium">Role:</span> {toDisplayValue(tumayData.spouse_role)}</div>
+                          <div><span className="font-medium">On Calls:</span> {toDisplayValue(tumayData.spouse_on_calls)}</div>
+                        </div>
+                        <p className="mt-2"><span className="font-medium">Mindset:</span> {toDisplayValue(tumayData.spouse_mindset)}</p>
+                      </div>
+                    ) : null}
+
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 mb-2">Industries of Interest</p>
+                      <div className="flex flex-wrap gap-2">
+                        {parseListField(tumayData.areas_of_interest).length > 0 ? (
+                          parseListField(tumayData.areas_of_interest).map((item, idx) => (
+                            <Badge key={`${item}-${idx}`} className="bg-teal-100 text-teal-800 hover:bg-teal-100">
+                              {item}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span>—</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 mb-2">Why Now</p>
+                      <p>{toDisplayValue(tumayData.self_sufficiency_excitement)}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 mb-2">Reasons for Change</p>
+                      {parseListField(tumayData.reasons_for_change).length > 0 ? (
+                        <ul className="space-y-1">
+                          {parseListField(tumayData.reasons_for_change).map((item, idx) => (
+                            <li key={`${item}-${idx}`} className="flex items-start gap-2">
+                              <span className="text-slate-400">•</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p>—</p>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-slate-600">No TUMAY data yet.</p>
@@ -898,23 +1064,51 @@ function ClientDetailModal({
                   <p className="text-slate-600">No sessions recorded yet.</p>
                 ) : (
                   <div className="space-y-3">
-                    {fathomSessions.map((s, idx) => (
-                      <div key={`${s.session_date ?? 'session'}-${idx}`} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-semibold text-slate-900">
-                            {s.session_date || 'Unknown date'}{s.session_number ? ` - Session ${s.session_number}` : ''}
-                          </p>
-                          {s.overall_clear_score !== null && (
-                            <Badge variant="outline" className="text-xs">
-                              CLEAR {Number(s.overall_clear_score).toFixed(1)}
-                            </Badge>
-                          )}
+                    {fathomSessions.map((s, idx) => {
+                      const parsedNotes = safeParseJson(s.notes ?? '');
+                      const summary =
+                        parsedNotes && typeof parsedNotes === 'object'
+                          ? String((parsedNotes as { summary?: unknown }).summary ?? '').trim()
+                          : '';
+                      const notesText = summary
+                        || (s.notes && s.notes.trim() !== '{}' ? s.notes : '')
+                        || 'No notes recorded for this session.';
+                      const nextList = parseListField(s.next_actions);
+
+                      return (
+                        <div key={`${s.session_date ?? 'session'}-${idx}`} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {s.session_date || 'Date not recorded'} — Stage: {toDisplayValue(s.stage)}
+                            </p>
+                            {s.overall_clear_score !== null && (
+                              <Badge variant="outline" className="text-xs">
+                                CLEAR {Number(s.overall_clear_score).toFixed(1)}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="mt-2">
+                            <p className="text-xs font-semibold text-slate-600">Notes</p>
+                            <p className="text-sm text-slate-700">{notesText}</p>
+                          </div>
+                          <div className="mt-2">
+                            <p className="text-xs font-semibold text-slate-600">Next Steps</p>
+                            {nextList.length > 0 ? (
+                              <ul className="space-y-1">
+                                {nextList.map((step, stepIdx) => (
+                                  <li key={`${step}-${stepIdx}`} className="text-sm text-slate-700 flex items-start gap-2">
+                                    <span className="text-slate-400">•</span>
+                                    <span>{step}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-slate-700">{toDisplayValue(s.next_actions, '—')}</p>
+                            )}
+                          </div>
                         </div>
-                        {s.stage && <p className="text-xs text-slate-500 mt-1">Stage: {s.stage}</p>}
-                        {s.notes && <p className="text-sm text-slate-700 mt-2">{s.notes}</p>}
-                        {s.next_actions && <p className="text-xs text-slate-500 mt-1">Next: {s.next_actions}</p>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
