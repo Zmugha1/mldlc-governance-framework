@@ -1,0 +1,198 @@
+# CLEAR Coaching Rubric
+## Coach Bot — Dr. Data Decision Intelligence
+## Source: Joanna Transcript Analysis March 2026
+## Use: PostCallAnalysis.tsx scoring benchmarks
+
+---
+
+## WHAT IS CLEAR
+
+CLEAR is the franchise coaching framework.
+Each dimension scored 1-5.
+Overall score = average of all 5 dimensions.
+Target: 7.5/10 overall.
+Confirmed benchmark from Joanna sessions:
+  Session 1: 7/10
+  Session 2: 7.5/10
+  L dimension regression S1 to S2: 7 to 5.5
+
+---
+
+## C — CONTRACTING
+
+Definition: Did the coach set a clear session
+agreement and let the client own the direction?
+
+1/5 — No session goal set.
+  Coach jumps straight into content.
+  Client has no idea what the session is for.
+  Example: "So let us just pick up where
+  we left off."
+
+3/5 — Coach mentions what will happen today.
+  Some direction but coach owns it.
+  Example: "Today I want to walk you through
+  the franchise model options."
+
+5/5 — Client owns the session direction.
+  Gold question asked:
+  "What would make this conversation
+  valuable for you today?"
+  Client answers and sets the agenda.
+  Coach follows client's lead throughout.
+
+Sandi's pattern: Skips contracting most
+  sessions. Always open with the gold question.
+
+---
+
+## L — LISTENING
+
+Definition: Did the coach ask more than explain?
+Were questions emotional or informational?
+
+1/5 — Coach talks more than client.
+  Explains franchising, models, processes.
+  Client answers in 1-2 sentences.
+  Informational questions dominate.
+  Example: "Let me explain how the royalty
+  structure works in these models."
+
+3/5 — Coach asks some questions but follows
+  with explanation after each answer.
+  Mixed ratio — 50/50 informational/emotional.
+
+5/5 — Coach asks, waits, says "tell me more."
+  Client reveals: corporate trauma, health
+  stress, guilt patterns, family fears,
+  identity conflicts.
+  Coach says only "how does that make you
+  feel?" and "what else?"
+  Emotional questions >= 60% of all questions.
+
+Target ratio: emotional >= 0.6
+Amber warning: emotional ratio 0.4 to 0.59
+Red flag: emotional ratio below 0.4
+
+Sandi's pattern: Drops from 7/10 to 5.5/10
+  Session 1 to Session 2. Teaching mode
+  replaces discovery mode as sessions progress.
+  Biggest improvement opportunity in CLEAR.
+
+---
+
+## E — EXPLORING
+
+Definition: Did the coach help the client
+imagine their future life vividly?
+
+1/5 — Logical exploration only.
+  No emotional imagery.
+  "What type of business interests you?"
+  Client never pictures their actual life.
+
+3/5 — Coach paints picture but uses franchise
+  examples rather than client's own life.
+  "Owners in this model make X per year."
+  Client hears examples but does not feel them.
+
+5/5 — Client describes their own life unprompted.
+  Question: "Imagine 3 years from now —
+  what does your life look like?"
+  Client spontaneously describes: schedule,
+  hobbies, freedom, health, family, control.
+  Coach did not put words in their mouth.
+
+Sandi's pattern: Strong in Session 2 (9/10).
+  Vision building improves when she stops
+  explaining and starts asking.
+
+---
+
+## A — ACTION
+
+Definition: Did the client define their own
+next step or did the coach assign it?
+
+1/5 — Vague next steps or none.
+  Session ends without clarity.
+  "Let us talk again next week."
+
+3/5 — Next call scheduled by coach.
+  Specific date but action assigned not chosen.
+  "I will send you three profiles to review."
+
+5/5 — Client defines their own next step.
+  Question: "What would be a smart next step
+  for you between now and our next call?"
+  Client owns it: "I want to talk to my
+  spouse about the financial commitment."
+  Coach confirms and logs it.
+
+Sandi's pattern: Good in Session 2.
+  Gets stronger as rapport builds.
+
+---
+
+## R — REFLECTION
+
+Definition: Did the coach surface an insight
+the client had not named themselves?
+
+1/5 — Session ends without reflection.
+  Coach wraps up on logistics.
+  Client leaves with no new self-awareness.
+
+3/5 — Coach summarizes what happened.
+  "So today we covered X, Y, Z."
+  Factual recap but no deeper insight.
+
+5/5 — Coach names what the client showed
+  but never said.
+  Sandi's masterful moment with Joanna:
+  "Everything you talked about today was
+  practical. There is no fun in your life."
+  Joanna immediately agreed.
+  The insight must be true, specific, and
+  something the client could not have
+  articulated themselves in that moment.
+
+Sandi's pattern: Weak in Session 1.
+  Strong in Session 2. One masterful moment.
+  Highest ceiling dimension.
+
+---
+
+## OVERALL SCORING
+
+7.5 to 10.0: Elite coaching session
+6.0 to 7.4:  Good session, 1-2 gaps
+4.0 to 5.9:  Developing — teaching mode present
+Below 4.0:   Informational only — not coaching
+
+---
+
+## DISC-SPECIFIC CLEAR ADJUSTMENTS
+
+High C clients:
+  Extra emphasis on L dimension.
+  High C disengages when explained to.
+  Every explanation is a missed question.
+  Ask 2 questions for every statement.
+
+High D clients:
+  C dimension most important.
+  High D wants to own the session agenda.
+  Gold contracting question is critical.
+
+High I clients:
+  E dimension most important.
+  High I responds to vision and possibility.
+  Paint the picture, let them embellish it.
+  They will talk themselves into action.
+
+High S clients:
+  A dimension most important.
+  High S needs to choose their own next step.
+  Never assign action to High S.
+  They will not do it if it feels imposed.
