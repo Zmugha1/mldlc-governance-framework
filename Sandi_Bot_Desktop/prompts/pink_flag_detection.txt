@@ -1,38 +1,137 @@
-You are analyzing a franchise coaching
-client profile for genuine risk signals.
+# Pink Flag Detection Guide
+## Coach Bot — Dr. Data Decision Intelligence
+## Source: Joanna Transcript + Sandi March 2026
+## Use: Session analysis and client card display
 
-Return ONLY a JSON array of flag strings.
-Maximum 3 flags. Empty array if none found.
-Return [] if uncertain — never guess.
+---
 
-ONLY flag these confirmed patterns:
+## WHAT IS A PINK FLAG
 
-FINANCIAL RISK (flag only if both true):
-  credit_score exists AND credit_score < 650
-  → "Credit score below 650 — funding options limited"
+A pink flag is a behavioral signal that
+indicates a client may be disengaging,
+stalling, or heading toward no decision.
 
-SPOUSE RISK (flag only if BOTH conditions):
-  spouse_role = "No" (not Unsure — No only)
-  AND launch_timeline = "0 - 6 months"
-  → "Spouse not aligned — short timeline creates tension"
+Pink flags are NOT red flags.
+They are early warning signals.
 
-STALL RISK (flag only from Fathom data):
-  3+ sessions exist AND no next_actions recorded
-  in any session
-  → "No commitments after 3+ sessions — review engagement"
+One flag = awareness. Monitor.
+Two flags = active concern. Address next call.
+Three or more flags = surface for Sandi review.
 
-GHOSTING RISK (flag only from Fathom data):
-  last session was 30+ days ago
-  AND client is active (not paused)
-  → "No contact in 30+ days — re-engagement needed"
+IMPORTANT: Do not automatically pause any
+client based on flag count alone until Sandi
+confirms thresholds (STZ Q32-33 pending).
+Surface flags for Sandi review only.
+Sandi makes the pause decision manually.
 
-DO NOT flag:
-  spouse_role = "Unsure" — this is normal
-  net worth ranges — Sandi has not confirmed thresholds
-  extended timelines — preference not a flag
-  anything you are not certain about
+---
 
-Return format:
-["flag string 1", "flag string 2"]
-or
-[]
+## CONFIRMED FLAGS — ALL DISC STYLES
+
+FLAG: timeline_slipping
+  Triggers: "needs more time" /
+    "wants to think about it" /
+    "not ready to decide" / "still processing"
+  Display: amber "Timeline Concern"
+
+FLAG: fear_reframing
+  Triggers: "my current job isn't that bad" /
+    "maybe I should stay" /
+    "not sure this is the right time"
+  Display: red "Stall Risk"
+
+FLAG: exit_signal
+  Triggers: "I need to do more research
+    on my own" / "I'll reach out when ready" /
+    "I think I have enough information"
+  Display: red "Exit Risk"
+
+FLAG: financial_concern
+  Triggers: credit_score < 650
+    OR "what if it fails" /
+    "worried about the investment" /
+    "financial concern"
+  Display: amber "Financial Review"
+
+---
+
+## HIGH C SPECIFIC FLAGS
+
+FLAG: technical_question_mode
+  Triggers: "what are the fees" /
+    "what is the structure" /
+    "what does the contract say" /
+    "how does the royalty work"
+  Pattern: all questions operational,
+    none visionary or personal.
+  Display: amber "Engagement Risk"
+
+FLAG: overly_agreeable
+  Triggers: "that makes sense" /
+    "I understand" / "sounds good"
+    with no follow-up question from client.
+  Display: amber "Engagement Risk"
+
+---
+
+## HIGH S SPECIFIC FLAGS
+
+FLAG: family_concern
+  Triggers: "my spouse isn't sure" /
+    "family isn't on board" /
+    "need to talk to my partner"
+  Display: red "Spouse Alignment"
+
+FLAG: security_fear
+  Triggers: "too risky" /
+    "what about benefits" /
+    "what about health insurance" /
+    "I need stability"
+  Display: amber "Security Concern"
+
+---
+
+## HIGH D SPECIFIC FLAGS
+
+FLAG: control_loss
+  Triggers: "too many rules" /
+    "too much oversight" /
+    "I want to do this my way"
+  Display: amber "Control Concern"
+
+---
+
+## HIGH I SPECIFIC FLAGS
+
+FLAG: distraction_pattern
+  Triggers: "I've been really busy" /
+    "a lot going on right now"
+    appearing more than once.
+  Display: amber "Life Distraction"
+
+---
+
+## UNIVERSAL FLAGS
+
+FLAG: spouse_not_aligned
+  Triggers: spouse_role = "No"
+    AND spouse_on_calls = "No"
+    AND launch_timeline = "0 - 6 months"
+    All three conditions required.
+  Display: red "Spouse Not Aligned"
+
+FLAG: ghosting_risk
+  Triggers: 2 or more reschedules
+    or no-shows detected.
+  Display: red "Ghosting Pattern"
+
+---
+
+## PENDING FROM SANDI (Tuesday call)
+
+Q32: How many flags trigger automatic pause?
+Q33: Which specific flags are automatic pauses?
+Q35: Can a flag resolve once set?
+
+Until answered: flags are permanent once set.
+Do not build resolve/dismiss UI yet.
