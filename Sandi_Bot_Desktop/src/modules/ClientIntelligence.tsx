@@ -165,6 +165,114 @@ function RecommendationBadge({
   );
 }
 
+const DISC_STYLE_DESCRIPTIONS: Record<'D' | 'I' | 'S' | 'C', string> = {
+  D: 'Fast-paced and results-driven. Prefers direct communication and clear outcomes.',
+  I: 'People-oriented and persuasive. Energized by collaboration, stories, and momentum.',
+  S: 'Steady and relationship-centered. Values trust, consistency, and thoughtful progress.',
+  C: 'Analytical and detail-focused. Prefers logic, structure, and complete information.',
+};
+
+const DISC_TRAITS: Record<'D' | 'I' | 'S' | 'C', string[]> = {
+  D: ['Results-oriented', 'Direct', 'Decisive', 'Competitive', 'Takes charge', 'Goal-focused'],
+  I: ['Enthusiastic', 'Optimistic', 'Talkative', 'Social', 'Persuasive', 'People-oriented'],
+  S: ['Patient', 'Stable', 'Sincere', 'Loyal', 'Thorough', 'Team-oriented'],
+  C: ['Analytical', 'Systematic', 'Accurate', 'Cautious', 'Detail-oriented', 'Quality-focused'],
+};
+
+const DISC_COACHING_TIPS: Record<'D' | 'I' | 'S' | 'C', string[]> = {
+  D: ['Be direct', 'Focus on results', 'Give options', 'Respect authority', 'Skip small talk'],
+  I: ['Be friendly', 'Allow stories', 'Recognize ideas', 'Show excitement', 'Use testimonials'],
+  S: ['Coach thoroughly', 'Focus on stability', 'Give time', 'Involve family', 'Show security'],
+  C: ['Provide facts', 'Give time to analyze', 'Use logic', 'Acknowledge thoroughness', 'Answer every question'],
+};
+
+const STYLE_COLOR_MAP: Record<'D' | 'I' | 'S' | 'C', string> = {
+  D: '#EF4444',
+  I: '#EAB308',
+  S: '#22C55E',
+  C: '#3B82F6',
+};
+
+function safeParseJson(value: string | null | undefined): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function toDisplayValue(value: unknown, fallback = '—'): string {
+  if (value === null || value === undefined) return fallback;
+  const str = String(value).trim();
+  return str.length > 0 ? str : fallback;
+}
+
+function toStringList(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((v) => String(v).trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    const parsed = safeParseJson(value);
+    if (Array.isArray(parsed)) return parsed.map((v) => String(v).trim()).filter(Boolean);
+    return value.split('\n').map((v) => v.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeStageCode(raw: string | null | undefined): 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5' {
+  const value = (raw ?? '').trim();
+  const map: Record<string, 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5'> = {
+    IC: 'IC',
+    C1: 'C1',
+    C2: 'C2',
+    C3: 'C3',
+    C4: 'C4',
+    C5: 'C5',
+    'Initial Contact': 'IC',
+    'Seeker Connection': 'C1',
+    'Seeker Clarification': 'C2',
+    Possibilities: 'C3',
+    'Coach Client Collaboration': 'C3',
+    'Client Career 2.0': 'C4',
+    'Business Purchase': 'C5',
+  };
+  return map[value] ?? 'IC';
+}
+
+function stageLabelFromCode(code: 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5'): string {
+  const labels: Record<'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5', string> = {
+    IC: 'Initial Contact',
+    C1: 'Seeker Connection',
+    C2: 'Seeker Clarification',
+    C3: 'Possibilities',
+    C4: 'Client Career 2.0',
+    C5: 'Business Purchase',
+  };
+  return labels[code];
+}
+
+function compartmentFromStageCode(code: 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5'): number {
+  const compartments: Record<'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5', number> = {
+    IC: 0,
+    C1: 1,
+    C2: 2,
+    C3: 3,
+    C4: 4,
+    C5: 5,
+  };
+  return compartments[code];
+}
+
+function fractionBarColor(score: number): string {
+  if (score >= 4) return '#0D9488';
+  if (score >= 2) return '#F59E0B';
+  return '#EF4444';
+}
+
+function clampFive(value: number): number {
+  return Math.max(1, Math.min(5, Math.round(value)));
+}
+
 function ClientDetailModal({
   client,
   isOpen,
