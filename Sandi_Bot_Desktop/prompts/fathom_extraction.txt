@@ -1,75 +1,76 @@
-You are extracting data from a TES franchise
-coaching conversation transcript or summary.
-Called "Convo" or "Fathom" in TES system.
+You are analyzing a franchise coaching call
+transcript between coach Sandi and a client.
 
-These documents summarize coaching calls between
-Sandi Stahl (franchise coach) and a prospective
-franchise client.
+Extract EXACTLY these 9 blocks from the
+transcript. Return ONLY valid JSON.
+No markdown. No explanation.
 
-SESSION DATE:
-Look for a date in the document header or
-first paragraph. Format as "YYYY-MM-DD"
+For each block: if the information exists
+in the transcript, extract it.
+If it does not exist, return null for
+that block — never invent content.
 
-SESSION NUMBER:
-Look for "Session 1" or "Call 1" or similar.
-Default to 1 if not specified.
+Return this exact JSON structure:
+{
+  "block_opening": {
+    "client_energy": "excited/flat/anxious/distracted/unknown",
+    "contracting_done": true/false,
+    "client_set_agenda": true/false,
+    "opening_summary": "one sentence"
+  },
+  "block_emotional": {
+    "emotions_expressed": ["array of emotions mentioned"],
+    "identity_statements": ["things client said about who they are"],
+    "fears_mentioned": ["fears expressed"],
+    "what_was_not_said": "coach observation if any"
+  },
+  "block_life_context": {
+    "spouse_sentiment": "supportive/neutral/resistant/not_mentioned",
+    "family_obligations": "text or null",
+    "current_job_situation": "stable/unstable/toxic/boring/not_mentioned",
+    "financial_comfort": "high/medium/low/not_mentioned",
+    "personal_circumstances": "text or null"
+  },
+  "block_vision": {
+    "future_life_described": true/false,
+    "lifestyle_details": ["specific details client mentioned"],
+    "business_models_discussed": ["franchise types or models"],
+    "ownership_identity": "did client see themselves as owner yes/no/partial"
+  },
+  "block_disc_signals": {
+    "observed_style": "D/I/S/C/mixed",
+    "style_observations": ["specific behaviors observed"],
+    "matches_profile": true/false,
+    "coaching_note": "one sentence on how to adjust next call"
+  },
+  "block_objections": {
+    "objections": ["list of objections raised"],
+    "objection_types": ["financial/spouse/timing/fear/other"],
+    "repeat_objections": ["objections that appeared before"],
+    "pink_flag_language": ["exact phrases that signal disengagement"]
+  },
+  "block_commitments": {
+    "client_commitments": ["what client agreed to do"],
+    "client_chose_action": true/false,
+    "next_call_scheduled": true/false,
+    "next_call_date": "date or null"
+  },
+  "block_reflection": {
+    "insight_surfaced": "insight coach named that client had not",
+    "mindset_shift": "what changed in the client during this call",
+    "surprise": "what surprised the coach",
+    "engagement_quality": "high/medium/low"
+  },
+  "block_coach_assessment": {
+    "stage_recommendation": "IC/C1/C2/C3/C4/C5",
+    "readiness_direction": "improving/stable/declining",
+    "recommendation": "VALIDATE/GATHER/PAUSE",
+    "next_call_focus": "what the next call should accomplish",
+    "priority_question": "the single most important question to ask next call"
+  }
+}
 
-DURATION:
-Look for minutes in header. Default 0 if not found.
+Transcript:
+---
 
-PIPELINE STAGE:
-Infer from topics discussed:
-IC = no DISC mentioned, first contact only
-C1 = DISC report reviewed in this session
-C2 = funding vehicles investment discussed
-C3 = specific franchise options presented
-C4 = validation calls with franchisors
-C5 = decision made purchase completed
-
-KEY TOPICS:
-List the main subjects discussed.
-Be specific. Example: "DISC SC style discussion"
-not just "personality"
-
-OBJECTIONS:
-Any hesitation concern or pushback.
-Quote exact phrases when possible.
-Example: "concerned about leaving stable income"
-
-COMMITMENTS:
-What did the client agree to do?
-Example: "complete You 2.0 form before next call"
-
-NEXT STEPS:
-Explicitly stated future actions.
-Include who is responsible.
-
-SPOUSE MENTIONS:
-Every reference to spouse or partner.
-Include context. Example: "[spouse name] expressed
-support for entrepreneurship path"
-
-ENGAGEMENT QUALITY:
-high = asked specific questions, made commitments,
-showed excitement about specific opportunities
-medium = engaged and responsive but noncommittal
-low = short answers, deflecting, no commitments
-
-PINK FLAG SIGNALS:
-Be specific. Examples:
-"Said needs to think about it with no timeline"
-"Mentioned spouse has not been told yet"
-"Financial concern about retirement funds"
-"Has not completed homework from last session"
-
-POSITIVE SIGNALS:
-Be specific. Examples:
-"Asked detailed questions about specific franchise"
-"Used language when I start not if I start"
-"Volunteered information about savings available"
-
-SESSION SUMMARY:
-2-3 sentence summary of the call.
-
-Return ONLY valid JSON. No explanation.
-No markdown. Start with { end with }
+---

@@ -375,12 +375,23 @@ function ClientDetailModal({
   });
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [fathomSessions, setFathomSessions] = useState<Array<{
+    id: number;
     session_date: string | null;
     session_number: number | null;
     stage: string | null;
     notes: string | null;
     next_actions: string | null;
     overall_clear_score: number | null;
+    block_opening: string | null;
+    block_emotional: string | null;
+    block_life_context: string | null;
+    block_vision: string | null;
+    block_disc_signals: string | null;
+    block_objections: string | null;
+    block_commitments: string | null;
+    block_reflection: string | null;
+    block_coach_assessment: string | null;
+    blocks_complete: number | null;
   }>>([]);
   const [showInactivateConfirm, setShowInactivateConfirm] = useState(false);
 
@@ -521,16 +532,32 @@ function ClientDetailModal({
         })
         .catch(() => setTumayData(null));
       dbSelect<{
+        id: number;
         session_date: string | null;
         session_number: number | null;
         stage: string | null;
         notes: string | null;
         next_actions: string | null;
         overall_clear_score: number | null;
+        block_opening: string | null;
+        block_emotional: string | null;
+        block_life_context: string | null;
+        block_vision: string | null;
+        block_disc_signals: string | null;
+        block_objections: string | null;
+        block_commitments: string | null;
+        block_reflection: string | null;
+        block_coach_assessment: string | null;
+        blocks_complete: number | null;
       }>(
-        `SELECT session_date, session_number,
+        `SELECT id, session_date, session_number,
          stage, notes, next_actions,
-         overall_clear_score
+         overall_clear_score,
+         block_opening, block_emotional,
+         block_life_context, block_vision,
+         block_disc_signals, block_objections,
+         block_commitments, block_reflection,
+         block_coach_assessment, blocks_complete
          FROM coaching_sessions
          WHERE client_id = ?
          ORDER BY session_date DESC`,
@@ -569,16 +596,32 @@ function ClientDetailModal({
 
   const loadFathomSessions = async () => {
     const rows = await dbSelect<{
+      id: number;
       session_date: string | null;
       session_number: number | null;
       stage: string | null;
       notes: string | null;
       next_actions: string | null;
       overall_clear_score: number | null;
+      block_opening: string | null;
+      block_emotional: string | null;
+      block_life_context: string | null;
+      block_vision: string | null;
+      block_disc_signals: string | null;
+      block_objections: string | null;
+      block_commitments: string | null;
+      block_reflection: string | null;
+      block_coach_assessment: string | null;
+      blocks_complete: number | null;
     }>(
-      `SELECT session_date, session_number,
+      `SELECT id, session_date, session_number,
        stage, notes, next_actions,
-       overall_clear_score
+       overall_clear_score,
+       block_opening, block_emotional,
+       block_life_context, block_vision,
+       block_disc_signals, block_objections,
+       block_commitments, block_reflection,
+       block_coach_assessment, blocks_complete
        FROM coaching_sessions
        WHERE client_id = ?
        ORDER BY session_date DESC`,
@@ -644,6 +687,23 @@ function ClientDetailModal({
     } finally {
       setIsSavingNote(false);
     }
+  };
+
+  const blockDefinitions = [
+    { key: 'block_opening', title: 'Session Opening', icon: '🎯', color: 'text-blue-700', checklist: 'Session Opening — confirm energy and contracting' },
+    { key: 'block_emotional', title: 'Emotional Discovery', icon: '💭', color: 'text-purple-700', checklist: 'Emotional Discovery — ask what feelings emerged' },
+    { key: 'block_life_context', title: 'Life Context', icon: '🏠', color: 'text-green-700', checklist: 'Life Context — update family and financial context' },
+    { key: 'block_vision', title: 'Vision and Possibility', icon: '🌟', color: 'text-amber-700', checklist: 'Vision — help client describe future life' },
+    { key: 'block_disc_signals', title: 'DISC Signals', icon: '🧠', color: 'text-teal-700', checklist: 'DISC Signals — capture observed style and match' },
+    { key: 'block_objections', title: 'Objections and Blockers', icon: '⚠️', color: 'text-red-700', checklist: 'Objections — capture blockers and pink-flag language' },
+    { key: 'block_commitments', title: 'Commitments', icon: '✅', color: 'text-green-700', checklist: 'Commitments — lock next client-owned action' },
+    { key: 'block_reflection', title: 'Reflection', icon: '💡', color: 'text-yellow-700', checklist: 'Reflection — surface insight and mindset shift' },
+    { key: 'block_coach_assessment', title: 'Coach Assessment', icon: '📊', color: 'text-blue-700', checklist: 'Coach Assessment — record your recommendation' },
+  ] as const;
+
+  const parseSessionBlock = (raw: string | null): Record<string, unknown> | null => {
+    const parsed = safeParseJson(raw ?? '');
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
   };
 
   return (
@@ -881,13 +941,14 @@ function ClientDetailModal({
                   {readiness.ready_to_advance && readiness.next_stage && (
                     <Button
                       onClick={() => {
+                        const nextStage = readiness.next_stage;
                         const reason = prompt(
                           `Reason for moving to ${readiness.next_stage_full}?`
                         );
-                        if (reason) {
+                        if (reason && nextStage) {
                           moveClientStage(
                             readiness.client_id,
-                            readiness.next_stage,
+                            nextStage,
                             reason,
                             'Sandi Stahl'
                           ).then(() => {
@@ -1299,52 +1360,218 @@ function ClientDetailModal({
                 {fathomSessions.length === 0 ? (
                   <p className="text-slate-600">No sessions recorded yet.</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {fathomSessions.map((s, idx) => {
+                      const opening = parseSessionBlock(s.block_opening);
+                      const emotional = parseSessionBlock(s.block_emotional);
+                      const life = parseSessionBlock(s.block_life_context);
+                      const vision = parseSessionBlock(s.block_vision);
+                      const disc = parseSessionBlock(s.block_disc_signals);
+                      const objections = parseSessionBlock(s.block_objections);
+                      const commitments = parseSessionBlock(s.block_commitments);
+                      const reflection = parseSessionBlock(s.block_reflection);
+                      const assessment = parseSessionBlock(s.block_coach_assessment);
+                      const isStructured = [opening, emotional, life, vision, disc, objections, commitments, reflection, assessment]
+                        .some((v) => v !== null);
+                      const blocksComplete = Number(s.blocks_complete ?? 0);
+                      const missingForSession = blockDefinitions.filter((d) => parseSessionBlock(s[d.key]) === null);
                       const parsedNotes = safeParseJson(s.notes ?? '');
-                      const summary =
+                      const legacySummary =
                         parsedNotes && typeof parsedNotes === 'object'
                           ? String((parsedNotes as { summary?: unknown }).summary ?? '').trim()
                           : '';
-                      const notesText = summary
+                      const legacyNotes = legacySummary
                         || (s.notes && s.notes.trim() !== '{}' ? s.notes : '')
                         || 'No notes recorded for this session.';
-                      const nextList = parseListField(s.next_actions);
 
                       return (
-                        <div key={`${s.session_date ?? 'session'}-${idx}`} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                          <div className="flex items-center justify-between">
+                        <div key={`${s.id}-${idx}`} className="p-3 rounded-lg bg-slate-50 border border-slate-100 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-sm font-semibold text-slate-900">
-                              {s.session_date || 'Date not recorded'} — Stage: {toDisplayValue(s.stage)}
+                              {s.session_date || 'Date not recorded'} | {toDisplayValue(s.stage)} | {blocksComplete}/9 blocks
                             </p>
-                            {s.overall_clear_score !== null && (
-                              <Badge variant="outline" className="text-xs">
-                                CLEAR {Number(s.overall_clear_score).toFixed(1)}
-                              </Badge>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {!isStructured && (
+                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+                                  Unstructured - recorded before 9-block system
+                                </Badge>
+                              )}
+                              {s.overall_clear_score !== null && (
+                                <Badge variant="outline" className="text-xs">
+                                  CLEAR {Number(s.overall_clear_score).toFixed(1)}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
-                          <div className="mt-2">
-                            <p className="text-xs font-semibold text-slate-600">Notes</p>
-                            <p className="text-sm text-slate-700">{notesText}</p>
-                          </div>
-                          <div className="mt-2">
-                            <p className="text-xs font-semibold text-slate-600">Next Steps</p>
-                            {nextList.length > 0 ? (
-                              <ul className="space-y-1">
-                                {nextList.map((step, stepIdx) => (
-                                  <li key={`${step}-${stepIdx}`} className="text-sm text-slate-700 flex items-start gap-2">
-                                    <span className="text-slate-400">•</span>
-                                    <span>{step}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p className="text-sm text-slate-700">{toDisplayValue(s.next_actions, '—')}</p>
-                            )}
-                          </div>
+
+                          {!isStructured ? (
+                            <div className="space-y-2">
+                              <p className="text-sm text-slate-700">{legacyNotes}</p>
+                              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                                <p className="text-sm font-semibold text-amber-900">NEXT CALL PLANNING</p>
+                                <p className="text-sm text-amber-800 mb-2">Missing from last session — address next call:</p>
+                                <ul className="space-y-1">
+                                  {blockDefinitions.map((block) => (
+                                    <li key={block.key} className="text-sm text-amber-900 flex items-start gap-2">
+                                      <span>- [ ]</span>
+                                      <span>{block.checklist}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <details open className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-blue-700">🎯 Session Opening</summary>
+                                <div className="mt-2 text-sm space-y-1">
+                                  <div>Energy: <Badge variant="outline">{toDisplayValue(opening?.client_energy)}</Badge></div>
+                                  <div>Contracting: {opening?.contracting_done ? '✓' : '✗'}</div>
+                                  <div>Client set agenda: {opening?.client_set_agenda ? '✓' : '✗'}</div>
+                                  <p>{toDisplayValue(opening?.opening_summary)}</p>
+                                </div>
+                              </details>
+                              <details className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-purple-700">💭 Emotional Discovery</summary>
+                                <div className="mt-2 text-sm space-y-2">
+                                  <div className="flex flex-wrap gap-2">
+                                    {parseListField(emotional?.emotions_expressed).map((v, i) => <Badge key={`e-${i}`} className="bg-purple-100 text-purple-800 hover:bg-purple-100">{v}</Badge>)}
+                                  </div>
+                                  <ul className="list-disc list-inside">{parseListField(emotional?.fears_mentioned).map((v, i) => <li key={`f-${i}`}>{v}</li>)}</ul>
+                                  <blockquote className="border-l-2 pl-2 text-slate-700">{parseListField(emotional?.identity_statements).join(' | ') || '—'}</blockquote>
+                                </div>
+                              </details>
+                              <details className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-green-700">🏠 Life Context</summary>
+                                <div className="mt-2 text-sm space-y-1">
+                                  <div className="flex gap-2 flex-wrap">
+                                    <Badge variant="outline">{toDisplayValue(life?.spouse_sentiment)}</Badge>
+                                    <Badge variant="outline">{toDisplayValue(life?.current_job_situation)}</Badge>
+                                    <Badge variant="outline">{toDisplayValue(life?.financial_comfort)}</Badge>
+                                  </div>
+                                  <p>{toDisplayValue(life?.personal_circumstances)}</p>
+                                </div>
+                              </details>
+                              <details className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-amber-700">🌟 Vision and Possibility</summary>
+                                <div className="mt-2 text-sm space-y-1">
+                                  <div>Future described: {vision?.future_life_described ? '✓' : '✗'}</div>
+                                  <ul className="list-disc list-inside">{parseListField(vision?.lifestyle_details).map((v, i) => <li key={`l-${i}`}>{v}</li>)}</ul>
+                                  <div className="flex flex-wrap gap-2">{parseListField(vision?.business_models_discussed).map((v, i) => <Badge key={`bm-${i}`} variant="secondary">{v}</Badge>)}</div>
+                                  <div>Ownership identity: <Badge variant="outline">{toDisplayValue(vision?.ownership_identity)}</Badge></div>
+                                </div>
+                              </details>
+                              <details className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-teal-700">🧠 DISC Signals</summary>
+                                <div className="mt-2 text-sm space-y-1">
+                                  <div>Observed style: <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100">{toDisplayValue(disc?.observed_style)}</Badge></div>
+                                  <ul className="list-disc list-inside">{parseListField(disc?.style_observations).map((v, i) => <li key={`so-${i}`}>{v}</li>)}</ul>
+                                  <div>Matches profile: {disc?.matches_profile ? '✓' : '✗'}</div>
+                                  <p className="italic">{toDisplayValue(disc?.coaching_note)}</p>
+                                </div>
+                              </details>
+                              <details className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-red-700">⚠️ Objections and Blockers</summary>
+                                <div className="mt-2 text-sm space-y-1">
+                                  <ul className="list-disc list-inside">{parseListField(objections?.objections).map((v, i) => <li key={`o-${i}`}>{v}</li>)}</ul>
+                                  <div className="flex flex-wrap gap-2">{parseListField(objections?.pink_flag_language).map((v, i) => <Badge key={`pfl-${i}`} className="bg-red-100 text-red-800 hover:bg-red-100">{v}</Badge>)}</div>
+                                  <p className="font-medium">Repeat: {parseListField(objections?.repeat_objections).join(', ') || '—'}</p>
+                                </div>
+                              </details>
+                              <details className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-green-700">✅ Commitments</summary>
+                                <div className="mt-2 text-sm space-y-1">
+                                  <ul className="list-disc list-inside">{parseListField(commitments?.client_commitments).map((v, i) => <li key={`cc-${i}`}>{v}</li>)}</ul>
+                                  <div>Client chose action: {commitments?.client_chose_action ? '✓' : '✗'}</div>
+                                  <div>Next call: {toDisplayValue(commitments?.next_call_date)}</div>
+                                </div>
+                              </details>
+                              <details className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-yellow-700">💡 Reflection</summary>
+                                <div className="mt-2 text-sm space-y-1">
+                                  <blockquote className="border-l-2 pl-2">{toDisplayValue(reflection?.insight_surfaced)}</blockquote>
+                                  <p>{toDisplayValue(reflection?.mindset_shift)}</p>
+                                  <Badge variant="outline">{toDisplayValue(reflection?.engagement_quality)}</Badge>
+                                </div>
+                              </details>
+                              <details className="rounded border p-2 bg-white">
+                                <summary className="font-medium text-blue-700">📊 Coach Assessment</summary>
+                                <div className="mt-2 text-sm space-y-2">
+                                  <Badge
+                                    className={
+                                      String(assessment?.recommendation ?? '') === 'VALIDATE'
+                                        ? 'bg-green-100 text-green-800 hover:bg-green-100'
+                                        : String(assessment?.recommendation ?? '') === 'PAUSE'
+                                          ? 'bg-slate-200 text-slate-800 hover:bg-slate-200'
+                                          : 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+                                    }
+                                  >
+                                    {toDisplayValue(assessment?.recommendation)}
+                                  </Badge>
+                                  <p>
+                                    {String(assessment?.readiness_direction ?? '') === 'improving'
+                                      ? '↑ '
+                                      : String(assessment?.readiness_direction ?? '') === 'declining'
+                                        ? '↓ '
+                                        : '→ '}
+                                    {toDisplayValue(assessment?.readiness_direction)}
+                                  </p>
+                                  <p>{toDisplayValue(assessment?.next_call_focus)}</p>
+                                  <div className="rounded bg-blue-50 p-2 text-blue-900">
+                                    {toDisplayValue(assessment?.priority_question)}
+                                  </div>
+                                </div>
+                              </details>
+
+                              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                                <p className="text-sm font-semibold text-slate-900">NEXT CALL PLANNING</p>
+                                {missingForSession.length > 0 ? (
+                                  <>
+                                    <p className="text-sm text-slate-700 mb-2">Missing from last session — address next call:</p>
+                                    <ul className="space-y-1">
+                                      {missingForSession.map((block) => (
+                                        <li key={block.key} className="text-sm text-slate-800 flex items-start gap-2">
+                                          <span>- [ ]</span>
+                                          <span>{block.checklist}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                ) : (
+                                  <p className="text-sm text-green-700">✓ Complete session record</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+
+                    {(() => {
+                      const last = fathomSessions[0];
+                      if (!last) return null;
+                      const missingLast = blockDefinitions.filter((d) => parseSessionBlock(last[d.key]) === null);
+                      return (
+                        <div className="rounded-md border border-slate-300 bg-white p-4">
+                          <p className="text-sm font-semibold text-slate-900">NEXT CALL PLANNING</p>
+                          {missingLast.length > 0 ? (
+                            <>
+                              <p className="text-sm text-slate-700 mb-2">Missing from last session — address next call:</p>
+                              <ul className="space-y-1">
+                                {missingLast.map((block) => (
+                                  <li key={`last-${block.key}`} className="text-sm text-slate-800 flex items-start gap-2">
+                                    <span>- [ ]</span>
+                                    <span>{block.checklist}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </>
+                          ) : (
+                            <p className="text-sm text-green-700">✓ Complete session record</p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </CardContent>

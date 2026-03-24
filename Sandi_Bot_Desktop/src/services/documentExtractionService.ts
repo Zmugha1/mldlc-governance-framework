@@ -173,6 +173,13 @@ async function loadPrompt(promptName: string): Promise<string> {
   return await invoke<string>('read_prompt_file', { name: promptName });
 }
 
+async function readPromptFile(name: string): Promise<string> {
+  const normalized = name.endsWith('.txt')
+    ? name.replace(/\.txt$/i, '')
+    : name;
+  return await invoke<string>('read_prompt_file', { name: normalized });
+}
+
 async function callOllama(
   systemPrompt: string,
   userContent: string,
@@ -214,6 +221,40 @@ function parseExtractionResponse<T>(
       rawResponse.substring(0, 500));
     return null;
   }
+}
+
+function countNonNullBlocks(
+  parsed: Record<string, unknown>
+): number {
+  const blocks = [
+    'block_opening', 'block_emotional',
+    'block_life_context', 'block_vision',
+    'block_disc_signals', 'block_objections',
+    'block_commitments', 'block_reflection',
+    'block_coach_assessment'
+  ];
+  return blocks.filter((b) =>
+    parsed[b] !== null &&
+    parsed[b] !== undefined
+  ).length;
+}
+
+function inferSessionDate(rawText: string): string {
+  const dateMatch =
+    rawText.match(/\b(20\d{2}-\d{2}-\d{2})\b/) ??
+    rawText.match(/\b(\d{1,2}\/\d{1,2}\/20\d{2})\b/);
+
+  if (!dateMatch?.[1]) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  const raw = dateMatch[1];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const [m, d, y] = raw.split('/');
+  const mm = m.padStart(2, '0');
+  const dd = d.padStart(2, '0');
+  return `${y}-${mm}-${dd}`;
 }
 
 async function recordExtraction(
@@ -1041,55 +1082,23 @@ export async function extractFathomSession(
   filePath: string
 ): Promise<ExtractionResult<FathomSession>> {
   try {
-    const prompt = await loadPrompt('fathom_extraction');
+    const transcriptText = rawText.trim();
+    const fathomPrompt = await readPromptFile(
+      'fathom_extraction.txt'
+    );
 
-    const systemPrompt = `${prompt}
+    const rawResponse = await invoke<string>(
+      'ollama_generate',
+      {
+        prompt: fathomPrompt + '\n' + transcriptText,
+        system: 'You extract structured coaching intelligence from franchise coaching call transcripts. Return only valid JSON.',
+        model: 'qwen2.5:7b-instruct-q4_k_m'
+      }
+    );
 
-Return ONLY valid JSON. No explanation. No markdown. JSON only.
+    const parsed = parseExtractionResponse<Record<string, unknown>>(rawResponse);
 
-Schema:
-{
-  "client_name": "string",
-  "session_date": "string",
-  "session_number": number,
-  "duration_minutes": number,
-  "stage_at_time": "string",
-  "key_topics": ["string"],
-  "objections": ["string"],
-  "commitments": ["string"],
-  "next_steps": ["string"],
-  "spouse_mentions": ["string"],
-  "engagement_quality": "high|medium|low",
-  "pink_flag_signals": ["string"],
-  "positive_signals": ["string"],
-  "coach_questions_used": ["string"],
-  "session_summary": "string"
-}
-
-Stage inference:
-IC = initial contact, C1 = DISC reviewed,
-C2 = vehicles and funding discussed,
-C3 = franchise possibilities presented,
-C4 = validation calls scheduled or completed
-
-Pink flag signals to detect:
-- Avoidance or deflection of direct questions
-- Spouse concern raised but not resolved
-- Financial hesitation without specific numbers
-- "I need to think about it" without clear next step
-- Inconsistency between session and prior commitments
-
-Positive signals to detect:
-- Specific questions about franchise operations
-- Naming a franchise they want to learn more about
-- Natural close language ("when I start" vs "if I start")
-- Spouse mentioned positively or brought into conversation
-- Committed to validation calls without prompting`;
-
-    const rawResponse = await callOllama(systemPrompt, rawText);
-    const session = parseExtractionResponse<FathomSession>(rawResponse);
-
-    if (!session) {
+    if (!parsed) {
       await recordExtraction(
         clientId,
         'fathom',
@@ -1107,26 +1116,78 @@ Positive signals to detect:
       };
     }
 
-    await dbExecute(
+    const stage =
+      (
+        parsed.block_coach_assessment as
+          | { stage_recommendation?: string }
+          | null
+      )?.stage_recommendation
+      ?? 'IC';
+
+    const commitments =
+      (
+        parsed.block_commitments as
+          | { client_commitments?: unknown }
+          | null
+      )?.client_commitments
+      ?? [];
+
+    const summary =
+      (
+        parsed.block_reflection as
+          | { mindset_shift?: string; insight_surfaced?: string }
+          | null
+      )?.mindset_shift
+      ?? (
+        parsed.block_reflection as
+          | { mindset_shift?: string; insight_surfaced?: string }
+          | null
+      )?.insight_surfaced
+      ?? null;
+
+    const insertResult = await dbExecute(
       `INSERT INTO coaching_sessions
        (client_id, session_date, session_number, stage,
         notes, next_actions, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,CURRENT_TIMESTAMP)`,
       [
         clientId,
-        session.session_date,
-        session.session_number,
-        session.stage_at_time,
-        JSON.stringify({
-          summary: session.session_summary,
-          objections: session.objections,
-          commitments: session.commitments,
-          pink_flag_signals: session.pink_flag_signals,
-          positive_signals: session.positive_signals,
-          spouse_mentions: session.spouse_mentions,
-          engagement_quality: session.engagement_quality,
-        }),
-        JSON.stringify(session.next_steps),
+        inferSessionDate(transcriptText),
+        null,
+        stage,
+        summary,
+        JSON.stringify(commitments),
+      ]
+    );
+
+    const sessionId = insertResult.lastInsertId;
+
+    await dbExecute(
+      `UPDATE coaching_sessions
+       SET block_opening = ?,
+           block_emotional = ?,
+           block_life_context = ?,
+           block_vision = ?,
+           block_disc_signals = ?,
+           block_objections = ?,
+           block_commitments = ?,
+           block_reflection = ?,
+           block_coach_assessment = ?,
+           blocks_complete = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        JSON.stringify(parsed.block_opening ?? null),
+        JSON.stringify(parsed.block_emotional ?? null),
+        JSON.stringify(parsed.block_life_context ?? null),
+        JSON.stringify(parsed.block_vision ?? null),
+        JSON.stringify(parsed.block_disc_signals ?? null),
+        JSON.stringify(parsed.block_objections ?? null),
+        JSON.stringify(parsed.block_commitments ?? null),
+        JSON.stringify(parsed.block_reflection ?? null),
+        JSON.stringify(parsed.block_coach_assessment ?? null),
+        countNonNullBlocks(parsed),
+        sessionId
       ]
     );
 
@@ -1136,12 +1197,12 @@ Positive signals to detect:
       filePath,
       fileName,
       'complete',
-      session
+      parsed
     );
 
     return {
       success: true,
-      data: session,
+      data: parsed as unknown as FathomSession,
       extraction_status: 'complete',
     };
   } catch (error) {

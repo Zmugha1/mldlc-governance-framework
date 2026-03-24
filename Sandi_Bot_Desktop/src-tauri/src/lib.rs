@@ -873,6 +873,21 @@ pub fn run() {
                   ALTER TABLE clients ADD COLUMN referral_ask_sent DATE;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 50,
+            description: "add_structured_fathom_blocks",
+            sql: "ALTER TABLE coaching_sessions ADD COLUMN block_opening TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN block_emotional TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN block_life_context TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN block_vision TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN block_disc_signals TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN block_objections TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN block_commitments TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN block_reflection TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN block_coach_assessment TEXT;
+                  ALTER TABLE coaching_sessions ADD COLUMN blocks_complete INTEGER DEFAULT 0;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
