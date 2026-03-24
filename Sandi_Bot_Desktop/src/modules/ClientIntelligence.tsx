@@ -752,8 +752,8 @@ function ClientDetailModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] max-w-4xl h-[90vh] overflow-hidden">
-        <DialogHeader>
+      <DialogContent className="max-w-5xl w-[90vw] h-[90vh] flex flex-col overflow-hidden p-0">
+        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div
@@ -811,17 +811,19 @@ function ClientDetailModal({
           </DialogContent>
         </Dialog>
 
-        <Tabs defaultValue="overview" className="mt-4 h-full flex flex-col">
-          <TabsList className="grid grid-cols-6 mb-4">
+        <Tabs defaultValue="overview" className="px-6 pb-6 flex-1 min-h-0 flex flex-col">
+          <TabsList className="grid grid-cols-7 mb-4 shrink-0">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="disc">DISC</TabsTrigger>
             <TabsTrigger value="you2">You 2.0</TabsTrigger>
             <TabsTrigger value="tumay">TUMAY</TabsTrigger>
             <TabsTrigger value="vision">Vision</TabsTrigger>
             <TabsTrigger value="fathom">Fathom</TabsTrigger>
+            <TabsTrigger value="reminders">Reminders</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
+          <TabsContent value="overview" className="h-full min-h-0 mt-0">
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
                 <CardHeader className="pb-2">
@@ -1031,9 +1033,11 @@ function ClientDetailModal({
                 </ul>
               </CardContent>
             </Card>
+            </div>
           </TabsContent>
 
-          <TabsContent value="disc" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
+          <TabsContent value="disc" className="h-full min-h-0 mt-0">
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -1099,9 +1103,11 @@ function ClientDetailModal({
                 )}
               </CardContent>
             </Card>
+            </div>
           </TabsContent>
 
-          <TabsContent value="you2" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
+          <TabsContent value="you2" className="h-full min-h-0 mt-0">
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">You 2.0 Statement</CardTitle>
@@ -1224,9 +1230,11 @@ function ClientDetailModal({
                 </CardContent>
               </Card>
             )}
+            </div>
           </TabsContent>
 
-          <TabsContent value="tumay" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
+          <TabsContent value="tumay" className="h-full min-h-0 mt-0">
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">TUMAY Data</CardTitle>
@@ -1309,9 +1317,11 @@ function ClientDetailModal({
                 )}
               </CardContent>
             </Card>
+            </div>
           </TabsContent>
 
-          <TabsContent value="vision" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
+          <TabsContent value="vision" className="h-full min-h-0 mt-0">
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Vision Statement</CardTitle>
@@ -1322,9 +1332,11 @@ function ClientDetailModal({
                 </p>
               </CardContent>
             </Card>
+            </div>
           </TabsContent>
 
-          <TabsContent value="fathom" className="space-y-4 min-h-[60vh] overflow-y-auto p-6">
+          <TabsContent value="fathom" className="h-full min-h-0 mt-0">
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -1620,6 +1632,22 @@ function ClientDetailModal({
                 )}
               </CardContent>
             </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="reminders" className="h-full min-h-0 mt-0">
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Reminders</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-slate-600">
+                    Reminders coming in Phase 6. Set follow-up dates and task reminders for any client.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>
