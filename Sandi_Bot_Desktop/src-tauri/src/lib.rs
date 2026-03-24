@@ -876,16 +876,54 @@ pub fn run() {
         Migration {
             version: 50,
             description: "add_structured_fathom_blocks",
-            sql: "ALTER TABLE coaching_sessions ADD COLUMN block_opening TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN block_emotional TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN block_life_context TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN block_vision TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN block_disc_signals TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN block_objections TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN block_commitments TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN block_reflection TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN block_coach_assessment TEXT;
-                  ALTER TABLE coaching_sessions ADD COLUMN blocks_complete INTEGER DEFAULT 0;",
+            sql: "-- Safe migration 50: add 9-block columns
+                  -- Uses INSERT OR IGNORE pattern via
+                  -- recreating with all columns
+                  CREATE TABLE IF NOT EXISTS
+                    coaching_sessions_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id TEXT NOT NULL,
+                    session_date TEXT,
+                    session_number INTEGER,
+                    stage TEXT,
+                    notes TEXT,
+                    next_actions TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    clear_curiosity INTEGER DEFAULT 3,
+                    clear_locating INTEGER DEFAULT 3,
+                    clear_engagement INTEGER DEFAULT 3,
+                    clear_accountability INTEGER DEFAULT 3,
+                    clear_reflection INTEGER DEFAULT 3,
+                    clear_notes TEXT,
+                    overall_clear_score REAL,
+                    call_duration TEXT,
+                    block_opening TEXT,
+                    block_emotional TEXT,
+                    block_life_context TEXT,
+                    block_vision TEXT,
+                    block_disc_signals TEXT,
+                    block_objections TEXT,
+                    block_commitments TEXT,
+                    block_reflection_block TEXT,
+                    block_coach_assessment TEXT,
+                    blocks_complete INTEGER DEFAULT 0,
+                    FOREIGN KEY (client_id) REFERENCES clients(id)
+                  );
+                  INSERT OR IGNORE INTO coaching_sessions_new
+                    SELECT
+                      id, client_id, session_date,
+                      session_number, stage, notes,
+                      next_actions, updated_at,
+                      clear_curiosity, clear_locating,
+                      clear_engagement, clear_accountability,
+                      clear_reflection, clear_notes,
+                      overall_clear_score, call_duration,
+                      NULL, NULL, NULL, NULL, NULL,
+                      NULL, NULL, NULL, NULL, 0
+                    FROM coaching_sessions;
+                  DROP TABLE coaching_sessions;
+                  ALTER TABLE coaching_sessions_new
+                    RENAME TO coaching_sessions;",
             kind: MigrationKind::Up,
         },
     ];
