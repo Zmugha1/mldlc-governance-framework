@@ -33,7 +33,10 @@ import { SkeletonCard } from '@/components/SkeletonCard';
 import { Progress } from '@/components/ui/progress';
 import { knowledgeGraph } from '@/data/sampleClients';
 import { bulkImportFolder, bulkImportRetryFailed, type BulkImportResult, type ImportProgress } from '@/services/bulkImportService';
-import { bulkReExtractVisionAndTumay } from '@/services/documentExtractionService';
+import {
+  bulkReExtractVisionAndTumay,
+  bulkReExtractFathomSessions
+} from '@/services/documentExtractionService';
 import { getAllClients, getRankedClients, getPushClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
 import { getAuditLog, auditEntriesToActivityLogs } from '@/services/auditService';
 import { dbSelect } from '@/services/db';
@@ -134,6 +137,12 @@ export default function AdminStreamliner() {
   const [reExtractResult, setReExtractResult] = useState<{
     vision_success: number;
     tumay_success: number;
+    errors: string[];
+  } | null>(null);
+  const [fathomReExtractRunning, setFathomReExtractRunning] = useState(false);
+  const [fathomReExtractResult, setFathomReExtractResult] = useState<{
+    success: number;
+    failed: number;
     errors: string[];
   } | null>(null);
   const [testDiscOutput, setTestDiscOutput] = useState<string | null>(null);
@@ -295,6 +304,23 @@ export default function AdminStreamliner() {
       });
     } finally {
       setReExtractRunning(false);
+    }
+  };
+
+  const handleReExtractFathom = async () => {
+    setFathomReExtractRunning(true);
+    setFathomReExtractResult(null);
+    try {
+      const result = await bulkReExtractFathomSessions();
+      setFathomReExtractResult(result);
+    } catch (err) {
+      setFathomReExtractResult({
+        success: 0,
+        failed: 0,
+        errors: [String(err)],
+      });
+    } finally {
+      setFathomReExtractRunning(false);
     }
   };
 
@@ -501,9 +527,19 @@ export default function AdminStreamliner() {
                 >
                   Re-Extract Vision & TUMAY
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleReExtractFathom}
+                  disabled={fathomReExtractRunning || importRunning || reExtractRunning}
+                >
+                  Re-Extract Fathom (9-Block)
+                </Button>
               </div>
               {reExtractRunning && (
                 <p className="text-sm text-slate-600">Extracting files...</p>
+              )}
+              {fathomReExtractRunning && (
+                <p className="text-sm text-slate-600">Extracting Fathom...</p>
               )}
               {reExtractResult && !reExtractRunning && (
                 <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
@@ -514,6 +550,23 @@ export default function AdminStreamliner() {
                       <p className="font-medium text-amber-700">Errors:</p>
                       <ul className="text-sm text-slate-600 list-disc list-inside">
                         {reExtractResult.errors.map((e, i) => (
+                          <li key={`${e}-${i}`}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              {fathomReExtractResult && !fathomReExtractRunning && (
+                <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
+                  <p className="font-medium text-slate-800">
+                    Fathom: {fathomReExtractResult.success}/{fathomReExtractResult.success + fathomReExtractResult.failed} extracted
+                  </p>
+                  {fathomReExtractResult.errors.length > 0 && (
+                    <div>
+                      <p className="font-medium text-amber-700">Errors:</p>
+                      <ul className="text-sm text-slate-600 list-disc list-inside">
+                        {fathomReExtractResult.errors.map((e, i) => (
                           <li key={`${e}-${i}`}>{e}</li>
                         ))}
                       </ul>

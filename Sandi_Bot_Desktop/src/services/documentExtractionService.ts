@@ -1754,6 +1754,287 @@ export async function bulkReExtractVisionAndTumay(
   return { vision_success, tumay_success, errors };
 }
 
+export async function bulkReExtractFathomSessions(): Promise<{
+  success: number;
+  failed: number;
+  errors: string[];
+}> {
+  const FATHOM_SYSTEM_PROMPT =
+    'You extract structured coaching ' +
+    'intelligence from franchise coaching ' +
+    'call transcripts. Return only valid JSON ' +
+    'matching the exact schema provided. ' +
+    'No markdown. No explanation.';
+
+  const FATHOM_PROMPT = `You are analyzing a franchise coaching call
+transcript between coach Sandi and a client.
+
+Extract EXACTLY these 9 blocks from the
+transcript. Return ONLY valid JSON.
+No markdown. No explanation.
+
+For each block: if the information exists
+in the transcript, extract it.
+If it does not exist, return null for
+that block - never invent content.
+
+Return this exact JSON structure:
+{
+  "block_opening": {
+    "client_energy": "excited/flat/anxious/distracted/unknown",
+    "contracting_done": true/false,
+    "client_set_agenda": true/false,
+    "opening_summary": "one sentence"
+  },
+  "block_emotional": {
+    "emotions_expressed": ["array of emotions mentioned"],
+    "identity_statements": ["things client said about who they are"],
+    "fears_mentioned": ["fears expressed"],
+    "what_was_not_said": "coach observation if any"
+  },
+  "block_life_context": {
+    "spouse_sentiment": "supportive/neutral/resistant/not_mentioned",
+    "family_obligations": "text or null",
+    "current_job_situation": "stable/unstable/toxic/boring/not_mentioned",
+    "financial_comfort": "high/medium/low/not_mentioned",
+    "personal_circumstances": "text or null"
+  },
+  "block_vision": {
+    "future_life_described": true/false,
+    "lifestyle_details": ["specific details client mentioned"],
+    "business_models_discussed": ["franchise types or models"],
+    "ownership_identity": "did client see themselves as owner yes/no/partial"
+  },
+  "block_disc_signals": {
+    "observed_style": "D/I/S/C/mixed",
+    "style_observations": ["specific behaviors observed"],
+    "matches_profile": true/false,
+    "coaching_note": "one sentence on how to adjust next call"
+  },
+  "block_objections": {
+    "objections": ["list of objections raised"],
+    "objection_types": ["financial/spouse/timing/fear/other"],
+    "repeat_objections": ["objections that appeared before"],
+    "pink_flag_language": ["exact phrases that signal disengagement"]
+  },
+  "block_commitments": {
+    "client_commitments": ["what client agreed to do"],
+    "client_chose_action": true/false,
+    "next_call_scheduled": true/false,
+    "next_call_date": "date or null"
+  },
+  "block_reflection": {
+    "insight_surfaced": "insight coach named that client had not",
+    "mindset_shift": "what changed in the client during this call",
+    "surprise": "what surprised the coach",
+    "engagement_quality": "high/medium/low"
+  },
+  "block_coach_assessment": {
+    "stage_recommendation": "IC/C1/C2/C3/C4/C5",
+    "readiness_direction": "improving/stable/declining",
+    "recommendation": "VALIDATE/GATHER/PAUSE",
+    "next_call_focus": "what the next call should accomplish",
+    "priority_question": "the single most important question to ask next call"
+  }
+}
+
+Transcript:
+---
+`;
+
+  const BASE = 'C:\\Users\\zumah\\SandiBot\\clients';
+  const BUCKETS: Record<string, string> = {
+    active: 'Active',
+    converted: 'WIN',
+    paused: 'Paused'
+  };
+
+  const clients = await dbSelect<{
+    id: string;
+    name: string;
+    outcome_bucket: string;
+  }>(
+    `SELECT id, name, outcome_bucket
+     FROM clients ORDER BY name`,
+    []
+  );
+
+  let success = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const client of clients) {
+    try {
+      const bucket = BUCKETS[client.outcome_bucket] ?? 'Active';
+      const folderName = client.name.replace(/\s+/g, '_');
+      const searchPaths = [
+        `${BASE}\\${bucket}\\${folderName}`,
+        `${BASE}\\${bucket}`
+      ];
+
+      const candidateFiles: string[] = [];
+      for (const searchPath of searchPaths) {
+        try {
+          const files = await invoke<string[]>(
+            'list_directory',
+            { path: searchPath }
+          );
+          const matched = files.filter((filePath) => {
+            const lower = filePath.toLowerCase();
+            const fileName = lower.split('\\').pop()
+              ?? lower.split('/').pop()
+              ?? '';
+            const nameToken = client.name.toLowerCase().trim();
+            const includesClient = fileName.startsWith(nameToken) || lower.includes(nameToken);
+            const isFathomLike = (fileName.includes('convo') || fileName.includes('fathom')) && fileName.endsWith('.pdf');
+            return includesClient && isFathomLike;
+          });
+          candidateFiles.push(...matched);
+        } catch {
+          // ignore missing folders and continue fallback search path
+        }
+      }
+
+      if (candidateFiles.length === 0) {
+        failed += 1;
+        errors.push(`No Fathom/Convo PDF found for ${client.name}`);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+
+      // Use the most recent match from path sort order.
+      const filePath = candidateFiles[0];
+      const pageResult = await invoke<{
+        text: string;
+        success: boolean;
+        error?: string;
+      }>('extract_pdf_pages', {
+        filePath,
+        pageNumbers: [1, 2, 3, 4, 5, 6, 7, 8],
+      });
+
+      if (!pageResult.success || !pageResult.text?.trim()) {
+        failed += 1;
+        errors.push(`PDF extraction failed for ${client.name}: ${pageResult.error ?? 'no text'}`);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+
+      const transcriptText = pageResult.text.trim();
+      const rawResponse = await invoke<string>(
+        'ollama_generate',
+        {
+          prompt: FATHOM_PROMPT + '\n' + transcriptText,
+          system: FATHOM_SYSTEM_PROMPT,
+          model: OLLAMA_MODEL
+        }
+      );
+      const parsed = parseExtractionResponse<Record<string, unknown>>(rawResponse);
+      if (!parsed) {
+        failed += 1;
+        errors.push(`JSON parse failed for ${client.name}`);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+
+      const inferredDate = inferSessionDate(transcriptText);
+      const existing = await dbSelect<{
+        id: number;
+        session_date: string | null;
+      }>(
+        `SELECT id, session_date
+         FROM coaching_sessions
+         WHERE client_id = ?
+         ORDER BY session_date DESC, id DESC`,
+        [client.id]
+      );
+
+      let targetSessionId: number | null = null;
+      if (existing.length > 0) {
+        const exact = existing.find((s) => (s.session_date ?? '') === inferredDate);
+        targetSessionId = (exact ?? existing[0]).id;
+      }
+
+      const stage =
+        (
+          parsed.block_coach_assessment as
+            | { stage_recommendation?: string }
+            | null
+        )?.stage_recommendation
+        ?? 'IC';
+
+      if (targetSessionId === null) {
+        await dbExecute(
+          `INSERT INTO coaching_sessions
+           (client_id, session_date, stage,
+            block_opening, block_emotional,
+            block_life_context, block_vision,
+            block_disc_signals, block_objections,
+            block_commitments, block_reflection_block,
+            block_coach_assessment, blocks_complete, updated_at)
+           VALUES (?, ?, ?,
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+          [
+            client.id,
+            inferredDate,
+            stage,
+            JSON.stringify(parsed.block_opening ?? null),
+            JSON.stringify(parsed.block_emotional ?? null),
+            JSON.stringify(parsed.block_life_context ?? null),
+            JSON.stringify(parsed.block_vision ?? null),
+            JSON.stringify(parsed.block_disc_signals ?? null),
+            JSON.stringify(parsed.block_objections ?? null),
+            JSON.stringify(parsed.block_commitments ?? null),
+            JSON.stringify(parsed.block_reflection ?? null),
+            JSON.stringify(parsed.block_coach_assessment ?? null),
+            countNonNullBlocks(parsed),
+          ]
+        );
+      } else {
+        await dbExecute(
+          `UPDATE coaching_sessions
+           SET stage = ?,
+               block_opening = ?,
+               block_emotional = ?,
+               block_life_context = ?,
+               block_vision = ?,
+               block_disc_signals = ?,
+               block_objections = ?,
+               block_commitments = ?,
+               block_reflection_block = ?,
+               block_coach_assessment = ?,
+               blocks_complete = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [
+            stage,
+            JSON.stringify(parsed.block_opening ?? null),
+            JSON.stringify(parsed.block_emotional ?? null),
+            JSON.stringify(parsed.block_life_context ?? null),
+            JSON.stringify(parsed.block_vision ?? null),
+            JSON.stringify(parsed.block_disc_signals ?? null),
+            JSON.stringify(parsed.block_objections ?? null),
+            JSON.stringify(parsed.block_commitments ?? null),
+            JSON.stringify(parsed.block_reflection ?? null),
+            JSON.stringify(parsed.block_coach_assessment ?? null),
+            countNonNullBlocks(parsed),
+            targetSessionId
+          ]
+        );
+      }
+
+      success += 1;
+    } catch (error) {
+      failed += 1;
+      errors.push(`${client.name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  return { success, failed, errors };
+}
+
 // ─────────────────────────────────────
 // ROUTER
 // ─────────────────────────────────────
