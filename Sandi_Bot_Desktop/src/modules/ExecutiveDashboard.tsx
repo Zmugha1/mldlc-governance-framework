@@ -26,13 +26,14 @@ import {
   Line
 } from 'recharts';
 import { SkeletonCard } from '@/components/SkeletonCard';
-import { stageConfig, discColors } from '@/data/sampleClients';
+import { stageConfig } from '@/data/sampleClients';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
-import { getDiscStyleBreakdown, getDiscProfilesMap } from '@/services/dashboardService';
+import { getDiscStyleBreakdown } from '@/services/dashboardService';
 import { getAllStageReadiness } from '@/services/stageReadinessService';
 import { getConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
 import type { DashboardStats } from '@/types';
-import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter';
+import { normalizeDisplayStage } from '@/services/clientAdapter';
+import { dbSelect } from '@/services/db';
 import { cn } from '@/lib/utils';
 
 const STAGES = [
@@ -150,6 +151,8 @@ export default function ExecutiveDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [readinessRows, setReadinessRows] = useState<Awaited<ReturnType<typeof getAllStageReadiness>>>([]);
+  const [activeConversationCount, setActiveConversationCount] = useState(0);
 
   const loadDashboardData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -159,34 +162,51 @@ export default function ExecutiveDashboard() {
     }
     setError(null);
     try {
-      const [s, c, d, readiness, profiles] = await Promise.all([
+      const [s, c, d, readiness, conversationRows] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
         getDiscStyleBreakdown(),
         getAllStageReadiness(),
-        getDiscProfilesMap(),
+        dbSelect<{ count: number }>(
+          `SELECT COUNT(DISTINCT client_id) as count
+           FROM coaching_sessions
+           WHERE client_id IN (
+             SELECT id FROM clients
+             WHERE outcome_bucket = 'active'
+           )`,
+          []
+        ),
       ]);
       setStats(s);
       setClients(c);
       setDiscDistribution(d);
+      setReadinessRows(readiness);
+      setActiveConversationCount(Number(conversationRows[0]?.count ?? 0));
 
-      const validateIds = readiness
+      const activeReadiness = readiness.filter((row) => row.outcome_bucket === 'active');
+      const validateIds = activeReadiness
         .filter((r) => r.recommendation === 'VALIDATE')
         .sort((a, b) => b.readiness_score - a.readiness_score)
         .slice(0, 3)
         .map((r) => r.client_id);
-      const readinessById = new Map(readiness.map((r) => [r.client_id, r.readiness_score]));
+      const readinessById = new Map(activeReadiness.map((r) => [r.client_id, r]));
       const validateClients = c
         .filter((client) => validateIds.includes(client.id))
         .sort((a, b) => validateIds.indexOf(a.id) - validateIds.indexOf(b.id))
-        .map((client) =>
-          clientToDisplay(client, {
-            disc: profiles.get(client.id),
-            readinessScore: readinessById.get(client.id),
-          })
-        );
+        .map((client) => {
+          const row = readinessById.get(client.id);
+          return {
+            id: client.id,
+            name: client.name,
+            stageLabel: normalizeDisplayStage(client.inferred_stage ?? client.stage),
+            recommendation: (row?.recommendation ?? 'GATHER') as 'VALIDATE' | 'GATHER' | 'PAUSE',
+            readinessPercent: Math.max(
+              0,
+              Math.min(100, Math.round(Number(row?.readiness_score ?? 0)))
+            ),
+          };
+        });
       setPriorityClients(validateClients);
-      setDiscProfiles(profiles);
     } catch (err) {
       console.error('Dashboard load:', err);
       setError(String((err as { message?: string })?.message ?? err ?? 'Failed to load dashboard'));
@@ -204,13 +224,23 @@ export default function ExecutiveDashboard() {
   }, [loadDashboardData]);
 
   const recommendationData = useMemo(() => {
-    if (!stats) return [];
+    const activeRows = readinessRows.filter((r) => r.outcome_bucket === 'active');
+    const validateCount = activeRows.filter((r) => r.recommendation === 'VALIDATE').length;
+    const gatherCount = activeRows.filter((r) => r.recommendation === 'GATHER').length;
+    const pauseCount = activeRows.filter((r) => r.recommendation === 'PAUSE').length;
     return [
-      { name: 'VALIDATE', value: stats.pushCount, color: recommendationStyleMap.VALIDATE.color },
-      { name: 'GATHER', value: stats.nurtureCount, color: recommendationStyleMap.GATHER.color },
-      { name: 'PAUSE', value: stats.pauseCount, color: recommendationStyleMap.PAUSE.color },
+      { name: 'VALIDATE', value: validateCount, color: recommendationStyleMap.VALIDATE.color },
+      { name: 'GATHER', value: gatherCount, color: recommendationStyleMap.GATHER.color },
+      { name: 'PAUSE', value: pauseCount, color: recommendationStyleMap.PAUSE.color },
     ];
-  }, [stats]);
+  }, [readinessRows]);
+
+  const avgReadinessPercent = useMemo(() => {
+    const activeRows = readinessRows.filter((r) => r.outcome_bucket === 'active');
+    if (activeRows.length === 0) return 0;
+    const avg = activeRows.reduce((sum, row) => sum + Number(row.readiness_score ?? 0), 0) / activeRows.length;
+    return Math.max(0, Math.min(100, Math.round(avg)));
+  }, [readinessRows]);
 
   const pipelineChartData = useMemo(() => {
     return STAGES.map((stage) => {
@@ -232,8 +262,13 @@ export default function ExecutiveDashboard() {
     { day: 'Fri', calls: 2, emails: 4 },
   ];
 
-  const [priorityClients, setPriorityClients] = useState<ReturnType<typeof clientToDisplay>[]>([]);
-  const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
+  const [priorityClients, setPriorityClients] = useState<Array<{
+    id: string;
+    name: string;
+    stageLabel: string;
+    recommendation: 'VALIDATE' | 'GATHER' | 'PAUSE';
+    readinessPercent: number;
+  }>>([]);
 
   // Priority clients are loaded in loadDashboardData().
 
@@ -303,7 +338,7 @@ export default function ExecutiveDashboard() {
         />
         <KPICard
           title="Active Conversations"
-          value={stats.activeConversations}
+          value={activeConversationCount}
           change="100% engagement"
           changeType="positive"
           icon={Phone}
@@ -312,7 +347,7 @@ export default function ExecutiveDashboard() {
         />
         <KPICard
           title="Avg. Readiness Score"
-          value={stats.avgReadinessScore}
+          value={`${avgReadinessPercent}%`}
           change="Across 4 dimensions"
           changeType="positive"
           icon={Target}
@@ -338,12 +373,12 @@ export default function ExecutiveDashboard() {
           color="#EC4899"
         />
         <KPICard
-          title="Time Saved"
-          value={`${stats.timeSavedHours} hrs`}
-          change="AI-assisted coaching"
-          changeType="positive"
+          title="Pipeline Health"
+          value={`${recommendationData[0]?.value ?? 0} VALIDATE / ${recommendationData[1]?.value ?? 0} GATHER / ${recommendationData[2]?.value ?? 0} PAUSE`}
+          change="Live recommendation mix"
+          changeType="neutral"
           icon={Clock}
-          description="Weekly efficiency gain"
+          description="Active pipeline recommendation ratio"
           color="#14B8A6"
         />
       </div>
@@ -521,12 +556,7 @@ export default function ExecutiveDashboard() {
           ) : (
             <div className="space-y-3">
               {priorityClients.map((client) => {
-                const normalizedRecommendation =
-                  client.recommendation === 'PUSH'
-                    ? 'VALIDATE'
-                    : client.recommendation === 'NURTURE'
-                      ? 'GATHER'
-                      : client.recommendation;
+                const normalizedRecommendation = client.recommendation;
                 const style =
                   recommendationStyleMap[
                     normalizedRecommendation as keyof typeof recommendationStyleMap
@@ -537,18 +567,12 @@ export default function ExecutiveDashboard() {
                     key={client.id}
                     className="flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100"
                   >
-                  <div
-                    className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                    style={{ backgroundColor: discColors[client.disc.style] }}
-                  >
-                    {client.avatar}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900">{client.name}</p>
-                    <p className="text-sm text-slate-500">
-                      {client.tumay.industriesOfInterest[0]} • {client.stage}
-                    </p>
-                  </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-900">{client.name}</p>
+                      <Badge variant="outline" className="mt-1">
+                        {client.stageLabel}
+                      </Badge>
+                    </div>
                     <div className="flex items-center gap-4">
                       <Badge
                         style={{
@@ -558,12 +582,12 @@ export default function ExecutiveDashboard() {
                       >
                         {normalizedRecommendation}
                       </Badge>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-green-600">{client.confidence}%</p>
-                      <p className="text-xs text-slate-500">confidence</p>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-green-600">{client.readinessPercent}%</p>
+                        <p className="text-xs text-slate-500">readiness</p>
+                      </div>
                     </div>
                   </div>
-                </div>
                 );
               })}
             </div>
