@@ -1,5 +1,208 @@
 import { dbSelect, dbExecute } from './db';
 
+export function calculateCLEARFromBlocks(
+  session: Record<string, unknown>
+): {
+  c_score: number;
+  l_score: number;
+  e_score: number;
+  a_score: number;
+  r_score: number;
+  overall: number;
+  feedback: string[];
+} {
+  const feedback: string[] = [];
+  let c = 1; let l = 1; let e = 1; let a = 1; let r = 1;
+
+  // C - Contracting
+  try {
+    if (session.block_opening) {
+      const opening = typeof session.block_opening
+        === 'string'
+        ? JSON.parse(session.block_opening)
+        : session.block_opening;
+      if ((opening as { contracting_done?: boolean; client_set_agenda?: boolean })?.contracting_done &&
+          (opening as { contracting_done?: boolean; client_set_agenda?: boolean })?.client_set_agenda) {
+        c = 5;
+      } else if ((opening as { contracting_done?: boolean })?.contracting_done) {
+        c = 3;
+        feedback.push(
+          'C: Goal set but client did not own ' +
+          'the agenda. Try: "What would make ' +
+          'this valuable for you?"'
+        );
+      } else {
+        c = 1;
+        feedback.push(
+          'C: No contracting detected. ' +
+          'Always open with the gold question.'
+        );
+      }
+    }
+  } catch { c = 1; }
+
+  // L - Listening
+  try {
+    if (session.block_emotional) {
+      const emotional = typeof session.block_emotional
+        === 'string'
+        ? JSON.parse(session.block_emotional)
+        : session.block_emotional;
+      const emo = emotional as {
+        emotions_expressed?: unknown[];
+        fears_mentioned?: unknown[];
+        identity_statements?: unknown[];
+      };
+      const count =
+        (emo?.emotions_expressed?.length ?? 0) +
+        (emo?.fears_mentioned?.length ?? 0) +
+        (emo?.identity_statements?.length ?? 0);
+      if (count >= 5) {
+        l = 5;
+      } else if (count >= 3) {
+        l = 3;
+        feedback.push(
+          'L: Some emotional discovery. ' +
+          'Push deeper with "what else?" ' +
+          'after every emotional answer.'
+        );
+      } else {
+        l = 1;
+        feedback.push(
+          'L: Low emotional discovery. ' +
+          'Target: emotional questions >= 60%. ' +
+          'Are you explaining instead of asking?'
+        );
+      }
+    }
+  } catch { l = 1; }
+
+  // E - Exploring
+  try {
+    if (session.block_vision) {
+      const vision = typeof session.block_vision
+        === 'string'
+        ? JSON.parse(session.block_vision)
+        : session.block_vision;
+      const v = vision as {
+        future_life_described?: boolean;
+        lifestyle_details?: unknown[];
+      };
+      if (v?.future_life_described &&
+          (v?.lifestyle_details?.length ?? 0) >= 3) {
+        e = 5;
+      } else if (v?.future_life_described) {
+        e = 3;
+        feedback.push(
+          'E: Client described future but ' +
+          'stayed surface-level. Ask: ' +
+          '"What does your ideal Thursday ' +
+          'look like?"'
+        );
+      } else {
+        e = 1;
+        feedback.push(
+          'E: No future life vision captured. ' +
+          'Ask: "Imagine 3 years from now - ' +
+          'what does your life look like?"'
+        );
+      }
+    }
+  } catch { e = 1; }
+
+  // A - Action
+  try {
+    if (session.block_commitments) {
+      const commits =
+        typeof session.block_commitments === 'string'
+          ? JSON.parse(session.block_commitments)
+          : session.block_commitments;
+      const cm = commits as {
+        client_chose_action?: boolean;
+        client_commitments?: unknown[];
+      };
+      if (cm?.client_chose_action &&
+          (cm?.client_commitments?.length ?? 0) > 0) {
+        a = 5;
+      } else if ((cm?.client_commitments?.length ?? 0) > 0) {
+        a = 3;
+        feedback.push(
+          'A: Next steps set but coach assigned. ' +
+          'Ask: "What would be a smart next ' +
+          'step for you?" Let client choose.'
+        );
+      } else {
+        a = 1;
+        feedback.push(
+          'A: No commitments recorded. ' +
+          'Every session must end with a ' +
+          'client-chosen next step.'
+        );
+      }
+    }
+  } catch { a = 1; }
+
+  // R - Reflection
+  try {
+    if (session.block_reflection_block) {
+      const reflection =
+        typeof session.block_reflection_block === 'string'
+          ? JSON.parse(session.block_reflection_block)
+          : session.block_reflection_block;
+      const rf = reflection as {
+        insight_surfaced?: unknown;
+        mindset_shift?: unknown;
+      };
+      if (rf?.insight_surfaced &&
+          String(rf.insight_surfaced).length > 20) {
+        r = 5;
+      } else if (rf?.mindset_shift) {
+        r = 3;
+        feedback.push(
+          'R: Some reflection captured. ' +
+          'Look for the insight they cannot name. ' +
+          'Benchmark: "There is no fun in ' +
+          'your life."'
+        );
+      } else {
+        r = 1;
+        feedback.push(
+          'R: No reflection detected. ' +
+          'Before ending: name one thing the ' +
+          'client showed but never said.'
+        );
+      }
+    }
+  } catch { r = 1; }
+
+  const overall =
+    Math.round(((c + l + e + a + r) / 5) * 10) / 10;
+
+  return {
+    c_score: c, l_score: l, e_score: e,
+    a_score: a, r_score: r,
+    overall, feedback
+  };
+}
+
+export function getCLEARLabel(
+  score: number
+): string {
+  if (score >= 7.5) return 'Elite';
+  if (score >= 6.0) return 'Good';
+  if (score >= 4.0) return 'Developing';
+  return 'Informational';
+}
+
+export function getCLEARColor(
+  score: number
+): string {
+  if (score >= 7.5) return 'text-teal-600';
+  if (score >= 6.0) return 'text-blue-600';
+  if (score >= 4.0) return 'text-amber-600';
+  return 'text-red-600';
+}
+
 export type PipelineStage =
   'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
 

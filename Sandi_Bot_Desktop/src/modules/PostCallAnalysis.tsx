@@ -40,6 +40,15 @@ import {
   getCoachingTip,
   getStrengthsAndOpportunities,
 } from '@/services/postCallService';
+import {
+  calculateCLEARFromBlocks,
+  getCLEARLabel,
+  getCLEARColor,
+} from '@/services/stageReadinessService';
+import {
+  deriveDominantStyle,
+  getDISCTips
+} from '@/config/discCoachingTips';
 import { dbExecute, dbSelect } from '@/services/db';
 import { cn } from '@/lib/utils';
 
@@ -158,6 +167,16 @@ interface ClearInsights {
   total_sessions: number;
 }
 
+interface SelectedSessionBlocks {
+  id: number;
+  client_id: string;
+  block_opening: string | null;
+  block_emotional: string | null;
+  block_vision: string | null;
+  block_commitments: string | null;
+  block_reflection_block: string | null;
+}
+
 export default function PostCallAnalysis() {
   const [loading, setLoading] = useState(true);
   const [selectedClient, setSelectedClient] = useState<string>('');
@@ -176,6 +195,8 @@ export default function PostCallAnalysis() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [historySessions, setHistorySessions] = useState<HistorySession[]>([]);
   const [insights, setInsights] = useState<ClearInsights | null>(null);
+  const [selectedSession, setSelectedSession] = useState<SelectedSessionBlocks | null>(null);
+  const [selectedDiscStyle, setSelectedDiscStyle] = useState('C');
 
   // Calculate overall score
   const overallScore = useMemo(() => calculateOverallScore(scores), [scores]);
@@ -311,6 +332,74 @@ export default function PostCallAnalysis() {
   }, []);
 
   const coachingTip = getCoachingTip(scores);
+  const clearResult = selectedSession
+    ? calculateCLEARFromBlocks(selectedSession as unknown as Record<string, unknown>)
+    : null;
+  const hasBlockData = Boolean(
+    selectedSession &&
+    [
+      selectedSession.block_opening,
+      selectedSession.block_emotional,
+      selectedSession.block_vision,
+      selectedSession.block_commitments,
+      selectedSession.block_reflection_block,
+    ].some((v) => {
+      const text = String(v ?? '').trim().toLowerCase();
+      return text !== '' && text !== 'null';
+    })
+  );
+
+  useEffect(() => {
+    if (!selectedClient) {
+      setSelectedSession(null);
+      setSelectedDiscStyle('C');
+      return;
+    }
+    const loadSessionAndDisc = async () => {
+      const sessions = await dbSelect<SelectedSessionBlocks>(
+        `SELECT id, client_id,
+         block_opening, block_emotional,
+         block_vision, block_commitments,
+         block_reflection_block
+         FROM coaching_sessions
+         WHERE client_id = ?
+         ORDER BY session_date DESC, id DESC
+         LIMIT 1`,
+        [selectedClient]
+      );
+      setSelectedSession(sessions[0] ?? null);
+
+      const discRows = await dbSelect<{
+        natural_d: number | null;
+        natural_i: number | null;
+        natural_s: number | null;
+        natural_c: number | null;
+      }>(
+        `SELECT natural_d, natural_i, natural_s, natural_c
+         FROM client_disc_profiles
+         WHERE client_id = ?
+         LIMIT 1`,
+        [selectedClient]
+      );
+      const disc = discRows[0];
+      if (!disc) {
+        setSelectedDiscStyle('C');
+        return;
+      }
+      setSelectedDiscStyle(
+        deriveDominantStyle(
+          Number(disc.natural_d ?? 0),
+          Number(disc.natural_i ?? 0),
+          Number(disc.natural_s ?? 0),
+          Number(disc.natural_c ?? 0)
+        )
+      );
+    };
+    loadSessionAndDisc().catch(() => {
+      setSelectedSession(null);
+      setSelectedDiscStyle('C');
+    });
+  }, [selectedClient]);
 
   if (loading) {
     return (
@@ -402,6 +491,71 @@ export default function PostCallAnalysis() {
                       onChange={(value) => setScores(prev => ({ ...prev, [dimension.key]: value }))}
                     />
                   ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">CLEAR Coaching Feedback</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {hasBlockData && clearResult ? (
+                    <>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-sm text-slate-500">Overall Score</p>
+                        <p className="text-2xl font-bold">{clearResult.overall.toFixed(1)} / 10</p>
+                        <p className={cn('text-sm font-semibold', getCLEARColor(clearResult.overall))}>
+                          {getCLEARLabel(clearResult.overall)}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-5 gap-2 text-center">
+                        {[
+                          { label: 'C', value: clearResult.c_score },
+                          { label: 'L', value: clearResult.l_score },
+                          { label: 'E', value: clearResult.e_score },
+                          { label: 'A', value: clearResult.a_score },
+                          { label: 'R', value: clearResult.r_score },
+                        ].map((dim) => (
+                          <div key={dim.label} className="rounded border p-2">
+                            <p className="text-xs text-slate-500">{dim.label}</p>
+                            <p className={cn(
+                              'text-base font-semibold',
+                              dim.value >= 5
+                                ? 'text-teal-600'
+                                : dim.value >= 3
+                                  ? 'text-amber-600'
+                                  : 'text-red-600'
+                            )}
+                            >
+                              {dim.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {clearResult.feedback.length > 0 && (
+                        <div className="rounded-lg bg-amber-50 border-l-4 border-teal-500 p-3">
+                          <ul className="list-disc list-inside space-y-1 text-sm text-amber-900">
+                            {clearResult.feedback.map((tip, idx) => (
+                              <li key={`${tip}-${idx}`}>{tip}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="rounded-lg border p-3 bg-slate-50">
+                        <p className="text-sm font-semibold text-slate-700">DISC-specific coaching note</p>
+                        <p className="text-sm text-slate-600 mt-1">
+                          {getDISCTips(selectedDiscStyle).clear_emphasis}
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-600">
+                      Score this session using the sliders above to generate coaching feedback.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
 
