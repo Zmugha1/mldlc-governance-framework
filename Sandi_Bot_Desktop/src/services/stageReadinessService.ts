@@ -465,7 +465,8 @@ function calculateReadinessScore(
   has_disc: boolean,
   has_you2: boolean,
   fathom_count: number,
-  has_vision: boolean
+  has_vision: boolean,
+  max_blocks: number
 ): number {
   let score = 0;
   if (has_disc) score += 25;
@@ -474,6 +475,9 @@ function calculateReadinessScore(
   if (fathom_count >= 2) score += 10;
   if (fathom_count >= 3) score += 5;
   if (has_vision) score += 25;
+  if (max_blocks >= 9) score += 15;
+  else if (max_blocks >= 6) score += 10;
+  else if (max_blocks >= 3) score += 5;
   return score;
 }
 
@@ -561,24 +565,89 @@ function calculateRecommendation(
   has_disc: boolean,
   has_you2: boolean,
   fathom_count: number,
-  pink_flags: string[]
+  pink_flags: string[],
+  coachRecommendation: string | null
 ): Recommendation {
-  let recommendation: Recommendation;
+  let recommendation: Recommendation | null = null;
+  const normalizedCoachRecommendation = (coachRecommendation ?? '')
+    .toUpperCase()
+    .trim();
+  if (normalizedCoachRecommendation === 'VALIDATE' ||
+      normalizedCoachRecommendation === 'GATHER' ||
+      normalizedCoachRecommendation === 'PAUSE') {
+    recommendation = normalizedCoachRecommendation as Recommendation;
+  }
+
+  if (!recommendation) {
+    if (has_disc && has_you2 && fathom_count >= 1) {
+      recommendation = 'VALIDATE';
+    } else {
+      recommendation = 'GATHER';
+    }
+  }
+
+  // Overrides
   if (outcome_bucket === 'paused') {
     recommendation = 'PAUSE';
-  } else if (has_disc && has_you2 && fathom_count >= 1) {
-    recommendation = 'VALIDATE';
-  } else {
+  } else if (!has_disc && !has_you2 && fathom_count === 0) {
     recommendation = 'GATHER';
   }
+
   console.log(
     '[stageReadiness] recommendation',
     client_name,
     outcome_bucket,
     JSON.stringify(pink_flags),
+    normalizedCoachRecommendation || null,
     recommendation
   );
   return recommendation;
+}
+
+async function getLatestCoachRecommendation(
+  clientId: string
+): Promise<string | null> {
+  const rows = await dbSelect<{
+    block_coach_assessment: string | null;
+  }>(
+    `SELECT block_coach_assessment
+     FROM coaching_sessions
+     WHERE client_id = ?
+     ORDER BY session_date DESC, id DESC
+     LIMIT 1`,
+    [clientId]
+  );
+
+  const latestSession = rows[0];
+  let coachRecommendation: string | null = null;
+
+  if (latestSession?.block_coach_assessment) {
+    try {
+      const assessment = JSON.parse(
+        latestSession.block_coach_assessment
+      ) as { recommendation?: string };
+      coachRecommendation =
+        assessment?.recommendation ?? null;
+    } catch {
+      coachRecommendation = null;
+    }
+  }
+
+  return coachRecommendation;
+}
+
+async function getMaxBlocksComplete(
+  clientId: string
+): Promise<number> {
+  const rows = await dbSelect<{
+    max_blocks: number | null;
+  }>(
+    `SELECT MAX(blocks_complete) as max_blocks
+     FROM coaching_sessions
+     WHERE client_id = ?`,
+    [clientId]
+  );
+  return Number(rows[0]?.max_blocks ?? 0);
 }
 
 function parsePinkFlags(raw: string | null | undefined): string[] {
@@ -594,11 +663,13 @@ function parsePinkFlags(raw: string | null | undefined): string[] {
   return pinkFlags;
 }
 
-function rowToStageReadiness(row: StageReadinessRow): StageReadiness {
+async function rowToStageReadiness(row: StageReadinessRow): Promise<StageReadiness> {
   const hasDisc = row.has_disc === 1;
   const hasYou2 = row.has_you2 === 1;
   const hasVision = row.has_vision === 1;
   const fathomCount = Number(row.fathom_count ?? 0);
+  const maxBlocks = await getMaxBlocksComplete(row.id);
+  const coachRecommendation = await getLatestCoachRecommendation(row.id);
   const stage = normalizeStage(row.inferred_stage ?? '');
   const comp: Completeness = {
     has_disc: hasDisc,
@@ -615,7 +686,8 @@ function rowToStageReadiness(row: StageReadinessRow): StageReadiness {
     hasDisc,
     hasYou2,
     fathomCount,
-    hasVision
+    hasVision,
+    maxBlocks
   );
   const rec = calculateRecommendation(
     row.name,
@@ -623,7 +695,8 @@ function rowToStageReadiness(row: StageReadinessRow): StageReadiness {
     hasDisc,
     hasYou2,
     fathomCount,
-    pinkFlags
+    pinkFlags,
+    coachRecommendation
   );
   const nextStage = STAGE_NEXT[stage];
   const recommendationReason =
@@ -692,7 +765,7 @@ export async function getStageReadiness(
 
   const row = rows[0];
   if (!row) return null;
-  return rowToStageReadiness(row);
+  return await rowToStageReadiness(row);
 }
 
 export async function getAllStageReadiness(): Promise<StageReadiness[]> {
@@ -728,16 +801,6 @@ export async function getAllStageReadiness(): Promise<StageReadiness[]> {
        ORDER BY c.name`,
       []
     );
-    const scores = rows
-      .filter(r => r.outcome_bucket !== 'converted')
-      .map(r => calculateReadinessScore(
-        r.has_disc === 1,
-        r.has_you2 === 1,
-        Number(r.fathom_count ?? 0),
-        r.has_vision === 1
-      ))
-      .filter(s => s > 0);
-    void scores;
     for (const client of rows) {
       const style = deriveDominantStyle(
         Number(client.natural_d ?? 0),
@@ -752,7 +815,11 @@ export async function getAllStageReadiness(): Promise<StageReadiness[]> {
       );
       client.pink_flags = JSON.stringify(mergedFlags);
     }
-    return rows.map(rowToStageReadiness);
+    const result: StageReadiness[] = [];
+    for (const row of rows) {
+      result.push(await rowToStageReadiness(row));
+    }
+    return result;
   } catch (err) {
     console.error('getAllStageReadiness failed:', err);
     return [];
