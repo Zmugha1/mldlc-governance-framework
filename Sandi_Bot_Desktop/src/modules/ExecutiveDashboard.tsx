@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Users,
   TrendingUp,
@@ -6,7 +6,8 @@ import {
   Phone,
   Clock,
   ArrowUpRight,
-  Zap
+  Zap,
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -148,29 +149,59 @@ export default function ExecutiveDashboard() {
   const [discDistribution, setDiscDistribution] = useState<Awaited<ReturnType<typeof getDiscStyleBreakdown>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const loadDashboard = async () => {
+  const loadDashboardData = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      setRefreshing(true);
+    } else {
       setLoading(true);
-      setError(null);
-      try {
-        const [s, c, d] = await Promise.all([
-          getDashboardStats(),
-          getAllClients(),
-          getDiscStyleBreakdown(),
-        ]);
-        setStats(s);
-        setClients(c);
-        setDiscDistribution(d);
-      } catch (err) {
-        console.error('Dashboard load:', err);
-        setError(String(err?.message ?? err ?? 'Failed to load dashboard'));
-      } finally {
+    }
+    setError(null);
+    try {
+      const [s, c, d, readiness, profiles] = await Promise.all([
+        getDashboardStats(),
+        getAllClients(),
+        getDiscStyleBreakdown(),
+        getAllStageReadiness(),
+        getDiscProfilesMap(),
+      ]);
+      setStats(s);
+      setClients(c);
+      setDiscDistribution(d);
+
+      const validateIds = readiness
+        .filter((r) => r.recommendation === 'VALIDATE')
+        .sort((a, b) => b.readiness_score - a.readiness_score)
+        .slice(0, 3)
+        .map((r) => r.client_id);
+      const readinessById = new Map(readiness.map((r) => [r.client_id, r.readiness_score]));
+      const validateClients = c
+        .filter((client) => validateIds.includes(client.id))
+        .sort((a, b) => validateIds.indexOf(a.id) - validateIds.indexOf(b.id))
+        .map((client) =>
+          clientToDisplay(client, {
+            disc: profiles.get(client.id),
+            readinessScore: readinessById.get(client.id),
+          })
+        );
+      setPriorityClients(validateClients);
+      setDiscProfiles(profiles);
+    } catch (err) {
+      console.error('Dashboard load:', err);
+      setError(String((err as { message?: string })?.message ?? err ?? 'Failed to load dashboard'));
+    } finally {
+      if (isManualRefresh) {
+        setRefreshing(false);
+      } else {
         setLoading(false);
       }
-    };
-    loadDashboard();
+    }
   }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   const recommendationData = useMemo(() => {
     if (!stats) return [];
@@ -204,30 +235,7 @@ export default function ExecutiveDashboard() {
   const [priorityClients, setPriorityClients] = useState<ReturnType<typeof clientToDisplay>[]>([]);
   const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([getAllStageReadiness(), getDiscProfilesMap()]).then(([readiness, profiles]) => {
-      if (cancelled) return;
-      const validateIds = readiness
-        .filter((r) => r.recommendation === 'VALIDATE')
-        .sort((a, b) => b.readiness_score - a.readiness_score)
-        .slice(0, 3)
-        .map((r) => r.client_id);
-      const readinessById = new Map(readiness.map((r) => [r.client_id, r.readiness_score]));
-      const validateClients = clients
-        .filter((c) => validateIds.includes(c.id))
-        .sort((a, b) => validateIds.indexOf(a.id) - validateIds.indexOf(b.id))
-        .map((c) =>
-          clientToDisplay(c, {
-            disc: profiles.get(c.id),
-            readinessScore: readinessById.get(c.id),
-          })
-        );
-      setPriorityClients(validateClients);
-      setDiscProfiles(profiles);
-    });
-    return () => { cancelled = true; };
-  }, [clients]);
+  // Priority clients are loaded in loadDashboardData().
 
   const pipelineStageCards = useMemo(() => {
     const defaults = getPipelineStageDefaults();
@@ -271,6 +279,17 @@ export default function ExecutiveDashboard() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => { void loadDashboardData(true); }}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+        >
+          <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <KPICard
