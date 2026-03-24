@@ -93,7 +93,7 @@ function KPICard({
                 <span>{change}</span>
               </div>
             )}
-            <p className="text-xs text-slate-400 mt-2">{description}</p>
+            <p className="text-xs text-slate-400 mt-2 whitespace-pre-line">{description}</p>
           </div>
           <div
             className="h-12 w-12 rounded-xl flex items-center justify-center"
@@ -153,6 +153,10 @@ export default function ExecutiveDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [readinessRows, setReadinessRows] = useState<Awaited<ReturnType<typeof getAllStageReadiness>>>([]);
   const [activeConversationCount, setActiveConversationCount] = useState(0);
+  const [timeSavedHours, setTimeSavedHours] = useState(0);
+  const [fathomCount, setFathomCount] = useState(0);
+  const [tumayCount, setTumayCount] = useState(0);
+  const [discCount, setDiscCount] = useState(0);
 
   const loadDashboardData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -162,7 +166,16 @@ export default function ExecutiveDashboard() {
     }
     setError(null);
     try {
-      const [s, c, d, readiness, conversationRows] = await Promise.all([
+      const [
+        s,
+        c,
+        d,
+        readiness,
+        conversationRows,
+        fathomRows,
+        tumayRows,
+        discRows,
+      ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
         getDiscStyleBreakdown(),
@@ -176,12 +189,45 @@ export default function ExecutiveDashboard() {
            )`,
           []
         ),
+        dbSelect<{ count: number }>(
+          `SELECT COUNT(*) as count
+           FROM coaching_sessions
+           WHERE client_id IN (
+             SELECT id FROM clients
+             WHERE outcome_bucket != 'inactive'
+           )`,
+          []
+        ),
+        dbSelect<{ count: number }>(
+          `SELECT COUNT(*) as count
+           FROM clients
+           WHERE tumay_data IS NOT NULL
+           AND LENGTH(tumay_data) > 5
+           AND outcome_bucket != 'inactive'`,
+          []
+        ),
+        dbSelect<{ count: number }>(
+          `SELECT COUNT(*) as count
+           FROM client_disc_profiles dp
+           JOIN clients c ON c.id = dp.client_id
+           WHERE c.outcome_bucket != 'inactive'`,
+          []
+        ),
       ]);
       setStats(s);
       setClients(c);
       setDiscDistribution(d);
       setReadinessRows(readiness);
       setActiveConversationCount(Number(conversationRows[0]?.count ?? 0));
+
+      const fc = Number(fathomRows[0]?.count ?? 0);
+      const tc = Number(tumayRows[0]?.count ?? 0);
+      const dc = Number(discRows[0]?.count ?? 0);
+      setFathomCount(fc);
+      setTumayCount(tc);
+      setDiscCount(dc);
+      const timeSavedMinutes = fc * 15 + tc * 20 + dc * 10;
+      setTimeSavedHours(Math.round((timeSavedMinutes / 60) * 10) / 10);
 
       const activeReadiness = readiness.filter((row) => row.outcome_bucket === 'active');
       const validateIds = activeReadiness
@@ -373,12 +419,12 @@ export default function ExecutiveDashboard() {
           color="#EC4899"
         />
         <KPICard
-          title="Pipeline Health"
-          value={`${recommendationData[0]?.value ?? 0} VALIDATE / ${recommendationData[1]?.value ?? 0} GATHER / ${recommendationData[2]?.value ?? 0} PAUSE`}
-          change="Live recommendation mix"
-          changeType="neutral"
+          title="Time Saved"
+          value={`${timeSavedHours} hrs`}
           icon={Clock}
-          description="Active pipeline recommendation ratio"
+          description={
+            `AI-assisted coaching\n${fathomCount} sessions + ${tumayCount} profiles + ${discCount} DISC reports`
+          }
           color="#14B8A6"
         />
       </div>
