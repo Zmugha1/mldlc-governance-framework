@@ -1,4 +1,5 @@
-import { dbSelect, dbExecute } from './db';
+import { dbSelect, dbExecute, getDb } from './db';
+import { deriveDominantStyle } from '../config/discCoachingTips';
 
 export function calculateCLEARFromBlocks(
   session: Record<string, unknown>
@@ -290,6 +291,163 @@ interface StageReadinessRow {
   has_you2: number;
   has_vision: number;
   fathom_count: number;
+  natural_d: number | null;
+  natural_i: number | null;
+  natural_s: number | null;
+  natural_c: number | null;
+}
+
+export async function detectAndSavePinkFlags(
+  clientId: string,
+  sessionId: number,
+  discStyle: string
+): Promise<string[]> {
+  const _sessionId = sessionId;
+  void _sessionId;
+  const db = await getDb();
+  const flags: string[] = [];
+
+  const sessions = await db.select<Array<{
+    block_objections: string | null;
+    notes: string | null;
+  }>>(
+    `SELECT block_objections, notes
+     FROM coaching_sessions
+     WHERE client_id = ?
+     ORDER BY session_date DESC
+     LIMIT 1`,
+    [clientId]
+  );
+
+  if (!sessions.length) return flags;
+
+  const session = sessions[0];
+
+  // Get text to scan — prefer block_objections, fall back to notes
+  let scanText = '';
+  if (session.block_objections) {
+    try {
+      const obj = JSON.parse(
+        session.block_objections
+      ) as {
+        pink_flag_language?: unknown[];
+        objections?: unknown[];
+      };
+      scanText = [
+        ...(obj.pink_flag_language ?? []),
+        ...(obj.objections ?? [])
+      ].join(' ').toLowerCase();
+    } catch {
+      scanText = session.block_objections
+        .toLowerCase();
+    }
+  } else if (session.notes) {
+    scanText = session.notes.toLowerCase();
+  }
+
+  if (!scanText) return flags;
+
+  // Universal flags
+  if (scanText.includes('needs more time') ||
+      scanText.includes('wants to think')) {
+    flags.push('timeline_slipping');
+  }
+  if (scanText.includes("job isn't that bad") ||
+      scanText.includes('maybe i should stay') ||
+      scanText.includes('not sure this is')) {
+    flags.push('fear_reframing');
+  }
+  if (scanText.includes('research on my own') ||
+      scanText.includes("i'll reach out when") ||
+      scanText.includes('enough information')) {
+    flags.push('exit_signal');
+  }
+  if (scanText.includes('financial concern') ||
+      scanText.includes('worried about the')) {
+    flags.push('financial_concern');
+  }
+
+  // DISC-specific
+  const style = discStyle?.toUpperCase()
+    ?.charAt(0) ?? '';
+
+  if (style === 'C') {
+    if (scanText.includes('what are the fees') ||
+        scanText.includes('what is the structure') ||
+        scanText.includes('royalty')) {
+      flags.push('technical_question_mode');
+    }
+    if (scanText.includes('that makes sense') ||
+        (scanText.includes('i understand') &&
+        scanText.length < 200)) {
+      flags.push('overly_agreeable');
+    }
+  }
+  if (style === 'S') {
+    if (scanText.includes("spouse isn't sure") ||
+        scanText.includes("family isn't on")) {
+      flags.push('family_concern');
+    }
+    if (scanText.includes('too risky') ||
+        scanText.includes('what about benefits')) {
+      flags.push('security_fear');
+    }
+  }
+  if (style === 'D') {
+    if (scanText.includes('too many rules') ||
+        scanText.includes('too much oversight')) {
+      flags.push('control_loss');
+    }
+  }
+  if (style === 'I') {
+    if (scanText.includes('really busy') ||
+        scanText.includes('a lot going on')) {
+      flags.push('distraction_pattern');
+    }
+  }
+
+  if (!flags.length) return flags;
+
+  // Merge with existing flags
+  const clients = await db.select<Array<{
+    pink_flags: string | null;
+  }>>(
+    `SELECT pink_flags FROM clients
+     WHERE id = ?`,
+    [clientId]
+  );
+
+  const existing = clients[0]?.pink_flags
+    ? JSON.parse(clients[0].pink_flags) as string[]
+    : [];
+
+  const merged = [
+    ...new Set([...existing, ...flags])
+  ];
+
+  await db.execute(
+    `UPDATE clients
+     SET pink_flags = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [JSON.stringify(merged), clientId]
+  );
+
+  await db.execute(
+    `INSERT INTO audit_log
+     (action_type, client_id, new_value,
+      reasoning, source)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      'pink_flags_detected',
+      clientId,
+      JSON.stringify(flags),
+      'Auto-detected from session analysis',
+      'deterministic'
+    ]
+  );
+
+  return merged;
 }
 
 function normalizeStage(
@@ -515,6 +673,10 @@ export async function getStageReadiness(
        CASE WHEN y.one_year_vision IS NOT NULL
          AND LENGTH(y.one_year_vision) > 20
          THEN 1 ELSE 0 END as has_vision,
+       MAX(dp.natural_d) as natural_d,
+       MAX(dp.natural_i) as natural_i,
+       MAX(dp.natural_s) as natural_s,
+       MAX(dp.natural_c) as natural_c,
        COUNT(cs.id) as fathom_count
      FROM clients c
      LEFT JOIN client_disc_profiles dp
@@ -550,6 +712,10 @@ export async function getAllStageReadiness(): Promise<StageReadiness[]> {
          CASE WHEN y.one_year_vision IS NOT NULL
            AND LENGTH(y.one_year_vision) > 20
            THEN 1 ELSE 0 END as has_vision,
+         MAX(dp.natural_d) as natural_d,
+         MAX(dp.natural_i) as natural_i,
+         MAX(dp.natural_s) as natural_s,
+         MAX(dp.natural_c) as natural_c,
          COUNT(cs.id) as fathom_count
        FROM clients c
        LEFT JOIN client_disc_profiles dp
@@ -572,6 +738,20 @@ export async function getAllStageReadiness(): Promise<StageReadiness[]> {
       ))
       .filter(s => s > 0);
     void scores;
+    for (const client of rows) {
+      const style = deriveDominantStyle(
+        Number(client.natural_d ?? 0),
+        Number(client.natural_i ?? 0),
+        Number(client.natural_s ?? 0),
+        Number(client.natural_c ?? 0)
+      );
+      const mergedFlags = await detectAndSavePinkFlags(
+        client.id,
+        0,
+        style
+      );
+      client.pink_flags = JSON.stringify(mergedFlags);
+    }
     return rows.map(rowToStageReadiness);
   } catch (err) {
     console.error('getAllStageReadiness failed:', err);
