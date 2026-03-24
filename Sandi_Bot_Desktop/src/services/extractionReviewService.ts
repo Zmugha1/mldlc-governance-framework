@@ -1,4 +1,4 @@
-import { dbExecute, dbSelect, getDb } from './db';
+import { dbExecute, dbSelect } from './db';
 
 export interface You2ReviewData {
   client_id: string;
@@ -46,35 +46,39 @@ export async function getAllClientsForReview(): Promise<{
     disc_status: 'complete' | 'pending' | 'confirmed' | 'manual';
   }>;
 }> {
-  const db = await getDb();
-
-  const clients = await db.select<Array<{
+  const clients = await dbSelect<{
     id: string;
     name: string;
     outcome_bucket: string;
-  }>>(
+  }>(
     `SELECT id, name, outcome_bucket FROM clients
      ORDER BY outcome_bucket, name`
   );
 
-  const result = [];
+  const result: Array<{
+    id: string;
+    name: string;
+    outcome_bucket: string;
+    you2_status: 'complete' | 'pending' | 'confirmed';
+    disc_status: 'complete' | 'pending' | 'confirmed' | 'manual';
+  }> = [];
 
   for (const client of clients) {
-    const you2 = await db.select<Array<{
+    const you2 = await dbSelect<{
       you2_confirmed: number;
       one_year_vision: string;
-    }>>(
+    }>(
       `SELECT you2_confirmed, one_year_vision
        FROM client_you2_profiles
        WHERE client_id = $1`,
       [client.id]
     );
 
-    const disc = await db.select<Array<{
+    const disc = await dbSelect<{
       disc_confirmed: number;
       manually_entered: number;
       natural_d: number | null;
-    }>>(
+    }>(
       `SELECT disc_confirmed, manually_entered, natural_d
        FROM client_disc_profiles
        WHERE client_id = $1`,
@@ -107,10 +111,14 @@ export async function getAllClientsForReview(): Promise<{
   return { clients: result };
 }
 
+type You2ReviewRow = Omit<You2ReviewData, 'you2_confirmed'> & {
+  you2_confirmed: number;
+};
+
 export async function getClientYou2ForReview(
   clientId: string
 ): Promise<You2ReviewData | null> {
-  const rows = await dbSelect<Array<You2ReviewData>>(
+  const rows = await dbSelect<You2ReviewRow>(
     `SELECT c.id as client_id, c.name as client_name,
      y.one_year_vision, y.spouse_name, y.spouse_role,
      y.spouse_mindset, y.credit_score,
@@ -132,10 +140,15 @@ export async function getClientYou2ForReview(
   };
 }
 
+type DiscReviewRow = Omit<DiscReviewData, 'disc_confirmed' | 'manually_entered'> & {
+  disc_confirmed: number;
+  manually_entered: number;
+};
+
 export async function getClientDiscForReview(
   clientId: string
 ): Promise<DiscReviewData | null> {
-  const rows = await dbSelect<Array<DiscReviewData & { you2_confirmed?: number; disc_confirmed?: number; manually_entered?: number }>>(
+  const rows = await dbSelect<DiscReviewRow>(
     `SELECT c.id as client_id, c.name as client_name,
      d.natural_d, d.natural_i, d.natural_s, d.natural_c,
      d.adapted_d, d.adapted_i, d.adapted_s, d.adapted_c,
@@ -210,7 +223,7 @@ export async function saveDiscData(
   confirmedBy: string,
   isManual: boolean
 ): Promise<void> {
-  const existing = await dbSelect<Array<{ id: number }>>(
+  const existing = await dbSelect<{ id: number }>(
     `SELECT id FROM client_disc_profiles
      WHERE client_id = $1`,
     [clientId]

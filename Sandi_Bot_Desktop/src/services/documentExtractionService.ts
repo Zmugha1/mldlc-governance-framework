@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { dbExecute, dbSelect, getDb } from './db';
 import { logEntry } from './auditService';
-import { callOllama as callOllamaProxy, isOllamaRunning } from './ollamaService';
+import { callOllama as callOllamaProxy } from './ollamaService';
 import type {
   DiscProfile,
   You2Profile,
@@ -436,52 +436,52 @@ STRESS SIGNALS come from the "Perceptions" page:
 
     // VALIDATE required fields before storing
     const adaptedScores = profile.adapted_scores ||
-      (profile as Record<string, unknown>).adaptedScores ||
+      (profile as unknown as Record<string, unknown>).adaptedScores ||
       { D: 0, I: 0, S: 0, C: 0 };
 
     const naturalScores = profile.natural_scores ||
-      (profile as Record<string, unknown>).naturalScores ||
+      (profile as unknown as Record<string, unknown>).naturalScores ||
       { D: 0, I: 0, S: 0, C: 0 };
 
     const primaryLabel = profile.primary_style_label ||
-      (profile as Record<string, unknown>).primaryStyleLabel ||
-      (profile as Record<string, unknown>).style_label || '';
+      (profile as unknown as Record<string, unknown>).primaryStyleLabel ||
+      (profile as unknown as Record<string, unknown>).style_label || '';
 
     const primaryCombo = profile.primary_style_combination ||
-      (profile as Record<string, unknown>).primaryStyleCombination ||
-      (profile as Record<string, unknown>).style_combination || '';
+      (profile as unknown as Record<string, unknown>).primaryStyleCombination ||
+      (profile as unknown as Record<string, unknown>).style_combination || '';
 
     const drivingForcesPrimary =
       profile.driving_forces_primary ||
-      (profile as Record<string, unknown>).drivingForcesPrimary || [];
+      (profile as unknown as Record<string, unknown>).drivingForcesPrimary || [];
 
     const communicationDos =
       profile.communication_dos ||
-      (profile as Record<string, unknown>).communicationDos || [];
+      (profile as unknown as Record<string, unknown>).communicationDos || [];
 
     const communicationDonts =
       profile.communication_donts ||
-      (profile as Record<string, unknown>).communicationDonts || [];
+      (profile as unknown as Record<string, unknown>).communicationDonts || [];
 
     const stressModerate =
       profile.stress_signals_moderate ||
-      (profile as Record<string, unknown>).stressSignalsModerate || [];
+      (profile as unknown as Record<string, unknown>).stressSignalsModerate || [];
 
     const stressExtreme =
       profile.stress_signals_extreme ||
-      (profile as Record<string, unknown>).stressSignalsExtreme || [];
+      (profile as unknown as Record<string, unknown>).stressSignalsExtreme || [];
 
     const idealEnvironment =
       profile.ideal_environment ||
-      (profile as Record<string, unknown>).idealEnvironment || [];
+      (profile as unknown as Record<string, unknown>).idealEnvironment || [];
 
     const valueToOrg =
       profile.value_to_organization ||
-      (profile as Record<string, unknown>).valueToOrganization || [];
+      (profile as unknown as Record<string, unknown>).valueToOrganization || [];
 
     const areasForImprovement =
       profile.areas_for_improvement ||
-      (profile as Record<string, unknown>).areasForImprovement || [];
+      (profile as unknown as Record<string, unknown>).areasForImprovement || [];
 
     await dbExecute(
       `INSERT OR REPLACE INTO client_disc_profiles
@@ -509,11 +509,11 @@ STRESS SIGNALS come from the "Perceptions" page:
         JSON.stringify(drivingForcesPrimary),
         JSON.stringify(
           profile.driving_forces_situational ||
-          (profile as Record<string, unknown>).drivingForcesSituational || []
+          (profile as unknown as Record<string, unknown>).drivingForcesSituational || []
         ),
         JSON.stringify(
           profile.driving_forces_indifferent ||
-          (profile as Record<string, unknown>).drivingForcesIndifferent || []
+          (profile as unknown as Record<string, unknown>).drivingForcesIndifferent || []
         ),
         JSON.stringify(communicationDos),
         JSON.stringify(communicationDonts),
@@ -1563,78 +1563,6 @@ Examples of correct values:
   }
 }
 
-interface TumayParsedData {
-  contact_name: string;
-  email: string;
-  phone: string;
-  city: string;
-  state: string;
-  spouse_name: string;
-  spouse_role: string;
-  spouse_on_calls: string;
-  spouse_mindset: string;
-  reasons_for_change: string[];
-  location_preference: string;
-  time_commitment: string;
-  self_sufficiency_explored: string;
-  self_sufficiency_excitement: string;
-  launch_timeline: string;
-  areas_of_interest: string[];
-  financial_net_worth_range: string;
-  credit_score: string;
-}
-
-function parseTumayJson(parsed: string): TumayParsedData {
-  try {
-    const raw = JSON.parse(parsed) as Partial<TumayParsedData>;
-    return {
-      contact_name: String(raw.contact_name ?? ''),
-      email: String(raw.email ?? ''),
-      phone: String(raw.phone ?? ''),
-      city: String(raw.city ?? ''),
-      state: String(raw.state ?? ''),
-      spouse_name: String(raw.spouse_name ?? ''),
-      spouse_role: String(raw.spouse_role ?? ''),
-      spouse_on_calls: String(raw.spouse_on_calls ?? ''),
-      spouse_mindset: String(raw.spouse_mindset ?? ''),
-      reasons_for_change: Array.isArray(raw.reasons_for_change)
-        ? raw.reasons_for_change.map(v => String(v))
-        : [],
-      location_preference: String(raw.location_preference ?? ''),
-      time_commitment: String(raw.time_commitment ?? ''),
-      self_sufficiency_explored: String(raw.self_sufficiency_explored ?? ''),
-      self_sufficiency_excitement: String(raw.self_sufficiency_excitement ?? ''),
-      launch_timeline: String(raw.launch_timeline ?? ''),
-      areas_of_interest: Array.isArray(raw.areas_of_interest)
-        ? raw.areas_of_interest.map(v => String(v))
-        : [],
-      financial_net_worth_range: String(raw.financial_net_worth_range ?? ''),
-      credit_score: String(raw.credit_score ?? ''),
-    };
-  } catch {
-    return {
-      contact_name: '',
-      email: '',
-      phone: '',
-      city: '',
-      state: '',
-      spouse_name: '',
-      spouse_role: '',
-      spouse_on_calls: '',
-      spouse_mindset: '',
-      reasons_for_change: [],
-      location_preference: '',
-      time_commitment: '',
-      self_sufficiency_explored: '',
-      self_sufficiency_excitement: '',
-      launch_timeline: '',
-      areas_of_interest: [],
-      financial_net_worth_range: '',
-      credit_score: '',
-    };
-  }
-}
-
 export async function bulkReExtractVisionAndTumay(
   clients: Array<{
     id: string;
@@ -2129,7 +2057,7 @@ export async function processDocument(
 export async function getExtractionStatus(
   clientId: string
 ): Promise<Record<DocumentType, ExtractionStatus>> {
-  const rows = await dbSelect<Array<{ document_type: string; extraction_status: string }>>(
+  const rows = await dbSelect<{ document_type: string; extraction_status: string }>(
     `SELECT document_type, extraction_status
      FROM document_extractions
      WHERE client_id = $1

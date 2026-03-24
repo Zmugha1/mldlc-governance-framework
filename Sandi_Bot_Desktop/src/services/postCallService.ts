@@ -62,11 +62,13 @@ export function getHistoricalAverages(
 }
 
 /** Lowest dimension + coaching tip */
+type ClearKey = (typeof CLEAR_KEYS)[number];
+
 export function getCoachingTip(scores: Record<string, number>): {
   dimension: string;
   tip: string;
 } {
-  let lowestKey = CLEAR_KEYS[0];
+  let lowestKey: ClearKey = CLEAR_KEYS[0];
   let lowestScore = scores[lowestKey] ?? 5;
   CLEAR_KEYS.forEach((key) => {
     const v = scores[key] ?? 5;

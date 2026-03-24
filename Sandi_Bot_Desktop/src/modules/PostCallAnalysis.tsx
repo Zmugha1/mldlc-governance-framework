@@ -33,7 +33,6 @@ import {
 } from 'recharts';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { knowledgeGraph } from '@/data/sampleClients';
-import type { CLEARScores } from '@/types';
 import {
   getScoreColor,
   calculateOverallScore,

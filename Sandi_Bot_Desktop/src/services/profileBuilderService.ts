@@ -1,4 +1,4 @@
-import { getDb, dbSelect, dbExecute } from './db';
+import { dbSelect, dbExecute } from './db';
 import type { Client } from '../types';
 import { getRecommendation } from './recommendationService';
 import {
@@ -19,13 +19,13 @@ async function detectPinkFlags(
 ): Promise<string[]> {
   const flags: string[] = [];
 
-  const rows = await dbSelect<Array<{
+  const rows = await dbSelect<{
     spouse_role: string;
     spouse_mindset: string;
     credit_score: number;
     dangers: string;
     financial_net_worth_range: string;
-  }>>(
+  }>(
     `SELECT spouse_role, spouse_mindset, credit_score,
      dangers, financial_net_worth_range
      FROM client_you2_profiles WHERE client_id = $1`,

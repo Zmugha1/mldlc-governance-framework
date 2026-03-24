@@ -7,7 +7,6 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -421,7 +420,7 @@ export default function PipelineVisualizer() {
 
   const checkStageGate = (
     client: GateFacts,
-    fromStage: PipelineStage,
+    _fromStage: PipelineStage,
     toStage: PipelineStage
   ): {
     requiresWarning: boolean;
@@ -556,7 +555,7 @@ export default function PipelineVisualizer() {
         .filter(r => (STAGE_READINESS_TO_COLUMN[r.current_stage_full] ?? r.current_stage_full) === stage)
         .map(r => clientMap.get(r.client_id))
         .filter((c): c is Client => c != null)
-        .map(clientToDisplay),
+        .map((c) => clientToDisplay(c)),
       stats: { avgDaysInStage: defaults.avgDaysInStage, conversionRate: defaults.conversionRate }
     }));
   }, [readiness, clientMap]);
@@ -566,7 +565,6 @@ export default function PipelineVisualizer() {
     const defaults = getPipelineStageDefaults();
     return STAGE_DISPLAY_NAMES.map(stage => {
       const count = clients.filter(c => c.stage === stage).length;
-      const config = stageConfig[stage as keyof typeof stageConfig];
       return {
         name: stage,
         clients: count,

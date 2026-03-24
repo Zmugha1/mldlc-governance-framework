@@ -12,7 +12,7 @@ import {
   BookOpen,
   RefreshCw
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -257,7 +257,8 @@ export default function AuditTransparency() {
       setLogs(entries);
     } catch (err) {
       console.error('Failed to load audit log:', err);
-      setError(String(err?.message ?? err ?? 'Failed to load audit log'));
+      const errMessage = (err as Record<string, unknown>)?.message;
+      setError(String(errMessage ?? err ?? 'Failed to load audit log'));
       setLogs([]);
     } finally {
       setLoading(false);

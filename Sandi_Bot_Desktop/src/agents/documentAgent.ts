@@ -17,7 +17,7 @@ export interface DocumentAgentOutput {
 }
 
 export async function runDocumentAgent(
-  input: DocumentAgentInput
+  _input: DocumentAgentInput
 ): Promise<DocumentAgentOutput> {
   // TODO Phase 3 — implement document ingestion
   throw new Error('Document Agent not yet implemented');

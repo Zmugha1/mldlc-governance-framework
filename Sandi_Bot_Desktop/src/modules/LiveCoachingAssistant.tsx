@@ -4,10 +4,7 @@ import {
   Send, 
   Bot, 
   User, 
-  Sparkles,
-  ArrowUp,
   Heart,
-  Pause,
   Copy,
   Check,
   Target,
@@ -27,12 +24,11 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { SkeletonCard } from '@/components/SkeletonCard';
-import { coachingScripts, recommendationConfig, knowledgeGraph } from '@/data/sampleClients';
+import { coachingScripts, knowledgeGraph } from '@/data/sampleClients';
 import { generateSourceCitations, generateResponseExplanation, type SourceCitation } from '@/data/auditLog';
 import { dbSelect } from '@/services/db';
 import { logEntry } from '@/services/auditService';
-import { getDiscCoachingTips, getHomeworkByStage, getPinkFlagsByStage, calculateReadinessScore } from '@/services/coachingService';
-import { getRecommendationMessage } from '@/services/recommendationService';
+import { getDiscCoachingTips, getHomeworkByStage, getPinkFlagsByStage } from '@/services/coachingService';
 import { cn } from '@/lib/utils';
 
 type ActiveClient = {

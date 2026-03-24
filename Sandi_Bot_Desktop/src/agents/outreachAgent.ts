@@ -19,7 +19,7 @@ export interface OutreachAgentOutput {
 }
 
 export async function runOutreachAgent(
-  input: OutreachAgentInput
+  _input: OutreachAgentInput
 ): Promise<OutreachAgentOutput> {
   // TODO Phase 5 — Fred only
   // Requires: configs/fred_webster.json

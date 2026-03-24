@@ -833,10 +833,10 @@ export async function moveClientStage(
   movedBy: string
 ): Promise<boolean> {
   try {
-    const current = await dbSelect<Array<{
+    const current = await dbSelect<{
       inferred_stage: string;
       name: string;
-    }>>(
+    }>(
       `SELECT inferred_stage, name
        FROM clients WHERE id = $1`,
       [clientId]

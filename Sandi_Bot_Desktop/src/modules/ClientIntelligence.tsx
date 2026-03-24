@@ -29,7 +29,7 @@ import { parseDocument, generateClientFromDocuments } from '@/utils/documentPars
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
-import { getAllClients, createClient, updateClient, inactivateClient } from '@/services/clientService';
+import { getAllClients, createClient, inactivateClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { calculateReadinessScore } from '@/services/coachingService';
 import { dbExecute, dbSelect } from '@/services/db';
@@ -54,13 +54,6 @@ import { cn } from '@/lib/utils';
 const CONFIRMED_BY = 'Zubia';
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
-
-function tryParseJson(val: unknown): unknown {
-  if (!val) return null;
-  if (typeof val !== 'string') return val;
-  try { return JSON.parse(val); }
-  catch { return val; }
-}
 
 function deriveStyleLabel(
   d: number,
@@ -186,13 +179,6 @@ const DISC_COACHING_TIPS: Record<'D' | 'I' | 'S' | 'C', string[]> = {
   C: ['Provide facts', 'Give time to analyze', 'Use logic', 'Acknowledge thoroughness', 'Answer every question'],
 };
 
-const STYLE_COLOR_MAP: Record<'D' | 'I' | 'S' | 'C', string> = {
-  D: '#EF4444',
-  I: '#EAB308',
-  S: '#22C55E',
-  C: '#3B82F6',
-};
-
 function safeParseJson(value: string | null | undefined): unknown {
   if (!value) return null;
   try {
@@ -206,17 +192,6 @@ function toDisplayValue(value: unknown, fallback = '—'): string {
   if (value === null || value === undefined) return fallback;
   const str = String(value).trim();
   return str.length > 0 ? str : fallback;
-}
-
-function toStringList(value: unknown): string[] {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.map((v) => String(v).trim()).filter(Boolean);
-  if (typeof value === 'string') {
-    const parsed = safeParseJson(value);
-    if (Array.isArray(parsed)) return parsed.map((v) => String(v).trim()).filter(Boolean);
-    return value.split('\n').map((v) => v.trim()).filter(Boolean);
-  }
-  return [];
 }
 
 function normalizeStageCode(raw: string | null | undefined): 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5' {
@@ -261,16 +236,6 @@ function compartmentFromStageCode(code: 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5')
     C5: 5,
   };
   return compartments[code];
-}
-
-function fractionBarColor(score: number): string {
-  if (score >= 4) return '#0D9488';
-  if (score >= 2) return '#F59E0B';
-  return '#EF4444';
-}
-
-function clampFive(value: number): number {
-  return Math.max(1, Math.min(5, Math.round(value)));
 }
 
 function parseListField(
@@ -1657,7 +1622,7 @@ function ClientDetailModal({
 
 function StatusBadge({
   status,
-  label,
+  label: _label,
 }: {
   status: 'complete' | 'pending' | 'confirmed' | 'manual';
   label: string;

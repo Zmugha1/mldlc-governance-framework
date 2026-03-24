@@ -18,7 +18,7 @@ export interface CoachingAgentOutput {
 }
 
 export async function runCoachingAgent(
-  input: CoachingAgentInput
+  _input: CoachingAgentInput
 ): Promise<CoachingAgentOutput> {
   // TODO Phase 3 — implement coaching agent
   throw new Error('Coaching Agent not yet implemented');

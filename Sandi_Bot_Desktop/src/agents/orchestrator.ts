@@ -25,16 +25,16 @@ export interface OrchestratorConfig {
 }
 
 export async function loadClientConfig(
-  client_id: string
+  _client_id: string
 ): Promise<OrchestratorConfig> {
   // TODO Phase 3 — load from configs/[client_id].json
   throw new Error('Orchestrator not yet implemented');
 }
 
 export async function routeTrigger(
-  trigger: string,
-  client_id: string,
-  payload: object
+  _trigger: string,
+  _client_id: string,
+  _payload: object
 ): Promise<void> {
   // TODO Phase 3 — read config, load permitted agents,
   // route trigger to correct agent sequence

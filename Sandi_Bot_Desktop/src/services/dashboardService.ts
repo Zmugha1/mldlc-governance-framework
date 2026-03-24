@@ -68,13 +68,13 @@ export function deriveStyleLabel(
 
 export async function getDiscStyleBreakdown(): Promise<DiscDistributionEntry[]> {
   try {
-    const rows = await dbSelect<Array<{
+    const rows = await dbSelect<{
       client_id: string;
       natural_d: number;
       natural_i: number;
       natural_s: number;
       natural_c: number;
-    }>>(
+    }>(
       `SELECT client_id, natural_d, natural_i, natural_s, natural_c
        FROM client_disc_profiles
        WHERE natural_d IS NOT NULL OR natural_i IS NOT NULL
@@ -190,14 +190,14 @@ export async function getHotProspects(
 
 export async function getDiscProfilesMap(): Promise<Map<string, DiscProfileEnrichment>> {
   try {
-    const rows = await dbSelect<Array<{
+    const rows = await dbSelect<{
       client_id: string;
       natural_d: number;
       natural_i: number;
       natural_s: number;
       natural_c: number;
       primary_style_label: string | null;
-    }>>(
+    }>(
     `SELECT client_id, natural_d, natural_i, natural_s, natural_c,
             primary_style_label
      FROM client_disc_profiles`

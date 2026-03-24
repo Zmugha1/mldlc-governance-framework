@@ -169,7 +169,7 @@ export default function AdminStreamliner() {
     setError(null);
     Promise.all([getAllClients(), getAuditLog(100)])
       .then(([rawClients, auditEntries]) => {
-        setClients(rawClients.map(clientToDisplay));
+        setClients(rawClients.map((client) => clientToDisplay(client)));
         const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
         setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
       })
@@ -232,7 +232,7 @@ export default function AdminStreamliner() {
         getAllClients(),
         getAuditLog(100)
       ]);
-      setClients(rawClients.map(clientToDisplay));
+      setClients(rawClients.map((client) => clientToDisplay(client)));
       const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
       setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
     } catch (err) {
@@ -262,7 +262,7 @@ export default function AdminStreamliner() {
         getAllClients(),
         getAuditLog(100)
       ]);
-      setClients(rawClients.map(clientToDisplay));
+      setClients(rawClients.map((client) => clientToDisplay(client)));
       const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
       setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
     } catch (err) {

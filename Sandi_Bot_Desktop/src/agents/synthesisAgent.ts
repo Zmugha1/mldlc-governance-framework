@@ -20,7 +20,7 @@ export interface SynthesisAgentOutput {
 }
 
 export async function runSynthesisAgent(
-  input: SynthesisAgentInput
+  _input: SynthesisAgentInput
 ): Promise<SynthesisAgentOutput> {
   // TODO Phase 4 — Fred only
   // Requires: configs/fred_webster.json

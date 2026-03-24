@@ -45,7 +45,7 @@ export async function createClient(data: Partial<Client>): Promise<Client> {
     readiness_financial: data.readiness_financial ?? 3,
     readiness_execution: data.readiness_execution ?? 3,
     confidence: data.confidence ?? 50,
-    recommendation: data.recommendation ?? 'GATHER',
+    recommendation: (data.recommendation ?? 'GATHER') as Client['recommendation'],
     outcome: data.outcome,
     notes: data.notes,
     created_at: now,
@@ -251,7 +251,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 }
 
 /** Clients sorted by confidence descending (highest first) */
-export function getRankedClients(clients: { confidence?: number }[]): { confidence?: number }[] {
+export function getRankedClients<T extends { confidence?: number }>(clients: T[]): T[] {
   return [...clients].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
 }
 
@@ -261,7 +261,7 @@ export function getPushClients(clients: { recommendation?: string }[]): { recomm
 }
 
 /** Average confidence across clients (0 if empty) */
-export function getAverageConfidence(clients: { confidence?: number }[]): number {
+export function getAverageConfidence<T extends { confidence?: number }>(clients: T[]): number {
   if (clients.length === 0) return 0;
   const sum = clients.reduce((acc, c) => acc + (c.confidence ?? 0), 0);
   return Math.round(sum / clients.length);

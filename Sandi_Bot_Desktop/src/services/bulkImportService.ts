@@ -164,7 +164,7 @@ async function findOrCreateClient(
   clientName: string,
   bucket: OutcomeBucket
 ): Promise<{ id: string; created: boolean }> {
-  const existing = await dbSelect<Array<{ id: string }>>(
+  const existing = await dbSelect<{ id: string }>(
     `SELECT id FROM clients
      WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))`,
     [clientName]
@@ -191,7 +191,7 @@ async function findOrCreateClient(
 
 /** Skip only when profile data actually exists — not just extraction records. */
 async function hasYou2Profile(clientId: string): Promise<boolean> {
-  const rows = await dbSelect<Array<{ count: number }>>(
+  const rows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM client_you2_profiles WHERE client_id = $1`,
     [clientId]
   );
@@ -199,7 +199,7 @@ async function hasYou2Profile(clientId: string): Promise<boolean> {
 }
 
 async function hasDiscProfile(clientId: string): Promise<boolean> {
-  const rows = await dbSelect<Array<{ count: number }>>(
+  const rows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM client_disc_profiles WHERE client_id = $1`,
     [clientId]
   );
@@ -207,7 +207,7 @@ async function hasDiscProfile(clientId: string): Promise<boolean> {
 }
 
 async function hasFathomSession(clientId: string): Promise<boolean> {
-  const rows = await dbSelect<Array<{ count: number }>>(
+  const rows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM coaching_sessions WHERE client_id = $1`,
     [clientId]
   );
@@ -216,7 +216,7 @@ async function hasFathomSession(clientId: string): Promise<boolean> {
 
 /** Vision has no profile table — check extraction record. */
 async function hasVisionComplete(clientId: string): Promise<boolean> {
-  const rows = await dbSelect<Array<{ extraction_status: string }>>(
+  const rows = await dbSelect<{ extraction_status: string }>(
     `SELECT extraction_status FROM document_extractions
      WHERE client_id = $1 AND document_type = 'vision' AND extraction_status = 'complete'`,
     [clientId]
@@ -452,13 +452,13 @@ export async function bulkImportFolder(
 export async function bulkImportRetryFailed(
   onProgress?: (p: ImportProgress) => void
 ): Promise<BulkImportResult> {
-  const failedRows = await dbSelect<Array<{
+  const failedRows = await dbSelect<{
     client_id: string;
     client_name: string;
     document_type: string;
     file_path: string;
     file_name: string;
-  }>>(
+  }>(
     `SELECT e.client_id, c.name as client_name, e.document_type, e.file_path, e.file_name
      FROM document_extractions e
      LEFT JOIN clients c ON c.id = e.client_id

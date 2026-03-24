@@ -1,4 +1,4 @@
-import { getDb, dbSelect, dbExecute } from './db';
+import { dbSelect, dbExecute } from './db';
 
 export type OutcomeBucket =
   'active' | 'converted' | 'paused' | 'various';
@@ -162,7 +162,7 @@ function buildReasoning(
 export async function getDocumentCompleteness(
   clientId: string
 ): Promise<DocumentCompleteness> {
-  const rows = await dbSelect<Array<{ document_type: string }>>(
+  const rows = await dbSelect<{ document_type: string }>(
     `SELECT document_type FROM document_extractions
      WHERE client_id = $1 AND extraction_status = 'complete'`,
     [clientId]
@@ -170,7 +170,7 @@ export async function getDocumentCompleteness(
 
   const types = rows.map(r => r.document_type);
 
-  const fathomRows = await dbSelect<Array<{ count: number }>>(
+  const fathomRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM coaching_sessions
      WHERE client_id = $1`,
     [clientId]
@@ -194,10 +194,10 @@ export async function updateClientStage(
   const inference = inferStageFromDocuments(completeness, bucket);
 
   // Get current stage for log
-  const current = await dbSelect<Array<{
+  const current = await dbSelect<{
     inferred_stage: string;
     outcome_bucket: string;
-  }>>(
+  }>(
     `SELECT inferred_stage, outcome_bucket
      FROM clients WHERE id = $1`,
     [clientId]

@@ -14,7 +14,8 @@ export async function dbSelect<T>(
   params: unknown[] = []
 ): Promise<T[]> {
   const db = await getDb();
-  return db.select<T[]>(query, params);
+  // tauri-plugin-sql returns an array of row objects; cast keeps row type T per caller.
+  return (await db.select(query, params)) as T[];
 }
 
 export async function dbExecute(
@@ -22,5 +23,9 @@ export async function dbExecute(
   params: unknown[] = []
 ): Promise<{ rowsAffected: number; lastInsertId: number }> {
   const db = await getDb();
-  return db.execute(query, params);
+  const result = await db.execute(query, params);
+  return {
+    rowsAffected: result.rowsAffected,
+    lastInsertId: result.lastInsertId ?? 0,
+  };
 }

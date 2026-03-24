@@ -19,7 +19,7 @@ export interface PatternAgentOutput {
 }
 
 export async function runPatternAgent(
-  input: PatternAgentInput
+  _input: PatternAgentInput
 ): Promise<PatternAgentOutput> {
   // TODO Phase 5 — requires Neo4j
   throw new Error('Pattern Agent not yet implemented — requires Phase 5 Neo4j');
