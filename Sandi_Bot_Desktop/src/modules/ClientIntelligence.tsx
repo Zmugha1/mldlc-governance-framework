@@ -376,12 +376,14 @@ function ClientDetailModal({
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [fathomSessions, setFathomSessions] = useState<Array<{
     id: number;
+    client_id: string | null;
     session_date: string | null;
     session_number: number | null;
     stage: string | null;
     notes: string | null;
     next_actions: string | null;
     overall_clear_score: number | null;
+    call_duration: string | null;
     block_opening: string | null;
     block_emotional: string | null;
     block_life_context: string | null;
@@ -389,10 +391,12 @@ function ClientDetailModal({
     block_disc_signals: string | null;
     block_objections: string | null;
     block_commitments: string | null;
-    block_reflection: string | null;
+    block_reflection_block: string | null;
     block_coach_assessment: string | null;
     blocks_complete: number | null;
+    updated_at: string | null;
   }>>([]);
+  const [fathomSessionCount, setFathomSessionCount] = useState<number>(0);
   const [showInactivateConfirm, setShowInactivateConfirm] = useState(false);
 
   useEffect(() => {
@@ -533,12 +537,14 @@ function ClientDetailModal({
         .catch(() => setTumayData(null));
       dbSelect<{
         id: number;
+        client_id: string | null;
         session_date: string | null;
         session_number: number | null;
         stage: string | null;
         notes: string | null;
         next_actions: string | null;
         overall_clear_score: number | null;
+        call_duration: string | null;
         block_opening: string | null;
         block_emotional: string | null;
         block_life_context: string | null;
@@ -546,25 +552,45 @@ function ClientDetailModal({
         block_disc_signals: string | null;
         block_objections: string | null;
         block_commitments: string | null;
-        block_reflection: string | null;
+        block_reflection_block: string | null;
         block_coach_assessment: string | null;
         blocks_complete: number | null;
+        updated_at: string | null;
       }>(
-        `SELECT id, session_date, session_number,
-         stage, notes, next_actions,
+        `SELECT
+         id,
+         client_id,
+         session_date,
+         session_number,
+         stage,
+         notes,
+         next_actions,
          overall_clear_score,
-         block_opening, block_emotional,
-         block_life_context, block_vision,
-         block_disc_signals, block_objections,
-         block_commitments, block_reflection,
-         block_coach_assessment, blocks_complete
+         call_duration,
+         block_opening,
+         block_emotional,
+         block_life_context,
+         block_vision,
+         block_disc_signals,
+         block_objections,
+         block_commitments,
+         block_reflection_block,
+         block_coach_assessment,
+         blocks_complete,
+         updated_at
          FROM coaching_sessions
          WHERE client_id = ?
-         ORDER BY session_date DESC`,
+         ORDER BY session_date DESC, id DESC`,
         [client.id]
       )
-        .then(setFathomSessions)
-        .catch(() => setFathomSessions([]));
+        .then((rows) => {
+          setFathomSessions(rows);
+          setFathomSessionCount(rows.length);
+        })
+        .catch(() => {
+          setFathomSessions([]);
+          setFathomSessionCount(0);
+        });
     } else {
       setReadiness(null);
       setYou2Vision('No statement yet');
@@ -577,6 +603,7 @@ function ClientDetailModal({
       setModalDiscStyle('I');
       setDiscScores(null);
       setFathomSessions([]);
+      setFathomSessionCount(0);
       setIsEditingContact(false);
       setShowAddNote(false);
     }
@@ -597,12 +624,14 @@ function ClientDetailModal({
   const loadFathomSessions = async () => {
     const rows = await dbSelect<{
       id: number;
+      client_id: string | null;
       session_date: string | null;
       session_number: number | null;
       stage: string | null;
       notes: string | null;
       next_actions: string | null;
       overall_clear_score: number | null;
+      call_duration: string | null;
       block_opening: string | null;
       block_emotional: string | null;
       block_life_context: string | null;
@@ -610,24 +639,39 @@ function ClientDetailModal({
       block_disc_signals: string | null;
       block_objections: string | null;
       block_commitments: string | null;
-      block_reflection: string | null;
+      block_reflection_block: string | null;
       block_coach_assessment: string | null;
       blocks_complete: number | null;
+      updated_at: string | null;
     }>(
-      `SELECT id, session_date, session_number,
-       stage, notes, next_actions,
+      `SELECT
+       id,
+       client_id,
+       session_date,
+       session_number,
+       stage,
+       notes,
+       next_actions,
        overall_clear_score,
-       block_opening, block_emotional,
-       block_life_context, block_vision,
-       block_disc_signals, block_objections,
-       block_commitments, block_reflection,
-       block_coach_assessment, blocks_complete
+       call_duration,
+       block_opening,
+       block_emotional,
+       block_life_context,
+       block_vision,
+       block_disc_signals,
+       block_objections,
+       block_commitments,
+       block_reflection_block,
+       block_coach_assessment,
+       blocks_complete,
+       updated_at
        FROM coaching_sessions
        WHERE client_id = ?
-       ORDER BY session_date DESC`,
+       ORDER BY session_date DESC, id DESC`,
       [client.id]
     );
     setFathomSessions(rows);
+    setFathomSessionCount(rows.length);
   };
 
   const handleSaveContact = async () => {
@@ -697,7 +741,7 @@ function ClientDetailModal({
     { key: 'block_disc_signals', title: 'DISC Signals', icon: '🧠', color: 'text-teal-700', checklist: 'DISC Signals — capture observed style and match' },
     { key: 'block_objections', title: 'Objections and Blockers', icon: '⚠️', color: 'text-red-700', checklist: 'Objections — capture blockers and pink-flag language' },
     { key: 'block_commitments', title: 'Commitments', icon: '✅', color: 'text-green-700', checklist: 'Commitments — lock next client-owned action' },
-    { key: 'block_reflection', title: 'Reflection', icon: '💡', color: 'text-yellow-700', checklist: 'Reflection — surface insight and mindset shift' },
+    { key: 'block_reflection_block', title: 'Reflection', icon: '💡', color: 'text-yellow-700', checklist: 'Reflection — surface insight and mindset shift' },
     { key: 'block_coach_assessment', title: 'Coach Assessment', icon: '📊', color: 'text-blue-700', checklist: 'Coach Assessment — record your recommendation' },
   ] as const;
 
@@ -1357,7 +1401,7 @@ function ClientDetailModal({
                     </Button>
                   </div>
                 )}
-                {fathomSessions.length === 0 ? (
+                {fathomSessionCount === 0 ? (
                   <p className="text-slate-600">No sessions recorded yet.</p>
                 ) : (
                   <div className="space-y-4">
@@ -1369,7 +1413,7 @@ function ClientDetailModal({
                       const disc = parseSessionBlock(s.block_disc_signals);
                       const objections = parseSessionBlock(s.block_objections);
                       const commitments = parseSessionBlock(s.block_commitments);
-                      const reflection = parseSessionBlock(s.block_reflection);
+                      const reflection = parseSessionBlock(s.block_reflection_block);
                       const assessment = parseSessionBlock(s.block_coach_assessment);
                       const isStructured = [opening, emotional, life, vision, disc, objections, commitments, reflection, assessment]
                         .some((v) => v !== null);
@@ -1393,7 +1437,7 @@ function ClientDetailModal({
                             <div className="flex items-center gap-2">
                               {!isStructured && (
                                 <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-                                  Unstructured - recorded before 9-block system
+                                  Pre-structure session
                                 </Badge>
                               )}
                               {s.overall_clear_score !== null && (
