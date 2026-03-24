@@ -1759,6 +1759,7 @@ export async function bulkReExtractFathomSessions(): Promise<{
   failed: number;
   errors: string[];
 }> {
+  console.log('[FATHOM-BULK] starting');
   const FATHOM_SYSTEM_PROMPT =
     'You extract structured coaching ' +
     'intelligence from franchise coaching ' +
@@ -1858,12 +1859,14 @@ Transcript:
      FROM clients ORDER BY name`,
     []
   );
+  console.log('[FATHOM-BULK] clients found:', clients.length);
 
   let success = 0;
   let failed = 0;
   const errors: string[] = [];
 
   for (const client of clients) {
+    console.log('[FATHOM-BULK] processing:', client.name, client.outcome_bucket);
     try {
       const bucket = BUCKETS[client.outcome_bucket] ?? 'Active';
       const folderName = client.name.replace(/\s+/g, '_');
@@ -1879,16 +1882,19 @@ Transcript:
             'list_directory',
             { path: searchPath }
           );
+          console.log('[FATHOM-BULK] files in folder:', files);
           const matched = files.filter((filePath) => {
             const lower = filePath.toLowerCase();
             const fileName = lower.split('\\').pop()
               ?? lower.split('/').pop()
               ?? '';
-            const nameToken = client.name.toLowerCase().trim();
-            const includesClient = fileName.startsWith(nameToken) || lower.includes(nameToken);
-            const isFathomLike = (fileName.includes('convo') || fileName.includes('fathom')) && fileName.endsWith('.pdf');
-            return includesClient && isFathomLike;
+            const isFathomLike = (
+              fileName.toLowerCase().includes('convo') ||
+              fileName.toLowerCase().includes('fathom')
+            ) && fileName.endsWith('.pdf');
+            return isFathomLike;
           });
+          console.log('[FATHOM-BULK] fathom files:', matched);
           candidateFiles.push(...matched);
         } catch {
           // ignore missing folders and continue fallback search path
@@ -1896,6 +1902,7 @@ Transcript:
       }
 
       if (candidateFiles.length === 0) {
+        console.log('[FATHOM-BULK] no fathom files for:', client.name);
         failed += 1;
         errors.push(`No Fathom/Convo PDF found for ${client.name}`);
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1910,8 +1917,9 @@ Transcript:
         error?: string;
       }>('extract_pdf_pages', {
         filePath,
-        pageNumbers: [1, 2, 3, 4, 5, 6, 7, 8],
+        pageNumbers: [1, 2, 3, 4],
       });
+      console.log('[FATHOM-BULK] text length:', pageResult.text?.length);
 
       if (!pageResult.success || !pageResult.text?.trim()) {
         failed += 1;
@@ -1921,14 +1929,35 @@ Transcript:
       }
 
       const transcriptText = pageResult.text.trim();
-      const rawResponse = await invoke<string>(
-        'ollama_generate',
-        {
-          prompt: FATHOM_PROMPT + '\n' + transcriptText,
-          system: FATHOM_SYSTEM_PROMPT,
-          model: OLLAMA_MODEL
+      const truncatedText = transcriptText.substring(0, 3000);
+
+      let rawResponse: string;
+      try {
+        rawResponse = await invoke<string>(
+          'ollama_generate',
+          {
+            prompt: FATHOM_PROMPT + '\n' + truncatedText,
+            system: FATHOM_SYSTEM_PROMPT,
+            model: OLLAMA_MODEL
+          }
+        );
+      } catch (e) {
+        const errorText = String(e);
+        if (!errorText.includes('500')) {
+          throw e;
         }
-      );
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const shortText = transcriptText.substring(0, 2000);
+        rawResponse = await invoke<string>(
+          'ollama_generate',
+          {
+            prompt: FATHOM_PROMPT + '\n' + shortText,
+            system: FATHOM_SYSTEM_PROMPT,
+            model: OLLAMA_MODEL
+          }
+        );
+      }
+      console.log('[FATHOM-BULK] ollama response:', rawResponse?.substring(0, 200));
       const parsed = parseExtractionResponse<Record<string, unknown>>(rawResponse);
       if (!parsed) {
         failed += 1;
@@ -2024,9 +2053,10 @@ Transcript:
       }
 
       success += 1;
-    } catch (error) {
+    } catch (e) {
+      console.error('[FATHOM-BULK] ERROR:', client.name, String(e));
       failed += 1;
-      errors.push(`${client.name}: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`${client.name}: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));
