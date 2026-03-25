@@ -1,6 +1,6 @@
 # Coach Bot — Claude Session Memory
 ## Dr. Data Decision Intelligence LLC
-## Last updated: March 2026
+## Last updated: March 24 2026
 
 ---
 
@@ -22,7 +22,7 @@ Push: git push sandi dev
 1. Never use better-sqlite3. Use tauri-plugin-sql.
 2. Never use Electron. Tauri v2 only.
 3. Never upgrade Tailwind to v4. Stay on 3.4.
-4. Never edit migrations 1-48. New = 49+.
+4. Never edit migrations 1-49. New = 51+.
 5. client_id is TEXT/UUID never number.
 6. Database: sandi_bot.db via getDb().
 7. Never delete clients — inactivate them.
@@ -132,7 +132,8 @@ These values confirmed working for all 17 clients.
 - 17/17 You2 profiles extracted
 - 45 coaching sessions extracted
 - Backup system working
-- VALIDATE/GATHER/PAUSE wired correctly
+- VALIDATE/GATHER/PAUSE wired per March 24 rule
+  (stage-based only — see below)
 - Dashboard showing real data
 - All 8 modules loading
 - 17/17 TUMAY profiles extracted
@@ -142,33 +143,139 @@ These values confirmed working for all 17 clients.
   all clients in client_you2_profiles
 
 ### Migrations completed:
-- Migrations 1-47: original schema
-- Migration 48: CLEAR scoring columns
-  in coaching_sessions
-- Migration 49: pause_reason,
-  follow_up_date, referral_source,
-  referred_by, referral_ask_sent
-  on clients table
+- Migrations 1-49: complete — NEVER edit
+- Migration 50: coaching_sessions 9-block columns;
+  reflection column is block_reflection_block
+  (NOT block_reflection — name conflict)
+- Next new migration: 51+
 
-### P0 items status (Phase 4):
+### P0 items status (Phase 4) — all complete:
+- P0-1 VALIDATE/GATHER rename ✅ 39b9794
+- P0-2 Delete → Inactivate ✅ a956e26
+- P0-3 Migration 49 pause reason ✅ 002db09
+- P0-4 Pipeline clickable ✅ e0a4518
 - P0-5 Coach Bot rename ✅ b69e5cb
 - P0-6 TES references removed ✅ 9998c0c
-- P0-1 VALIDATE/GATHER/PAUSE ✅ 39b9794
-- P0-2 Delete → Inactivate ✅ a956e26
-- P0-3 Migration 49 + pause reason ✅ 002db09
-- P0-4 Pipeline clickable ✅ e0a4518
-- P0-7 TUMAY extraction ✅ 17/17 complete
-  email + phone + financial data populated
-  commit: 9888017
-- P0-8 Client card POC quality PENDING
-- P0-9 Windows installer PENDING
-- P0-10 StatusBar verification PENDING
+- P0-7 TUMAY extraction ✅ 9888017 (17/17)
+- P0-8 Client card rebuild ✅ f652886
+- Pink flags auto-detection ✅ 0b9bfa1
+- CLEAR rubric + auto-scoring ✅ 0ca4211 + a05c21e
+- DISC coaching tips ✅ 8ed543d
+- 9-block Fathom ✅ b7da422
+- TypeScript errors resolved ✅ 5803dd0
 
-### Ground truth validation:
-Andrew Tait: natural_s=84 → dominant S
-  → GATHER (0 sessions)
-Alex Raiyn: natural_i=75 → dominant I
-  → VALIDATE (7 sessions)
+### Ground truth note (March 24):
+Recommendation labels follow stage buckets only
+(VALIDATE = C4/C5 active; GATHER = IC–C3 active).
+Do not infer VALIDATE from session counts or
+readiness alone. See VALIDATE/GATHER RULE below.
+
+---
+
+## VALIDATE/GATHER RULE — CONFIRMED MARCH 24 2026
+
+CRITICAL: This was wrong before the March 24 call.
+Do not revert this under any circumstances.
+
+- VALIDATE = C4 and C5 ONLY
+- GATHER = IC, C1, C2, C3
+- PAUSE = outcome_bucket = 'paused' (overrides all)
+
+Logic is stage-based ONLY.
+Readiness scores do NOT trigger VALIDATE.
+Session counts do NOT trigger VALIDATE.
+Confirmed directly by Sandi Stahl on March 24 call.
+
+---
+
+## CONFIRMED FROM SANDI — MARCH 24 2026
+
+### Gone quiet thresholds (confirmed exact numbers):
+- IC  = 14 days
+- C1  = 21 days
+- C2  = 14 days
+- C3  = 14 days
+- C4  = 60 days
+- C5  = 60 days
+- Note: C4 clients can be here 10 months — that is ok.
+- Sandi decides if they go inactive, not the system.
+
+### Pink flag system (confirmed):
+- No fixed number triggers a pause — Sandi decides
+- Every pink flag must notify Sandi before a call
+- After a call Sandi can mark a flag as addressed
+- Resolved pink flag = becomes GREEN flag
+- Green flag = historical record only, not a call to action
+- Pink flag = still needs attention
+- Storage format: prefix "resolved:" in the JSON array
+- Example: ["resolved:timeline_slipping", "engagement_risk"]
+
+### Stage movement (confirmed):
+- Clients NEVER move backwards
+- C4 clients may explore multiple businesses — not a regression
+- Clients never skip stages
+- IC calls should also be recorded in Fathom (future scope)
+
+### Client folder names (confirmed):
+- Active   = active clients currently in pipeline
+- WIN      = Business Complete (purchased a franchise)
+- Paused   = paused clients
+- Inactive = gone quiet / closed / no longer pursuing
+- These are SEPARATE folders — do not merge
+
+### Outcome bucket display names:
+- active    → Active
+- converted → Business Complete
+- paused    → Paused
+- inactive  → Inactive
+
+### Stage display names:
+- IC → Initial Contact
+- C1 → Seeker Connection
+- C2 → Seeker Clarification
+- C3 → Possibilities
+- C4 → Client Career 2.0
+- C5 → Business Purchase
+
+### Client data corrections (from March 24 call):
+- Garrett Auwae → outcome_bucket = 'inactive'
+  Sandi confirmed on call: "we're going to go
+  inactive on him." Fix before UAT.
+- Alex Raiyn → inferred_stage must be C4
+  Was incorrectly showing Business Purchase.
+  Stage badge must read from inferred_stage only.
+
+### LinkedIn — HARD STOP:
+- Do NOT automate LinkedIn under any circumstances.
+- Sandi said: "that is the biggest thing right now
+  that could wreck my franchise agreement."
+- Risk: LinkedIn blacklist = loss of primary lead source.
+- Remove from all roadmap discussions with Sandi.
+- Remove from all proposals and feature lists.
+
+### Google Calendar:
+- Demo to Sandi by Friday April 3 2026.
+- One-way only: Coach Bot → Google Calendar.
+- Do not pull data into Coach Bot.
+- Do not duplicate YouCanBookMe sequences.
+
+### Pricing — R&D tier confirmed:
+- First 5 coaches: $1,000 build fee
+- Month 1-6: $0 retainer
+- Month 7+: $150/month
+- Condition: honest feedback every 2 weeks
+- Standard tier after R&D: $2,500 build, $300/month
+
+### Migration state:
+- Migrations 1-49: complete, NEVER edit
+- Migration 50: coaching_sessions 9-block columns
+  Column name is block_reflection_block
+  NOT block_reflection (name conflict)
+- Next new migration: 51+
+
+### Sandi name:
+- Always "Sandi" — never "Sandy"
+- She noticed immediately on the March 24 call.
 
 ---
 
@@ -214,6 +321,8 @@ src-tauri/src/
 ## SANDI'S PREFERENCES
 
 Language: VALIDATE not PUSH, GATHER not NURTURE
+  (Meaning of VALIDATE/GATHER: see
+  VALIDATE/GATHER RULE — CONFIRMED MARCH 24 2026 above)
 Stages: IC C1 C2 C3 C4 C5
   Display: Initial Contact, Seeker Connection,
   Seeker Clarification, Possibilities,
@@ -223,6 +332,11 @@ Pause requires reason + follow-up date
 Vision statement is created by Sandi via AI
   not extracted from files
 Do not duplicate YouCanBookMe email sequences
+LinkedIn: no automation — franchise agreement risk
+  (see CONFIRMED FROM SANDI — March 24)
+Google Calendar: one-way push only; demo by Apr 3 2026
+Pricing R&D tier: $1k build / $0 mo 1-6 / $150 mo 7+
+  (Fred Webster = second coach, R&D pricing applies)
 
 ---
 

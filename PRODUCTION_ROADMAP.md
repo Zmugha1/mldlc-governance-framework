@@ -4,7 +4,7 @@
 **Product:** Coach Bot — Airgapped Coaching Intelligence Desktop Application
 **Production Repo:** github.com/Zmugha1/Sandi_Bot_Desktop
 **Branch:** dev | Push: git push sandi dev
-**Last Updated:** March 21 2026
+**Last Updated:** March 24 2026
 
 ---
 
@@ -22,7 +22,8 @@
 10. Add to TOOLS.md before building any new agent.
 11. client_id is TEXT/UUID — never number.
 12. Database is sandi_bot.db via getDb().
-13. Never edit migrations 1-47. New migrations start at 48+.
+13. Never edit migrations 1-49. New migrations start at 51+.
+  (Migration 50 = coaching_sessions 9-block columns; `block_reflection_block` not `block_reflection`.)
 14. Work on dev branch only.
 15. Never delete clients — inactivate them (outcome_bucket = 'inactive').
 16. Do not duplicate YouCanBookMe automated email sequences.
@@ -130,11 +131,11 @@ documents, knowledge_search (FTS5), sessions, stz_feedback_log
 
 | Name | Bucket | Stage | Sessions | DISC Dominant | Notes |
 |---|---|---|---|---|---|
-| Alex Raiyn | active | C4 | 7 | I (75) | Influencing Driver |
+| Alex Raiyn | active | C4 | 7 | I (75) | C4 required; stage badge from inferred_stage only (was wrong as Business Purchase) |
 | Andrew Tait | active | C1 | 0 | S (84) | Supporting Analyzer — ground truth |
 | Bigith Pattar Veetil | active | C1 | 0 | C (64) | Analyzing type |
 | Dena Sauer | active | C1 | 3 | I (78) | 2 pink flags — active not paused |
-| Garrett Auwae | active | C4 | 4 | D (77) | High D |
+| Garrett Auwae | inactive | C4 | 4 | D (77) | Inactivated per Sandi March 24 call |
 | Jeff Dayton | active | C4 | 4 | S (80) | High S |
 | Matthew Pierce | active | C1 | 3 | C (71) | |
 | Miles Martin | active | C1 | 3 | S (80) | |
@@ -149,7 +150,12 @@ documents, knowledge_search (FTS5), sessions, stz_feedback_log
 | Nathan Stiers | paused | C2 | 2 | D (89) | |
 
 **DISC Distribution (real data):** D=4, I=7, S=3, C=3
-**Current readiness (calculated live):** VALIDATE=8, GATHER=2, PAUSE=4
+**Current readiness (March 24 definitions — live):**
+- **VALIDATE** = clients at C4 or C5 with `outcome_bucket` = `active` only
+- **GATHER** = clients at IC, C1, C2, or C3 with `outcome_bucket` = `active`
+- **PAUSE** = `outcome_bucket` = `paused`
+- Garrett Auwae is **inactive** — excluded from active VALIDATE/GATHER counts.
+- (Legacy headline counts e.g. VALIDATE=8, GATHER=2, PAUSE=4 are superseded by these rules; recompute from DB.)
 
 ---
 
@@ -158,8 +164,12 @@ documents, knowledge_search (FTS5), sessions, stz_feedback_log
 From March 20 2026 video call:
 
 ### Language preferences
-- PUSH → **VALIDATE** (C3/C4 phase — they have what they need, confirming direction)
-- NURTURE → **GATHER** (C1/C2 phase — collecting info, emotional coaching)
+- PUSH → **VALIDATE**, NURTURE → **GATHER** (labels only)
+- **VALIDATE / GATHER logic (March 24 2026 — confirmed):** stage-based ONLY.
+  - VALIDATE = **C4 and C5** only (active bucket).
+  - GATHER = **IC, C1, C2, C3** (active bucket).
+  - PAUSE = `outcome_bucket` = `paused` (overrides all).
+  - Readiness scores and session counts do **not** drive VALIDATE.
 - PAUSE → stays PAUSE (life happened)
 - Compartments not stages — she says "Compartment 1" not "C1"
 - "Stalled" → **Paused** (already corrected in proposal)
@@ -206,6 +216,26 @@ Sandi already has automated sequences:
 - No-show email with reschedule link
 
 Coach Bot should NOT replicate these. Only add re-engagement and referral templates.
+
+### LinkedIn — REMOVED FROM ROADMAP (March 24 2026)
+- **Do not automate LinkedIn** under any circumstances.
+- Franchise agreement violation risk; Sandi explicitly said do not touch.
+- Could result in LinkedIn blacklist = loss of primary lead source.
+- **Remove from all roadmap discussions, proposals, and feature lists** with Sandi.
+
+### Google Calendar (March 24 2026)
+- Demo to Sandi by **Friday April 3 2026**.
+- **One-way push only:** Coach Bot → Google Calendar.
+- Do not pull calendar data into Coach Bot.
+- Do not duplicate YouCanBookMe sequences.
+
+### Pricing — R&D tier (March 24 2026)
+- First 5 coaches: **$1,000** build fee
+- Month 1–6: **$0** retainer
+- Month 7+: **$150/month**
+- Condition: honest feedback every 2 weeks
+- Standard tier after R&D: **$2,500** build, **$300/month**
+- **Fred Webster** is second coach — R&D pricing applies.
 
 ### Legal boundary
 - Do not reference TES or Entrepreneur's Source anywhere in app, proposals, or marketing
@@ -360,7 +390,7 @@ From TES_CLEAR_Coaching_Transcript_Joanne_COMPLETE.txt (March 2026)
 - auditService.ts — every action logged
 - searchService.ts — FTS5 queries
 
-**Migrations 1-47 complete.**
+**Migrations 1-49 complete.** Migration 50 adds 9-block Fathom columns on `coaching_sessions` (`block_reflection_block`). New work = 51+.
 
 ---
 
@@ -630,6 +660,13 @@ ghosting_risk      → red badge "Ghosting Pattern"
 Pink flag badge visible on client card without opening modal.
 Pink flag list visible in Overview tab.
 
+**Pink → green flags (confirmed March 24 2026):**
+- Pink flags **resolve to green flags** when addressed after a call.
+- Resolved = **`resolved:`** prefix in the JSON array (e.g. `"resolved:timeline_slipping"`).
+- **Green flag** = historical record only — **no call to action**.
+- **Pink flag** = active concern — **notify Sandi before a call**.
+- No fixed count of pink flags triggers pause — **Sandi decides**.
+
 ### 5E — Coaching Plan tab (new tab on every client card)
 Generated by Ollama from DISC + You2 + latest Fathom + current stage.
 
@@ -689,14 +726,16 @@ Follow-up Reminders Due Today
 Migration 50 adds `last_contact_date DATE` to clients table.
 Updated on every coaching session save.
 
-Gone quiet thresholds by stage (ask Sandi to confirm exact days on Tuesday):
+**Gone quiet thresholds — CONFIRMED March 24 2026 (exact days):**
 ```
-IC:  3+ days  → gone quiet badge
-C1:  14+ days → gone quiet badge
-C2:  14+ days → gone quiet badge
-C3:  21+ days → gone quiet badge
-C4:  30+ days → gone quiet badge (validation takes longest)
+IC:  14 days  → gone quiet badge
+C1:  21 days  → gone quiet badge
+C2:  14 days  → gone quiet badge
+C3:  14 days  → gone quiet badge
+C4:  60 days  → gone quiet badge (validation can take months; Sandi decides inactive)
+C5:  60 days  → gone quiet badge
 ```
+Note: C4 clients can remain much longer (e.g. 10 months) — that is ok. Sandi decides inactive, not the system.
 
 When triggered:
 - Amber badge "Gone Quiet" on client card
@@ -969,11 +1008,15 @@ When extraction confidence is below threshold:
 
 **Prerequisites:** Contract signed. Phase 4 UAT complete.
 
+**Sandi demo:** Google Calendar one-way flow demo by **Friday April 3 2026**.
+
 **What this unlocks:** Today's coaching calls visible in dashboard. Follow-up reminders push to Google Calendar.
 
 **Scope — one-way only: Coach Bot → Google Calendar**
 Do NOT pull calendar data into Coach Bot (privacy, complexity).
 Do NOT duplicate YouCanBookMe sequences.
+
+**LinkedIn:** Not in scope — **no automation** (franchise agreement risk; Sandi March 24 2026). Do not add to this phase or any other.
 
 ### 11A — Today's calls display
 Manual entry initially (Sandi types who she's talking to today).
@@ -1038,6 +1081,7 @@ Fred's profile:
 - High C/D analytical personality — process-oriented
 - Franchise coach, TES network, Boise ID
 - Interested in: vision statement generation, franchise document automation, Gmail integration, real-time in-call coaching
+- **Not in scope:** LinkedIn automation (permanent exclusion — Sandi March 24 2026)
 - Described as multiplier and potential distribution channel
 
 **Deliverables:**
@@ -1105,19 +1149,29 @@ Enterprise: Franchisor buying for all coaches — quote separately
 
 ---
 
-## OPEN QUESTIONS — Ask Sandi on Tuesday March 24
+## OPEN QUESTIONS — March 24 2026 follow-up
 
-From the 62-question audit, these are still gaps:
+Several items below were **ANSWERED** on the March 24 call. Remaining gaps still need Sandi input.
+
+**ANSWERED — Q20 — Gone quiet thresholds:**  
+IC=14, C1=21, C2=14, C3=14, C4=60, C5=60 days (exact). Sandi decides inactive for C4+ long tenures.
+
+**ANSWERED — Q1/Q2 — VALIDATE/GATHER threshold:**  
+VALIDATE = **C4 and C5 only** (active bucket). GATHER = **IC, C1, C2, C3** (active bucket). **Stage-based only** — not readiness-based, not session-count-based. PAUSE = `outcome_bucket` = `paused` (overrides all).
+
+**ANSWERED — Q11 — Can clients move backwards?**  
+**No. Never.** C4 clients may explore multiple businesses — **not** regression. Clients never skip stages.
+
+**ANSWERED — Q60 — GHOSTING as fourth status?**  
+**Not** a fourth `outcome_bucket`. **Gone Quiet** is a **badge/flag on the client card**, not a pipeline status bucket.
 
 **Section 2 — Stage gates (critical before Phase 6D):**
 - Q6: What exactly happens at IC → C1? What defines "they're in"?
 - Q8: What conversation defines C2 → C3 readiness?
-- Q11: Can clients move backwards? (assume no until confirmed)
-- Q20: Exact day thresholds per stage before gone quiet fires?
 
 **Section 6 — Pink flags:**
 - Q33: Which pink flags are automatic pauses vs just warnings?
-- Q35: Has a pink flag ever resolved? Do we need resolved/unresolved status?
+- Q35: Partially answered — resolved flags use `resolved:` prefix; green = historical, pink = active (see Phase 5D).
 
 **Section 7 — DISC coaching:**
 - Q41: Exact questions for High D vs High S at the same stage?
@@ -1137,7 +1191,6 @@ From the 62-question audit, these are still gaps:
 - Confirm: what does her PPTX vision template look like? Send the template.
 
 **Section 11 — Configuration:**
-- Q60: Is GHOSTING a fourth status she wants visible (beyond VALIDATE/GATHER/PAUSE)?
 - Confirm: display names for stages — are current names right?
   IC → Initial Contact
   C1 → Seeker Connection
@@ -1206,5 +1259,5 @@ After setup: Zero internet required. Ever.
 
 *This document is the single source of truth for all production development.*
 *All Cursor prompts reference this file.*
-*Last updated: March 21 2026*
+*Last updated: March 24 2026*
 *Developer: Dr. Data — Decision Intelligence*
