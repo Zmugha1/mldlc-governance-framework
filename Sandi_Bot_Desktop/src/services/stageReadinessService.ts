@@ -210,6 +210,16 @@ export type PipelineStage =
 export type Recommendation =
   'VALIDATE' | 'GATHER' | 'PAUSE';
 
+/** Gone-quiet thresholds (days) — confirmed Sandi March 24 2026 */
+const GONE_QUIET_DAYS: Record<PipelineStage, number> = {
+  IC: 14,
+  C1: 21,
+  C2: 14,
+  C3: 14,
+  C4: 60,
+  C5: 60,
+};
+
 export interface StageReadiness {
   client_id: string;
   client_name: string;
@@ -225,6 +235,8 @@ export interface StageReadiness {
   pink_flags: string[];
   next_stage: PipelineStage | null;
   next_stage_full: string | null;
+  gone_quiet: boolean;
+  gone_quiet_days: number;
 }
 
 const STAGE_FULL_NAMES: Record<PipelineStage, string> = {
@@ -287,6 +299,7 @@ interface StageReadinessRow {
   inferred_stage: string;
   readiness_score: number;
   pink_flags: string;
+  updated_at: string | null;
   has_disc: number;
   has_you2: number;
   has_vision: number;
@@ -559,81 +572,65 @@ function buildWhatIsNeeded(
     : ['All requirements met — ready to advance'];
 }
 
+/**
+ * Stage-based recommendation only (Sandi March 24 2026).
+ * Inactive clients get GATHER so they are not counted as VALIDATE in pipeline views.
+ */
 function calculateRecommendation(
-  client_name: string,
-  outcome_bucket: string,
-  has_disc: boolean,
-  has_you2: boolean,
-  fathom_count: number,
-  pink_flags: string[],
-  coachRecommendation: string | null
+  outcome_bucket: string | undefined | null,
+  stage: PipelineStage
 ): Recommendation {
-  let recommendation: Recommendation | null = null;
-  const normalizedCoachRecommendation = (coachRecommendation ?? '')
-    .toUpperCase()
-    .trim();
-  if (normalizedCoachRecommendation === 'VALIDATE' ||
-      normalizedCoachRecommendation === 'GATHER' ||
-      normalizedCoachRecommendation === 'PAUSE') {
-    recommendation = normalizedCoachRecommendation as Recommendation;
+  const bucket = (outcome_bucket ?? 'active').toLowerCase();
+  if (bucket === 'paused') {
+    return 'PAUSE';
   }
-
-  if (!recommendation) {
-    if (has_disc && has_you2 && fathom_count >= 1) {
-      recommendation = 'VALIDATE';
-    } else {
-      recommendation = 'GATHER';
-    }
+  if (bucket === 'inactive') {
+    return 'GATHER';
   }
-
-  // Overrides
-  if (outcome_bucket === 'paused') {
-    recommendation = 'PAUSE';
-  } else if (!has_disc && !has_you2 && fathom_count === 0) {
-    recommendation = 'GATHER';
+  if (stage === 'C4' || stage === 'C5') {
+    return 'VALIDATE';
   }
-
-  console.log(
-    '[stageReadiness] recommendation',
-    client_name,
-    outcome_bucket,
-    JSON.stringify(pink_flags),
-    normalizedCoachRecommendation || null,
-    recommendation
-  );
-  return recommendation;
+  return 'GATHER';
 }
 
-async function getLatestCoachRecommendation(
+function daysSinceReferenceLocal(
+  isoOrSqlDate: string | null | undefined
+): number | null {
+  if (isoOrSqlDate == null || String(isoOrSqlDate).trim() === '') {
+    return null;
+  }
+  const d = new Date(isoOrSqlDate);
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+  const now = new Date();
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+  const ref = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate()
+  );
+  return Math.floor(
+    (today.getTime() - ref.getTime()) / 86_400_000
+  );
+}
+
+async function getLatestSessionDateForClient(
   clientId: string
 ): Promise<string | null> {
-  const rows = await dbSelect<{
-    block_coach_assessment: string | null;
-  }>(
-    `SELECT block_coach_assessment
+  const rows = await dbSelect<{ session_date: string | null }>(
+    `SELECT session_date
      FROM coaching_sessions
      WHERE client_id = ?
      ORDER BY session_date DESC, id DESC
      LIMIT 1`,
     [clientId]
   );
-
-  const latestSession = rows[0];
-  let coachRecommendation: string | null = null;
-
-  if (latestSession?.block_coach_assessment) {
-    try {
-      const assessment = JSON.parse(
-        latestSession.block_coach_assessment
-      ) as { recommendation?: string };
-      coachRecommendation =
-        assessment?.recommendation ?? null;
-    } catch {
-      coachRecommendation = null;
-    }
-  }
-
-  return coachRecommendation;
+  return rows?.[0]?.session_date ?? null;
 }
 
 async function getMaxBlocksComplete(
@@ -669,7 +666,6 @@ async function rowToStageReadiness(row: StageReadinessRow): Promise<StageReadine
   const hasVision = row.has_vision === 1;
   const fathomCount = Number(row.fathom_count ?? 0);
   const maxBlocks = await getMaxBlocksComplete(row.id);
-  const coachRecommendation = await getLatestCoachRecommendation(row.id);
   const stage = normalizeStage(row.inferred_stage ?? '');
   const comp: Completeness = {
     has_disc: hasDisc,
@@ -689,33 +685,37 @@ async function rowToStageReadiness(row: StageReadinessRow): Promise<StageReadine
     hasVision,
     maxBlocks
   );
-  const rec = calculateRecommendation(
-    row.name,
-    row.outcome_bucket,
-    hasDisc,
-    hasYou2,
-    fathomCount,
-    pinkFlags,
-    coachRecommendation
-  );
+  const bucket = row.outcome_bucket ?? 'active';
+  const rec = calculateRecommendation(bucket, stage);
   const nextStage = STAGE_NEXT[stage];
+
+  const latestSessionDate =
+    await getLatestSessionDateForClient(row.id);
+  const refDate =
+    latestSessionDate ?? row.updated_at ?? '';
+  const daysSince = daysSinceReferenceLocal(refDate);
+  const threshold = GONE_QUIET_DAYS[stage] ?? 14;
+  const bucketLower = bucket.toLowerCase();
+  const goneQuiet =
+    bucketLower === 'active' &&
+    daysSince !== null &&
+    daysSince > threshold;
+
   const recommendationReason =
     rec === 'PAUSE'
-      ? row.outcome_bucket === 'paused'
-        ? 'PAUSE — Client is in paused bucket'
-        : `PAUSE — ${pinkFlags.length} pink flags need resolution`
+      ? 'PAUSE — Client is in paused bucket'
       : rec === 'VALIDATE'
-        ? nextStage
-          ? `VALIDATE — Ready to advance to ${STAGE_FULL_NAMES[nextStage]}`
-          : 'VALIDATE — Client has completed the journey'
-        : `GATHER — ${whatIsNeeded[0] ?? 'Continue building readiness'}`;
+        ? 'VALIDATE — Stage C4/C5 (validation / purchase track)'
+        : bucketLower === 'inactive'
+          ? 'GATHER — Inactive (excluded from active pipeline counts)'
+          : 'GATHER — Stage IC–C3 (early pipeline)';
 
   return {
     client_id: row.id,
     client_name: row.name,
     current_stage: stage,
     current_stage_full: STAGE_FULL_NAMES[stage],
-    outcome_bucket: row.outcome_bucket ?? 'active',
+    outcome_bucket: bucket,
     recommendation: rec,
     recommendation_reason: recommendationReason,
     readiness_score: readinessScore,
@@ -724,7 +724,9 @@ async function rowToStageReadiness(row: StageReadinessRow): Promise<StageReadine
     what_is_needed: whatIsNeeded,
     pink_flags: pinkFlags,
     next_stage: nextStage,
-    next_stage_full: nextStage ? STAGE_FULL_NAMES[nextStage] : null
+    next_stage_full: nextStage ? STAGE_FULL_NAMES[nextStage] : null,
+    gone_quiet: goneQuiet,
+    gone_quiet_days: goneQuiet ? (daysSince ?? 0) : 0
   };
 }
 
@@ -739,6 +741,7 @@ export async function getStageReadiness(
        c.inferred_stage,
        c.readiness_score,
        c.pink_flags,
+       c.updated_at,
        CASE WHEN dp.client_id IS NOT NULL
          THEN 1 ELSE 0 END as has_disc,
        CASE WHEN y.client_id IS NOT NULL
@@ -778,6 +781,7 @@ export async function getAllStageReadiness(): Promise<StageReadiness[]> {
          c.inferred_stage,
          c.readiness_score,
          c.pink_flags,
+         c.updated_at,
          CASE WHEN dp.client_id IS NOT NULL
            THEN 1 ELSE 0 END as has_disc,
          CASE WHEN y.client_id IS NOT NULL
