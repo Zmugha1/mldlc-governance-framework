@@ -16,6 +16,7 @@ import {
   Check,
   ClipboardList,
   Clock,
+  Calendar,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,7 @@ import { getAllClients, createClient, inactivateClient } from '@/services/client
 import { clientToDisplay } from '@/services/clientAdapter';
 import { calculateReadinessScore } from '@/services/coachingService';
 import { dbExecute, dbSelect } from '@/services/db';
+import { logEntry } from '@/services/auditService';
 import {
   getAllClientsForReview,
   getClientYou2ForReview,
@@ -200,6 +202,24 @@ function formatGoneQuietLabel(days: number | null | undefined): string {
 
 const GONE_QUIET_SESSION_DISCLAIMER =
   'Based on last uploaded Fathom session. Upload new calls to keep this current.';
+
+function formatLastContactDisplay(raw: string): string {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function toDateInputValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
 
 function deriveStyleLabel(
   d: number,
@@ -440,6 +460,12 @@ function ClientDetailModal({
     company: '',
   });
   const [isSavingContact, setIsSavingContact] = useState(false);
+  const [lastContactDateDb, setLastContactDateDb] = useState<string | null>(
+    null
+  );
+  const [isEditingLastContact, setIsEditingLastContact] = useState(false);
+  const [lastContactDraft, setLastContactDraft] = useState('');
+  const [isSavingLastContact, setIsSavingLastContact] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState<{
     session_date: string;
@@ -498,8 +524,9 @@ function ClientDetailModal({
         email: string | null;
         phone: string | null;
         company: string | null;
+        last_contact_date: string | null;
       }>(
-        `SELECT email, phone, company FROM clients
+        `SELECT email, phone, company, last_contact_date FROM clients
          WHERE id = ?`,
         [client.id]
       )
@@ -514,10 +541,12 @@ function ClientDetailModal({
             phone: rows[0]?.phone ?? '',
             company: rows[0]?.company ?? '',
           });
+          setLastContactDateDb(rows[0]?.last_contact_date ?? null);
         })
         .catch(() => {
           setContact({ email: null, phone: null, company: null });
           setContactDraft({ email: '', phone: '', company: '' });
+          setLastContactDateDb(null);
         });
       dbSelect<{
         natural_d: number | null;
@@ -701,8 +730,27 @@ function ClientDetailModal({
       setFathomSessionCount(0);
       setIsEditingContact(false);
       setShowAddNote(false);
+      setLastContactDateDb(null);
+      setIsEditingLastContact(false);
+      setLastContactDraft('');
     }
   }, [client?.id, isOpen]);
+
+  const mostRecentSessionDate = useMemo(() => {
+    for (const s of fathomSessions) {
+      const d = s.session_date?.trim();
+      if (d) return d;
+    }
+    return null;
+  }, [fathomSessions]);
+
+  const lastContactedDisplay = useMemo(() => {
+    const db = lastContactDateDb?.trim();
+    if (db) return formatLastContactDisplay(db);
+    if (mostRecentSessionDate)
+      return formatLastContactDisplay(mostRecentSessionDate);
+    return 'Not set';
+  }, [lastContactDateDb, mostRecentSessionDate]);
 
   if (!client) return null;
 
@@ -796,8 +844,9 @@ function ClientDetailModal({
         email: string | null;
         phone: string | null;
         company: string | null;
+        last_contact_date: string | null;
       }>(
-        `SELECT email, phone, company FROM clients
+        `SELECT email, phone, company, last_contact_date FROM clients
          WHERE id = ?`,
         [client.id]
       );
@@ -811,9 +860,36 @@ function ClientDetailModal({
         phone: rows[0]?.phone ?? '',
         company: rows[0]?.company ?? '',
       });
+      setLastContactDateDb(rows[0]?.last_contact_date ?? null);
       setIsEditingContact(false);
     } finally {
       setIsSavingContact(false);
+    }
+  };
+
+  const handleSaveLastContact = async () => {
+    const trimmed = lastContactDraft.trim();
+    if (!trimmed) return;
+    setIsSavingLastContact(true);
+    try {
+      const updatedAt = new Date().toISOString();
+      const oldVal = lastContactDateDb?.trim() ?? '';
+      await dbExecute(
+        `UPDATE clients SET last_contact_date = ?, updated_at = ? WHERE id = ?`,
+        [trimmed, updatedAt, client.id]
+      );
+      await logEntry(
+        'LAST_CONTACT_UPDATED',
+        client.id,
+        oldVal || null,
+        trimmed,
+        null,
+        'deterministic'
+      );
+      setLastContactDateDb(trimmed);
+      setIsEditingLastContact(false);
+    } finally {
+      setIsSavingLastContact(false);
     }
   };
 
@@ -1206,6 +1282,71 @@ function ClientDetailModal({
                     </div>
                   </>
                 )}
+                <div className="border-t border-slate-100 pt-3 mt-1 space-y-2">
+                  {isEditingLastContact ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="last-contact-date">Last Contacted</Label>
+                      <Input
+                        id="last-contact-date"
+                        type="date"
+                        value={lastContactDraft}
+                        onChange={(e) => setLastContactDraft(e.target.value)}
+                        className="mt-1 max-w-[12rem]"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          className="bg-teal-600 hover:bg-teal-700 text-white"
+                          onClick={handleSaveLastContact}
+                          disabled={isSavingLastContact || !lastContactDraft.trim()}
+                        >
+                          {isSavingLastContact ? 'Saving...' : 'Save'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsEditingLastContact(false)}
+                          disabled={isSavingLastContact}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Calendar
+                          className="h-4 w-4 text-slate-400 shrink-0 mt-0.5"
+                          aria-hidden
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-500">Last Contacted</p>
+                          <p className="text-sm">{lastContactedDisplay}</p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => {
+                          const db = lastContactDateDb?.trim();
+                          setLastContactDraft(
+                            db
+                              ? toDateInputValue(db)
+                              : mostRecentSessionDate
+                                ? toDateInputValue(mostRecentSessionDate)
+                                : ''
+                          );
+                          setIsEditingLastContact(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
