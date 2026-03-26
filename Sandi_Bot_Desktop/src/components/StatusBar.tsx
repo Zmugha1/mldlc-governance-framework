@@ -33,7 +33,10 @@ export default function StatusBar() {
     const db = await getDb();
     const [backupInfo, clientResult] = await Promise.all([
       getLastBackup(),
-      db.select<Array<{ count: number }>>('SELECT COUNT(*) as count FROM clients', []),
+      db.select<Array<{ count: number }>>(
+        "SELECT COUNT(*) as count FROM clients WHERE outcome_bucket != 'inactive'",
+        []
+      ),
     ]);
     setBackup(backupInfo);
     setClientCount(Number(clientResult[0]?.count ?? 0));
