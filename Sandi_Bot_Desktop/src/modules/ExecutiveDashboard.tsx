@@ -99,6 +99,18 @@ function activePinkFlagCount(flags: string[]): number {
   return flags.filter((f) => !String(f).startsWith('resolved:')).length;
 }
 
+/** Parse client.pink_flags JSON array; on failure returns []. */
+function pinkFlagsFromClientJson(raw: string | null | undefined): string[] {
+  try {
+    if (raw == null || String(raw).trim() === '') return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => String(item));
+  } catch {
+    return [];
+  }
+}
+
 function parseDiscLetter(style: string | undefined | null): 'D' | 'I' | 'S' | 'C' | null {
   const ch = (style ?? '').trim().charAt(0).toUpperCase();
   if (ch === 'D' || ch === 'I' || ch === 'S' || ch === 'C') return ch;
@@ -504,7 +516,7 @@ export default function ExecutiveDashboard() {
         discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(r.client_id)),
         sessionCount,
         lastSessionDate,
-        pinkCount: activePinkFlagCount(r.pink_flags ?? []),
+        pinkCount: activePinkFlagCount(pinkFlagsFromClientJson(cl.pink_flags)),
       });
     }
     list.sort((a, b) => {
@@ -880,7 +892,12 @@ export default function ExecutiveDashboard() {
                 <TableHead>DISC</TableHead>
                 <TableHead>Sessions</TableHead>
                 <TableHead>Pink flags</TableHead>
-                <TableHead>Last contact</TableHead>
+                <TableHead className="h-auto min-h-10 align-top whitespace-normal py-2">
+                  <span className="block font-medium">Last Contact</span>
+                  <span className="mt-0.5 block text-xs font-normal text-slate-500 normal-case">
+                    (click client to update)
+                  </span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
