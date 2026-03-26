@@ -7,9 +7,10 @@ import {
   Clock,
   ArrowUpRight,
   Zap,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   BarChart,
@@ -329,6 +330,31 @@ export default function ExecutiveDashboard() {
     });
   }, [clients]);
 
+  const goneQuietClients = useMemo(() => {
+    const byId = new Map(clients.map((c) => [c.id, c]));
+    return readinessRows
+      .filter(
+        (r) =>
+          r.outcome_bucket?.toLowerCase() === 'active' &&
+          r.gone_quiet === true
+      )
+      .map((r) => {
+        const c = byId.get(r.client_id);
+        const stageLabel = c
+          ? normalizeDisplayStage(c.inferred_stage ?? c.stage)
+          : r.current_stage_full;
+        const days = Math.max(0, Math.round(Number(r.gone_quiet_days ?? 0)));
+        return {
+          id: r.client_id,
+          name: r.client_name,
+          stageLabel,
+          daysSinceContact: days,
+          discStyle: c?.disc_style?.trim() || null,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [readinessRows, clients]);
+
   if (loading) {
     return (
       <div className="p-6 space-y-4">
@@ -643,6 +669,46 @@ export default function ExecutiveDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {goneQuietClients.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div className="min-w-0">
+              <CardTitle className="text-lg">Needs Attention</CardTitle>
+              <CardDescription className="mt-1.5 text-slate-500">
+                Haven&apos;t heard from these clients
+              </CardDescription>
+            </div>
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" aria-hidden />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {goneQuietClients.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex flex-col gap-2 p-3 rounded-lg border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-900">{row.name}</p>
+                    <p className="text-sm text-slate-600">
+                      {row.stageLabel}
+                      {' · '}
+                      {row.daysSinceContact === 1
+                        ? '1 day since contact'
+                        : `${row.daysSinceContact} days since contact`}
+                    </p>
+                    {row.discStyle ? (
+                      <Badge variant="outline" className="mt-1 border-amber-200 bg-amber-50 text-xs text-amber-900">
+                        {row.discStyle}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Pipeline Stages */}
       <Card>
