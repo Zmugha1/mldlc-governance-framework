@@ -172,6 +172,38 @@ readiness alone. See VALIDATE/GATHER RULE below.
 
 ---
 
+## CONFIRMED DATABASE STATE
+
+### KNOWN DATA ISSUE — Session Dates
+
+14 of 16 clients have coaching_sessions
+with session_date = 2023-02-15 or
+2023-02-20. These are placeholder dates
+from the initial Fathom extraction.
+
+They do NOT reflect actual coaching
+call dates.
+
+Impact:
+- Gone Quiet badges may fire incorrectly
+  for recently coached clients
+- Last Contact in Clients at a Glance
+  will show ⚠️ for these clients
+- A disclaimer is shown on all Gone
+  Quiet badges explaining this
+
+Resolution:
+When Sandi uploads new Fathom transcripts
+after real coaching calls, the dates
+will update automatically.
+The 2023 dates will be replaced as
+new sessions are added.
+
+Do not attempt to fix dates manually
+without Sandi confirming actual call dates.
+
+---
+
 ## VALIDATE/GATHER RULE — CONFIRMED MARCH 24 2026
 
 CRITICAL: This was wrong before the March 24 call.
