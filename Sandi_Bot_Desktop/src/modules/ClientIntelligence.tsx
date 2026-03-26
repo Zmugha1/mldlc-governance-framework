@@ -48,6 +48,7 @@ import {
   getStageReadiness,
   moveClientStage,
   getAllStageReadiness,
+  type Recommendation,
   type StageReadiness,
 } from '@/services/stageReadinessService';
 import { getDiscProfilesMap } from '@/services/dashboardService';
@@ -156,6 +157,8 @@ function splitPinkFlags(allFlags: string[]): {
 type DisplayClient = ReturnType<typeof clientToDisplay> & {
   gone_quiet?: boolean;
   gone_quiet_days?: number;
+  /** From getAllStageReadiness — overrides legacy client.recommendation (PUSH/NURTURE) for badges */
+  recommendationFromReadiness?: Recommendation;
 };
 
 function shouldShowGoneQuietBadge(client: {
@@ -1012,7 +1015,11 @@ function ClientDetailModal({
                   <p className="font-semibold">{client.persona}</p>
                   <div className="mt-2 flex flex-col gap-2">
                     <RecommendationBadge
-                      action={client.recommendation}
+                      action={
+                        readiness?.recommendation ??
+                        client.recommendationFromReadiness ??
+                        client.recommendation
+                      }
                       confidence={client.confidence}
                     />
                     {shouldShowGoneQuietBadge(client) && (
@@ -2664,6 +2671,9 @@ export default function ClientIntelligence() {
 
   const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
   const [readinessMap, setReadinessMap] = useState<Map<string, number>>(new Map());
+  const [recommendationById, setRecommendationById] = useState<
+    Map<string, Recommendation>
+  >(new Map());
   const [goneQuietById, setGoneQuietById] = useState<
     Map<string, { gone_quiet: boolean; gone_quiet_days: number }>
   >(new Map());
@@ -2692,18 +2702,21 @@ export default function ClientIntelligence() {
         setClients(c);
         setDiscProfiles(profiles);
         const rMap = new Map<string, number>();
+        const recMap = new Map<string, Recommendation>();
         const gqMap = new Map<
           string,
           { gone_quiet: boolean; gone_quiet_days: number }
         >();
         readiness.forEach((r) => {
           rMap.set(r.client_id, r.readiness_score);
+          recMap.set(r.client_id, r.recommendation);
           gqMap.set(r.client_id, {
             gone_quiet: Boolean(r.gone_quiet),
             gone_quiet_days: Number(r.gone_quiet_days ?? 0),
           });
         });
         setReadinessMap(rMap);
+        setRecommendationById(recMap);
         setGoneQuietById(gqMap);
         const dMap = new Map<string, { style: 'D' | 'I' | 'S' | 'C'; label: string }>();
         discRows.forEach((row) => {
@@ -2823,6 +2836,7 @@ export default function ClientIntelligence() {
           }),
           gone_quiet: gq?.gone_quiet,
           gone_quiet_days: gq?.gone_quiet_days,
+          recommendationFromReadiness: recommendationById.get(client.id),
         } satisfies DisplayClient;
       }),
     [
@@ -2830,6 +2844,7 @@ export default function ClientIntelligence() {
       discDerivedMap,
       discProfiles,
       readinessMap,
+      recommendationById,
       goneQuietById,
     ]
   );
@@ -2845,6 +2860,7 @@ export default function ClientIntelligence() {
           }),
           gone_quiet: gq?.gone_quiet,
           gone_quiet_days: gq?.gone_quiet_days,
+          recommendationFromReadiness: recommendationById.get(selectedClient.id),
         };
       })()
     : null;
@@ -3048,7 +3064,9 @@ export default function ClientIntelligence() {
 
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
                   <RecommendationBadge
-                    action={client.recommendation}
+                    action={
+                      client.recommendationFromReadiness ?? client.recommendation
+                    }
                     confidence={client.confidence}
                   />
                   {shouldShowGoneQuietBadge(client) && (
