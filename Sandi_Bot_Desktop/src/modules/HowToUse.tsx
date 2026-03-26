@@ -186,6 +186,119 @@ export default function HowToUse() {
                   </p>
                 </div>
               </div>
+
+              <div className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]">
+                <h2 className="text-lg font-bold text-[#333333]">Your Executive Dashboard</h2>
+                <p>
+                  This is your home screen. Open it every morning. It shows you everything you need to
+                  know in 60 seconds.
+                </p>
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">The 6 KPI Cards</h3>
+                  <div className="space-y-4 text-[#6B6B6B]">
+                    <div>
+                      <p className="font-semibold text-[#333333]">Total Clients (16)</p>
+                      <p>Everyone in your pipeline right now. Inactive clients are not counted.</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">Clients with Sessions (7)</p>
+                      <p>
+                        Clients where you have uploaded at least one Fathom call. As you upload more
+                        calls this number grows.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">Profile Completeness (100%)</p>
+                      <p>
+                        How many clients have all four files: DISC report, You 2.0, TUMAY, and at
+                        least one Fathom call. 100% means all your active clients have complete files.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">Conversion Rate (0%)</p>
+                      <p>
+                        How many clients have moved all the way from Initial Contact to Business
+                        Purchase. This grows as clients complete their journey.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">Calls This Week (0)</p>
+                      <p>
+                        Fathom sessions you have uploaded this week. Upload a call transcript and
+                        this updates.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">Time Saved (18.5 hrs)</p>
+                      <p>
+                        Hours saved by Coach Bot processing your sessions, profiles, and DISC reports
+                        automatically instead of manually.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">
+                    AI Recommendations Donut
+                  </h3>
+                  <p className="mb-2 text-[#6B6B6B]">Shows how your pipeline is balanced:</p>
+                  <ul className="list-inside list-disc space-y-2 text-[#6B6B6B]">
+                    <li>
+                      Green = VALIDATE (2) — clients in compartments 4 and 5, exploring businesses
+                    </li>
+                    <li>
+                      Orange = GATHER (7) — clients in compartments 1 through 3, still learning
+                    </li>
+                    <li>Gray = PAUSE (4) — clients on hold</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">
+                    Pipeline Distribution
+                  </h3>
+                  <p className="text-[#6B6B6B]">
+                    Bar chart showing how many clients are in each compartment. Tall bar at Seeker
+                    Clarification means most of your clients are in early discovery phase.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Validate Clients</h3>
+                  <p className="text-[#6B6B6B]">
+                    Your two most important clients right now. These are in compartment 4 or 5 and
+                    need your attention to move toward a decision.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">
+                    5-Compartment Coaching Journey
+                  </h3>
+                  <p className="text-[#6B6B6B]">
+                    A snapshot of your entire pipeline. The number on each compartment card is how
+                    many clients are currently there.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Weekly Activity</h3>
+                  <p className="text-[#6B6B6B]">
+                    Will show your call and email activity once Google Calendar is connected. Coming
+                    soon.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">DISC Distribution</h3>
+                  <p className="text-[#6B6B6B]">
+                    Shows the personality breakdown of all your clients. High I (7) means most of
+                    your clients are Influencing style — enthusiastic, story-driven, people-oriented.
+                  </p>
+                </div>
+              </div>
             </CollapsibleSection>
           </div>
 
