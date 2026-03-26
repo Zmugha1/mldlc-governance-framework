@@ -45,8 +45,9 @@ import { getDashboardStats, getAllClients } from '@/services/clientService';
 import { getDiscStyleBreakdown, getDashboardKPIs } from '@/services/dashboardService';
 import { getAllStageReadiness } from '@/services/stageReadinessService';
 import { getConversionRate } from '@/services/pipelineService';
-import type { DashboardStats } from '@/types';
+import type { Client, DashboardStats } from '@/types';
 import { normalizeDisplayStage } from '@/services/clientAdapter';
+import { deriveDominantStyle } from '@/config/discCoachingTips';
 import { dbSelect } from '@/services/db';
 import { cn } from '@/lib/utils';
 
@@ -102,6 +103,32 @@ function parseDiscLetter(style: string | undefined | null): 'D' | 'I' | 'S' | 'C
   const ch = (style ?? '').trim().charAt(0).toUpperCase();
   if (ch === 'D' || ch === 'I' || ch === 'S' || ch === 'C') return ch;
   return null;
+}
+
+function discLetterFromClient(cl: Client | undefined): 'D' | 'I' | 'S' | 'C' | null {
+  if (!cl) return null;
+  const fromStyle = parseDiscLetter(cl.disc_style);
+  if (fromStyle) return fromStyle;
+  const raw = cl.disc_scores?.trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const d = Number(parsed.D ?? parsed.d ?? 0);
+    const i = Number(parsed.I ?? parsed.i ?? 0);
+    const s = Number(parsed.S ?? parsed.s ?? 0);
+    const c = Number(parsed.C ?? parsed.c ?? 0);
+    if (![d, i, s, c].some((n) => n > 0)) return null;
+    return parseDiscLetter(deriveDominantStyle(d, i, s, c));
+  } catch {
+    return null;
+  }
+}
+
+function glanceDiscLetter(
+  cl: Client | undefined,
+  profileLetter: 'D' | 'I' | 'S' | 'C' | undefined
+): 'D' | 'I' | 'S' | 'C' | null {
+  return discLetterFromClient(cl) ?? profileLetter ?? null;
 }
 
 function outcomeBucketDisplay(bucket: string | undefined | null): string {
@@ -226,6 +253,9 @@ export default function ExecutiveDashboard() {
   const [sessionStatsByClient, setSessionStatsByClient] = useState<
     Map<string, { count: number; lastDate: string | null }>
   >(new Map());
+  const [discLetterByProfileClientId, setDiscLetterByProfileClientId] = useState<
+    Map<string, 'D' | 'I' | 'S' | 'C'>
+  >(() => new Map());
 
   const loadDashboardData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -246,6 +276,7 @@ export default function ExecutiveDashboard() {
         discRows,
         kpis,
         sessionRows,
+        discProfileRows,
       ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
@@ -297,6 +328,17 @@ export default function ExecutiveDashboard() {
            GROUP BY client_id`,
           []
         ),
+        dbSelect<{
+          client_id: string;
+          natural_d: number | null;
+          natural_i: number | null;
+          natural_s: number | null;
+          natural_c: number | null;
+        }>(
+          `SELECT client_id, natural_d, natural_i, natural_s, natural_c
+           FROM client_disc_profiles`,
+          []
+        ),
       ]);
       setStats(s);
       setClients(c);
@@ -310,6 +352,17 @@ export default function ExecutiveDashboard() {
         });
       }
       setSessionStatsByClient(sessMap);
+      const discFromProfiles = new Map<string, 'D' | 'I' | 'S' | 'C'>();
+      for (const row of discProfileRows) {
+        const d = Number(row.natural_d ?? 0);
+        const i = Number(row.natural_i ?? 0);
+        const s = Number(row.natural_s ?? 0);
+        const c = Number(row.natural_c ?? 0);
+        if (Math.max(d, i, s, c) <= 0) continue;
+        const letter = parseDiscLetter(deriveDominantStyle(d, i, s, c));
+        if (letter) discFromProfiles.set(row.client_id, letter);
+      }
+      setDiscLetterByProfileClientId(discFromProfiles);
       setActiveConversationCount(Number(conversationRows[0]?.count ?? 0));
 
       const fc = Number(fathomRows[0]?.count ?? 0);
@@ -418,31 +471,6 @@ export default function ExecutiveDashboard() {
     });
   }, [clients]);
 
-  const goneQuietClients = useMemo(() => {
-    const byId = new Map(clients.map((c) => [c.id, c]));
-    return readinessRows
-      .filter(
-        (r) =>
-          r.outcome_bucket?.toLowerCase() === 'active' &&
-          r.gone_quiet === true
-      )
-      .map((r) => {
-        const c = byId.get(r.client_id);
-        const stageLabel = c
-          ? normalizeDisplayStage(c.inferred_stage ?? c.stage)
-          : r.current_stage_full;
-        const days = Math.max(0, Math.round(Number(r.gone_quiet_days ?? 0)));
-        return {
-          id: r.client_id,
-          name: r.client_name,
-          stageLabel,
-          daysSinceContact: days,
-          discStyle: c?.disc_style?.trim() || null,
-        };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [readinessRows, clients]);
-
   const clientsAtAGlanceRows = useMemo(() => {
     const byId = new Map(clients.map((cl) => [cl.id, cl]));
     type Row = {
@@ -473,7 +501,7 @@ export default function ExecutiveDashboard() {
         compartment: normalizeDisplayStage(cl.inferred_stage ?? cl.stage),
         statusLabel: outcomeBucketDisplay(r.outcome_bucket),
         recommendation: rec,
-        discLetter: parseDiscLetter(cl.disc_style),
+        discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(r.client_id)),
         sessionCount,
         lastSessionDate,
         pinkCount: activePinkFlagCount(r.pink_flags ?? []),
@@ -487,7 +515,7 @@ export default function ExecutiveDashboard() {
       return a.name.localeCompare(b.name);
     });
     return list;
-  }, [readinessRows, clients, sessionStatsByClient]);
+  }, [readinessRows, clients, sessionStatsByClient, discLetterByProfileClientId]);
 
   if (loading) {
     return (
@@ -809,46 +837,6 @@ export default function ExecutiveDashboard() {
         </CardContent>
       </Card>
 
-      {goneQuietClients.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
-            <div className="min-w-0">
-              <CardTitle className="text-lg">Needs Attention</CardTitle>
-              <CardDescription className="mt-1.5 text-slate-500">
-                Haven&apos;t heard from these clients
-              </CardDescription>
-            </div>
-            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" aria-hidden />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {goneQuietClients.map((row) => (
-                <div
-                  key={row.id}
-                  className="flex flex-col gap-2 p-3 rounded-lg border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-900">{row.name}</p>
-                    <p className="text-sm text-slate-600">
-                      {row.stageLabel}
-                      {' · '}
-                      {row.daysSinceContact === 1
-                        ? '1 day since contact'
-                        : `${row.daysSinceContact} days since contact`}
-                    </p>
-                    {row.discStyle ? (
-                      <Badge variant="outline" className="mt-1 border-amber-200 bg-amber-50 text-xs text-amber-900">
-                        {row.discStyle}
-                      </Badge>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Pipeline Stages */}
       <Card>
         <CardHeader>
@@ -921,8 +909,15 @@ export default function ExecutiveDashboard() {
                     <TableCell>
                       {row.discLetter ? (
                         <span
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white"
-                          style={{ backgroundColor: DISC_LETTER_COLORS[row.discLetter] }}
+                          className={cn(
+                            'inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold',
+                            row.discLetter === 'I'
+                              ? 'text-slate-900'
+                              : 'text-white'
+                          )}
+                          style={{
+                            backgroundColor: DISC_LETTER_COLORS[row.discLetter],
+                          }}
                         >
                           {row.discLetter}
                         </span>
