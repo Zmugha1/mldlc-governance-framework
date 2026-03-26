@@ -396,12 +396,12 @@ export default function ExecutiveDashboard() {
           color="#22C55E"
         />
         <KPICard
-          title="Avg. Readiness Score"
+          title="Profile Completeness"
           value={`${avgReadinessPercent}%`}
-          change="Across 4 dimensions"
+          change="Clients with complete files"
           changeType="positive"
           icon={Target}
-          description="Identity, Commitment, Financial, Execution"
+          description="DISC + You 2.0 + TUMAY + Fathom"
           color="#F59E0B"
         />
         <KPICard
