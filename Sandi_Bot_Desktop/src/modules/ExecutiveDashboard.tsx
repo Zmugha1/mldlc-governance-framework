@@ -30,7 +30,7 @@ import { stageConfig } from '@/data/sampleClients';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
 import { getDiscStyleBreakdown, getDashboardKPIs } from '@/services/dashboardService';
 import { getAllStageReadiness } from '@/services/stageReadinessService';
-import { getConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
+import { getConversionRate } from '@/services/pipelineService';
 import type { DashboardStats } from '@/types';
 import { normalizeDisplayStage } from '@/services/clientAdapter';
 import { dbSelect } from '@/services/db';
@@ -110,13 +110,9 @@ function KPICard({
 function PipelineStageCard({
   stage,
   count,
-  avgDays,
-  conversion,
 }: {
   stage: string;
   count: number;
-  avgDays: number;
-  conversion: number;
 }) {
   const config = stageConfig[stage as keyof typeof stageConfig];
   if (!config) return null;
@@ -131,14 +127,6 @@ function PipelineStageCard({
       <div className="flex-1 min-w-0">
         <h4 className="font-semibold text-slate-900">{config.label}</h4>
         <p className="text-sm text-slate-500">{config.compartment}</p>
-      </div>
-      <div className="text-right shrink-0">
-        <p className="text-sm font-medium text-slate-900">{avgDays} days</p>
-        <p className="text-xs text-slate-500">avg. time</p>
-      </div>
-      <div className="text-right shrink-0 w-16">
-        <p className="text-sm font-medium text-slate-900">{conversion}%</p>
-        <p className="text-xs text-slate-500">convert</p>
       </div>
     </div>
   );
@@ -323,10 +311,9 @@ export default function ExecutiveDashboard() {
   // Priority clients are loaded in loadDashboardData().
 
   const pipelineStageCards = useMemo(() => {
-    const defaults = getPipelineStageDefaults();
     return STAGES.map((stage) => {
       const count = clients.filter((c) => normalizeDisplayStage(c.inferred_stage ?? c.stage) === stage).length;
-      return { stage, count, avgDays: defaults.avgDays, conversion: defaults.conversion };
+      return { stage, count };
     });
   }, [clients]);
 
@@ -652,13 +639,11 @@ export default function ExecutiveDashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pipelineStageCards.map(({ stage, count, avgDays, conversion }) => (
+            {pipelineStageCards.map(({ stage, count }) => (
               <PipelineStageCard
                 key={stage}
                 stage={stage}
                 count={count}
-                avgDays={avgDays}
-                conversion={conversion}
               />
             ))}
           </div>
