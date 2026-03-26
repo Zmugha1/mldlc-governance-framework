@@ -463,15 +463,43 @@ export async function detectAndSavePinkFlags(
   return merged;
 }
 
+/**
+ * Map stored inferred_stage / UI labels to pipeline codes.
+ * Display names (e.g. "Business Purchase") must resolve to C5 or recommendations default to IC → GATHER.
+ */
+const STAGE_INPUT_TO_PIPELINE: Record<string, PipelineStage> = {
+  IC: 'IC',
+  C1: 'C1',
+  C2: 'C2',
+  C3: 'C3',
+  C4: 'C4',
+  C5: 'C5',
+  'Initial Contact': 'IC',
+  'Seeker Connection': 'C1',
+  'Seeker Clarification': 'C2',
+  Possibilities: 'C3',
+  'Coach Client Collaboration': 'C3',
+  'Client Career 2.0': 'C4',
+  'Business Purchase': 'C5',
+};
+
 function normalizeStage(
   stage: string
 ): PipelineStage {
-  const valid = [
-    'IC', 'C1', 'C2', 'C3', 'C4', 'C5'
-  ];
-  return valid.includes(stage)
-    ? stage as PipelineStage
-    : 'IC';
+  const s = (stage ?? '').trim();
+  if (!s) return 'IC';
+  const valid: PipelineStage[] = ['IC', 'C1', 'C2', 'C3', 'C4', 'C5'];
+  const upper = s.toUpperCase();
+  if (valid.includes(upper as PipelineStage)) {
+    return upper as PipelineStage;
+  }
+  const direct = STAGE_INPUT_TO_PIPELINE[s];
+  if (direct) return direct;
+  const lower = s.toLowerCase();
+  for (const [key, val] of Object.entries(STAGE_INPUT_TO_PIPELINE)) {
+    if (key.toLowerCase() === lower) return val;
+  }
+  return 'IC';
 }
 
 function calculateReadinessScore(
@@ -491,7 +519,7 @@ function calculateReadinessScore(
   if (max_blocks >= 9) score += 15;
   else if (max_blocks >= 6) score += 10;
   else if (max_blocks >= 3) score += 5;
-  return score;
+  return Math.min(score, 100);
 }
 
 function buildWhyHere(stage: PipelineStage, comp: Completeness | null | undefined): string[] {
