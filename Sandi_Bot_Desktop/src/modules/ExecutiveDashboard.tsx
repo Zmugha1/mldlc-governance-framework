@@ -431,7 +431,7 @@ export default function ExecutiveDashboard() {
         />
         <KPICard
           title="Conversion Rate"
-          value={`${stats.conversionRate}%`}
+          value={`${dashboardKpis?.conversion_rate ?? 0}%`}
           change="IC to Closed"
           changeType="positive"
           icon={TrendingUp}
