@@ -28,7 +28,7 @@ import {
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { stageConfig } from '@/data/sampleClients';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
-import { getDiscStyleBreakdown } from '@/services/dashboardService';
+import { getDiscStyleBreakdown, getDashboardKPIs } from '@/services/dashboardService';
 import { getAllStageReadiness } from '@/services/stageReadinessService';
 import { getConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
 import type { DashboardStats } from '@/types';
@@ -157,6 +157,7 @@ export default function ExecutiveDashboard() {
   const [fathomCount, setFathomCount] = useState(0);
   const [tumayCount, setTumayCount] = useState(0);
   const [discCount, setDiscCount] = useState(0);
+  const [dashboardKpis, setDashboardKpis] = useState<Awaited<ReturnType<typeof getDashboardKPIs>> | null>(null);
 
   const loadDashboardData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -175,6 +176,7 @@ export default function ExecutiveDashboard() {
         fathomRows,
         tumayRows,
         discRows,
+        kpis,
       ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
@@ -213,6 +215,7 @@ export default function ExecutiveDashboard() {
            WHERE c.outcome_bucket != 'inactive'`,
           []
         ),
+        getDashboardKPIs(),
       ]);
       setStats(s);
       setClients(c);
@@ -226,6 +229,7 @@ export default function ExecutiveDashboard() {
       setFathomCount(fc);
       setTumayCount(tc);
       setDiscCount(dc);
+      setDashboardKpis(kpis);
       const timeSavedMinutes = fc * 15 + tc * 20 + dc * 10;
       setTimeSavedHours(Math.round((timeSavedMinutes / 60) * 10) / 10);
 
@@ -273,13 +277,13 @@ export default function ExecutiveDashboard() {
     const activeRows = readinessRows.filter((r) => r.outcome_bucket === 'active');
     const validateCount = activeRows.filter((r) => r.recommendation === 'VALIDATE').length;
     const gatherCount = activeRows.filter((r) => r.recommendation === 'GATHER').length;
-    const pauseCount = activeRows.filter((r) => r.recommendation === 'PAUSE').length;
+    const pauseCount = dashboardKpis?.pause_count ?? 0;
     return [
       { name: 'VALIDATE', value: validateCount, color: recommendationStyleMap.VALIDATE.color },
       { name: 'GATHER', value: gatherCount, color: recommendationStyleMap.GATHER.color },
       { name: 'PAUSE', value: pauseCount, color: recommendationStyleMap.PAUSE.color },
     ];
-  }, [readinessRows]);
+  }, [readinessRows, dashboardKpis]);
 
   const avgReadinessPercent = useMemo(() => {
     const activeRows = readinessRows.filter((r) => r.outcome_bucket === 'active');
