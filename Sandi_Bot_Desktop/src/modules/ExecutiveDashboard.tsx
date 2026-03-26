@@ -755,9 +755,14 @@ export default function ExecutiveDashboard() {
 
       {/* Priority Clients */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Validate Clients</CardTitle>
-          <Zap className="h-5 w-5 text-yellow-500" />
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-lg">Validate Clients</CardTitle>
+            <p className="mt-1 text-xs italic text-amber-900/80">
+              Vision statements for these clients are coming in Month 2 — Coach Bot will generate them automatically.
+            </p>
+          </div>
+          <Zap className="h-5 w-5 shrink-0 text-yellow-500" aria-hidden />
         </CardHeader>
         <CardContent>
           {priorityClients.length === 0 ? (
