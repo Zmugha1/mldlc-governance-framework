@@ -889,7 +889,7 @@ function ClientDetailModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl w-[90vw] h-[90vh] flex flex-col overflow-hidden p-0">
+      <DialogContent className="max-w-6xl w-[90vw] h-[90vh] flex flex-col overflow-hidden p-0">
         <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-4">
