@@ -198,6 +198,9 @@ function formatGoneQuietLabel(days: number | null | undefined): string {
   return base;
 }
 
+const GONE_QUIET_SESSION_DISCLAIMER =
+  'Based on last uploaded Fathom session. Upload new calls to keep this current.';
+
 function deriveStyleLabel(
   d: number,
   i: number,
@@ -1033,6 +1036,9 @@ function ClientDetailModal({
                           />
                           {formatGoneQuietLabel(client.gone_quiet_days)}
                         </Badge>
+                        <p className="max-w-md text-xs italic text-slate-500">
+                          {GONE_QUIET_SESSION_DISCLAIMER}
+                        </p>
                         {goneQuietReengagementTipText ? (
                           <p className="max-w-md text-xs italic text-slate-500">
                             {goneQuietReengagementTipText}
@@ -3070,17 +3076,22 @@ export default function ClientIntelligence() {
                     confidence={client.confidence}
                   />
                   {shouldShowGoneQuietBadge(client) && (
-                    <span
-                      className="inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
-                      title={
-                        client.gone_quiet_days != null && client.gone_quiet_days > 0
-                          ? `Gone quiet ${client.gone_quiet_days}d`
-                          : 'Gone quiet'
-                      }
-                    >
-                      <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                      Quiet
-                    </span>
+                    <div className="flex w-full min-w-[140px] flex-col gap-0.5">
+                      <span
+                        className="inline-flex w-fit items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                        title={
+                          client.gone_quiet_days != null && client.gone_quiet_days > 0
+                            ? `Gone quiet ${client.gone_quiet_days}d`
+                            : 'Gone quiet'
+                        }
+                      >
+                        <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                        Quiet
+                      </span>
+                      <p className="text-[10px] italic leading-snug text-slate-500">
+                        {GONE_QUIET_SESSION_DISCLAIMER}
+                      </p>
+                    </div>
                   )}
                 </div>
               </CardContent>
