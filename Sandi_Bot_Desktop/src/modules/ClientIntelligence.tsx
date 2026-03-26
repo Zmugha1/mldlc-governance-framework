@@ -102,6 +102,40 @@ function parsePipelineStageCode(
   return null;
 }
 
+/** Full display labels and legacy aliases → pipeline code (for DB/UI that store names, not IC/C1…). */
+const DISPLAY_LABEL_TO_PIPELINE_CODE: Record<string, PipelineStageCode> = {
+  'Initial Contact': 'IC',
+  'Seeker Connection': 'C1',
+  'Seeker Clarification': 'C2',
+  Possibilities: 'C3',
+  'Coach Client Collaboration': 'C3',
+  'Client Career 2.0': 'C4',
+  'Business Purchase': 'C5',
+};
+
+function resolvePipelineStageCode(
+  raw: string | null | undefined
+): PipelineStageCode | null {
+  const asCode = parsePipelineStageCode(raw);
+  if (asCode) return asCode;
+  const label = (raw ?? '').trim();
+  return DISPLAY_LABEL_TO_PIPELINE_CODE[label] ?? null;
+}
+
+/** Sandi: IC has no numbered compartment; C1–C5 → Compartment 1–5. */
+function stageCardCompartmentSubtitle(code: PipelineStageCode | null): string {
+  if (code === null) return 'Compartment —';
+  if (code === 'IC') return 'Initial Contact';
+  const n: Record<Exclude<PipelineStageCode, 'IC'>, number> = {
+    C1: 1,
+    C2: 2,
+    C3: 3,
+    C4: 4,
+    C5: 5,
+  };
+  return `Compartment ${n[code]}`;
+}
+
 function getStageBadgeColor(stageCode: string): string {
   const label = getStageDisplayName(stageCode);
   if (label === 'Unknown Stage') return '#E2E8F0';
@@ -358,18 +392,6 @@ function toDisplayValue(value: unknown, fallback = '—'): string {
   if (value === null || value === undefined) return fallback;
   const str = String(value).trim();
   return str.length > 0 ? str : fallback;
-}
-
-function compartmentFromStageCode(code: PipelineStageCode): number {
-  const compartments: Record<PipelineStageCode, number> = {
-    IC: 0,
-    C1: 1,
-    C2: 2,
-    C3: 3,
-    C4: 4,
-    C5: 5,
-  };
-  return compartments[code];
 }
 
 function parseListField(
@@ -754,11 +776,13 @@ function ClientDetailModal({
 
   if (!client) return null;
 
-  const inferredPipelineCode = parsePipelineStageCode(client.inferred_stage);
-  const stageLabel = getStageDisplayName(client.inferred_stage?.trim() ?? '');
-  const stageCompartment = inferredPipelineCode
-    ? compartmentFromStageCode(inferredPipelineCode)
-    : null;
+  const resolvedPipelineCode = resolvePipelineStageCode(client.inferred_stage);
+  const stageLabel =
+    resolvedPipelineCode != null
+      ? STAGE_DISPLAY_NAMES[resolvedPipelineCode]
+      : getStageDisplayName(client.inferred_stage?.trim() ?? '');
+  const stageCompartmentSubtitle =
+    stageCardCompartmentSubtitle(resolvedPipelineCode);
 
   const allPinkParsed = parseClientPinkFlagsJson(localPinkFlagsJson);
   const { activeFlags: activePinkFlags, resolvedFlags: resolvedPinkFlags } =
@@ -1073,16 +1097,16 @@ function ClientDetailModal({
                     className="text-slate-800"
                     style={{
                       backgroundColor: getStageBadgeColor(
-                        client.inferred_stage?.trim() ?? ''
+                        resolvedPipelineCode ??
+                          client.inferred_stage?.trim() ??
+                          ''
                       ),
                     }}
                   >
                     {stageLabel}
                   </Badge>
                   <p className="text-xs text-slate-500 mt-2">
-                    {stageCompartment !== null
-                      ? `Compartment ${stageCompartment}`
-                      : 'Compartment —'}
+                    {stageCompartmentSubtitle}
                   </p>
                 </CardContent>
               </Card>
