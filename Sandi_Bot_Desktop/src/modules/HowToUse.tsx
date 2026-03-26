@@ -286,10 +286,14 @@ export default function HowToUse() {
                       </p>
                     </div>
                     <div>
-                      <p className="font-semibold text-[#333333]">Profile Completeness (100%)</p>
+                      <p className="font-semibold text-[#333333]">Profile Completeness</p>
                       <p>
-                        How many clients have all four files: DISC report, You 2.0, TUMAY, and at
-                        least one Fathom call. 100% means all your active clients have complete files.
+                        Share of active clients who have all four files (DISC, You 2.0, TUMAY, at
+                        least one Fathom). See{' '}
+                        <span className="font-medium text-[#333333]">
+                          Profile Completeness on the Dashboard
+                        </span>{' '}
+                        below for the full definition.
                       </p>
                     </div>
                     <div>
@@ -314,6 +318,76 @@ export default function HowToUse() {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-4 border-t border-[#E5E7EB] pt-6">
+                  <h2 className="text-lg font-bold text-[#333333]">
+                    What Does Readiness Score Mean?
+                  </h2>
+                  <p className="text-[#6B6B6B]">
+                    The Readiness Score on each client card shows how complete their file is in
+                    Coach Bot across 4 dimensions:
+                  </p>
+                  <ul className="list-none space-y-4 text-[#6B6B6B]">
+                    <li>
+                      <p className="font-semibold text-[#333333]">Identity (25 points)</p>
+                      <p>
+                        Does this client have a clear You 2.0 vision statement? The longer and more
+                        detailed their vision, the higher this score.
+                      </p>
+                    </li>
+                    <li>
+                      <p className="font-semibold text-[#333333]">Commitment (25 points)</p>
+                      <p>
+                        Have they set a launch timeline? Is their spouse or partner on calls? Both
+                        signal serious commitment.
+                      </p>
+                    </li>
+                    <li>
+                      <p className="font-semibold text-[#333333]">Financial (25 points)</p>
+                      <p>
+                        Do we have their credit score and net worth range from their TUMAY form? This
+                        tells you if they are financially ready to invest.
+                      </p>
+                    </li>
+                    <li>
+                      <p className="font-semibold text-[#333333]">Execution (25 points)</p>
+                      <p>
+                        Do they have a DISC report, You 2.0, and at least one Fathom session? This
+                        measures how much coaching work has been done.
+                      </p>
+                    </li>
+                  </ul>
+                  <p className="font-semibold text-[#333333]">
+                    IMPORTANT: Readiness Score does NOT mean the client is ready to buy a franchise.
+                    YOU decide when a client moves between compartments. Coach Bot just shows you how
+                    complete their file is so you know what information you have going into each call.
+                  </p>
+                  <p className="text-[#6B6B6B]">
+                    A client can have a low readiness score and still be close to a decision. A
+                    client can have a high readiness score and still need more coaching time. Trust
+                    your coaching judgment first.
+                  </p>
+                </div>
+
+                <div className="space-y-4 border-t border-[#E5E7EB] pt-6">
+                  <h2 className="text-lg font-bold text-[#333333]">
+                    Profile Completeness on the Dashboard
+                  </h2>
+                  <p className="text-[#6B6B6B]">
+                    The Profile Completeness percentage (94%) on your Executive Dashboard shows what
+                    percentage of your active clients have ALL FOUR of these:
+                  </p>
+                  <ul className="list-inside list-disc space-y-2 text-[#6B6B6B]">
+                    <li>DISC report uploaded</li>
+                    <li>You 2.0 profile uploaded</li>
+                    <li>TUMAY form uploaded</li>
+                    <li>At least one Fathom session</li>
+                  </ul>
+                  <p className="text-[#6B6B6B]">
+                    If this is below 100%, it means some clients are missing files. Open their card
+                    and check which tab is empty.
+                  </p>
                 </div>
 
                 <div>
