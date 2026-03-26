@@ -146,9 +146,11 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
   const gather_count = activeOnly.filter(
     r => r.recommendation === 'GATHER'
   ).length;
-  const pause_count = activeOnly.filter(
-    r => r.recommendation === 'PAUSE'
-  ).length;
+  const pauseRows = await dbSelect<{ count: number }>(
+    `SELECT COUNT(*) as count FROM clients WHERE outcome_bucket = 'paused'`,
+    []
+  );
+  const pause_count = Number(pauseRows[0]?.count ?? 0);
 
   const scores = activeOnly
     .map(r => r.readiness_score)
