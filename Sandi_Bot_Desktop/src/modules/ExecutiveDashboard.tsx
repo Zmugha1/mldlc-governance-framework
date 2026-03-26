@@ -383,12 +383,12 @@ export default function ExecutiveDashboard() {
           color="#3B82F6"
         />
         <KPICard
-          title="Active Conversations"
+          title="Clients with Sessions"
           value={activeConversationCount}
-          change="100% engagement"
+          change="Have at least one Fathom call"
           changeType="positive"
           icon={Phone}
-          description="Clients in active dialogue"
+          description="Fathom calls uploaded"
           color="#22C55E"
         />
         <KPICard
