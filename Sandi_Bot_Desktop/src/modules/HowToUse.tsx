@@ -15,6 +15,7 @@ import {
   ListChecks,
   Sparkles,
   Info,
+  Brain,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,6 +91,11 @@ export default function HowToUse() {
     },
     { label: 'UAT Checklist', icon: <ListChecks className="h-4 w-4" />, section: 'uat-checklist' },
     { label: 'Morning routine', icon: <Sun className="h-4 w-4" />, section: 'morning-routine' },
+    {
+      label: 'How Coach Bot makes decisions',
+      icon: <Brain className="h-4 w-4" />,
+      section: 'coach-bot-decisions',
+    },
     { label: 'Client card tabs', icon: <Users className="h-4 w-4" />, section: 'client-tabs' },
     { label: 'After a call', icon: <ClipboardCheck className="h-4 w-4" />, section: 'after-call' },
     { label: 'Moving stages', icon: <BarChart3 className="h-4 w-4" />, section: 'pipeline-stages' },
@@ -639,6 +645,178 @@ export default function HowToUse() {
                     Shows the personality breakdown of all your clients. High I (7) means most of
                     your clients are Influencing style — enthusiastic, story-driven, people-oriented.
                   </p>
+                </div>
+              </div>
+
+              <div
+                id="coach-bot-decisions"
+                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
+              >
+                <h2 className="text-lg font-bold text-[#333333]">
+                  How Coach Bot Makes Decisions
+                </h2>
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    VALIDATE, GATHER, and PAUSE
+                  </h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      Coach Bot looks at two things for every client: their compartment and their
+                      status.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">PAUSE</span> — checked first.
+                      If a client is paused, they always show PAUSE regardless of compartment. A
+                      pause reason and follow-up date are required. Paused clients are not counted in
+                      your active pipeline.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">VALIDATE</span> — compartments 4
+                      and 5 only. If a client is in Client Career 2.0 or Business Purchase and they
+                      are active, they show VALIDATE. These are your priority clients exploring real
+                      opportunities.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">GATHER</span> — everyone else.
+                      Initial Contact through Possibilities (compartments 1 through 3) all show
+                      GATHER. You are still learning about them and building the relationship.
+                    </p>
+                    <p>
+                      Inactive clients are hidden from your pipeline entirely. Their data is preserved
+                      but they do not appear in any count.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    Compartment Movement
+                  </h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      Clients move through 5 compartments in one direction only:
+                    </p>
+                    <p className="text-[#333333]">
+                      Initial Contact → Seeker Connection → Seeker Clarification → Possibilities →
+                      Client Career 2.0 → Business Purchase
+                    </p>
+                    <p className="font-semibold text-[#333333]">Rules:</p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>Clients never move backwards</li>
+                      <li>YOU move clients manually in the Pipeline Visualizer</li>
+                      <li>C4 clients can explore multiple businesses — that is normal</li>
+                      <li>Moving to Pause always requires a reason and a follow-up date</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Pink Flags</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      Coach Bot detects pink flags automatically from your Fathom session notes.
+                    </p>
+                    <p>A pink flag means: address this before your next call with this client.</p>
+                    <p className="font-semibold text-[#333333]">
+                      Common flags Coach Bot detects:
+                    </p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>Spouse alignment unsure</li>
+                      <li>Net worth below $250k — validate funding path early</li>
+                      <li>Timeline slipping</li>
+                      <li>Engagement risk</li>
+                    </ul>
+                    <p className="font-semibold text-[#333333]">When you address a flag:</p>
+                    <p>
+                      Open the client card → Overview tab → Click Mark Resolved. The flag turns
+                      green and stays as a permanent record. It is no longer a call to action.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Gone Quiet</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      Coach Bot tracks how long it has been since your last uploaded Fathom session.
+                    </p>
+                    <p>
+                      If that gap exceeds the threshold for a client&apos;s compartment, a Gone
+                      Quiet badge appears on their card.
+                    </p>
+                    <p className="font-semibold text-[#333333]">Thresholds:</p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>Initial Contact: 14 days</li>
+                      <li>Seeker Connection: 21 days</li>
+                      <li>Seeker Clarification: 14 days</li>
+                      <li>Possibilities: 14 days</li>
+                      <li>Client Career 2.0: 60 days</li>
+                      <li>Business Purchase: 60 days</li>
+                    </ul>
+                    <p>
+                      When gone quiet fires, Coach Bot shows a re-engagement tip based on the
+                      client&apos;s DISC style:
+                    </p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>D style: direct email, one question</li>
+                      <li>I style: reconnect with the vision</li>
+                      <li>S style: warm check-in, family first</li>
+                      <li>C style: send data or an article</li>
+                    </ul>
+                    <p>
+                      <span className="font-semibold text-[#333333]">Important:</span> Gone Quiet is
+                      based on uploaded Fathom sessions. If you coached someone recently but have not
+                      uploaded that transcript yet, the badge may show incorrectly. Update their Last
+                      Contacted date on the Overview tab to fix this.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Readiness Score</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      The readiness score (0-100%) shows how complete a client&apos;s file is across
+                      4 dimensions:
+                    </p>
+                    <ul className="list-none space-y-4">
+                      <li>
+                        <p className="font-semibold text-[#333333]">Identity (25 points)</p>
+                        <p>
+                          You 2.0 vision statement — length and detail signal how clearly they know
+                          what they want.
+                        </p>
+                      </li>
+                      <li>
+                        <p className="font-semibold text-[#333333]">Commitment (25 points)</p>
+                        <p>
+                          Have they set a launch timeline? Is their spouse or partner on calls?
+                        </p>
+                      </li>
+                      <li>
+                        <p className="font-semibold text-[#333333]">Financial (25 points)</p>
+                        <p>Credit score and net worth range from their TUMAY form.</p>
+                      </li>
+                      <li>
+                        <p className="font-semibold text-[#333333]">Execution (25 points)</p>
+                        <p>
+                          DISC report extracted, You 2.0 uploaded, at least one Fathom session.
+                        </p>
+                      </li>
+                    </ul>
+                    <p>
+                      This score tells you how much information you have — not whether the client is
+                      ready to buy a franchise. Trust your coaching judgment. Coach Bot informs it.
+                    </p>
+                  </div>
                 </div>
               </div>
             </CollapsibleSection>
