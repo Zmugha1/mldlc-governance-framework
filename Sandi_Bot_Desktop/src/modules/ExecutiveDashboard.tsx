@@ -45,10 +45,14 @@ const STAGES = [
   'Business Purchase',
 ];
 
-/** Dashboard-only labels for stageConfig.compartment (source data unchanged). */
-const COMPARTMENT_SUBTITLE_DISPLAY: Record<string, string> = {
-  'Business Development': 'Compartment 0',
-  Closed: 'Business Complete',
+/** Dashboard subtitles by pipeline stage (Sandi language). */
+const COMPARTMENT_SUBTITLE_BY_STAGE: Record<string, string> = {
+  'Initial Contact': 'Compartment 1',
+  'Seeker Connection': 'Compartment 2',
+  'Seeker Clarification': 'Compartment 3',
+  Possibilities: 'Compartment 4',
+  'Client Career 2.0': 'Compartment 5',
+  'Business Purchase': 'Business Complete',
 };
 
 const recommendationStyleMap: Record<
@@ -133,7 +137,7 @@ function PipelineStageCard({
       <div className="flex-1 min-w-0">
         <h4 className="font-semibold text-slate-900">{config.label}</h4>
         <p className="text-sm text-slate-500">
-          {COMPARTMENT_SUBTITLE_DISPLAY[config.compartment] ?? config.compartment}
+          {COMPARTMENT_SUBTITLE_BY_STAGE[stage] ?? config.compartment}
         </p>
       </div>
     </div>
