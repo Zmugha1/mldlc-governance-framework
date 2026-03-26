@@ -13,6 +13,8 @@ import {
   Sun,
   HelpCircle,
   ListChecks,
+  Sparkles,
+  Info,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -80,6 +82,12 @@ export default function HowToUse() {
 
   const navItems = [
     { label: 'What is Coach Bot?', icon: <BookOpen className="h-4 w-4" />, section: 'what-is-coach-bot' },
+    { label: 'What is coming next', icon: <Sparkles className="h-4 w-4" />, section: 'coming-next' },
+    {
+      label: 'Important data notes',
+      icon: <Info className="h-4 w-4" />,
+      section: 'important-data-notes',
+    },
     { label: 'UAT Checklist', icon: <ListChecks className="h-4 w-4" />, section: 'uat-checklist' },
     { label: 'Morning routine', icon: <Sun className="h-4 w-4" />, section: 'morning-routine' },
     { label: 'Client card tabs', icon: <Users className="h-4 w-4" />, section: 'client-tabs' },
@@ -148,6 +156,121 @@ export default function HowToUse() {
                   <li>Analyzes your Fathom calls automatically</li>
                   <li>Tells you what to focus on before every call</li>
                 </ul>
+              </div>
+            </CollapsibleSection>
+          </div>
+
+          <div id="coming-next">
+            <CollapsibleSection
+              title="What is Coming Next"
+              icon={<Sparkles className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
+                <h2 className="text-lg font-bold text-[#333333]">
+                  Features Coming in the Next 90 Days
+                </h2>
+                <p className="text-[#6B6B6B]">
+                  These features are built and on the roadmap. They are not available yet but are
+                  coming soon:
+                </p>
+
+                <div className="space-y-5 text-[#6B6B6B]">
+                  <div>
+                    <p className="font-semibold text-[#333333]">
+                      🗓️ Google Calendar Integration (April 2026)
+                    </p>
+                    <p>
+                      Your coaching calls will appear automatically on your dashboard. Reminders you
+                      set in Coach Bot will push to your Google Calendar.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-[#333333]">
+                      📄 Vision Statement Generator (Month 2)
+                    </p>
+                    <p>
+                      Coach Bot will draft the vision statement for each client using their DISC
+                      profile, You 2.0, and Fathom sessions. You review and approve. It downloads as
+                      a PowerPoint in your template automatically.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-[#333333]">🎯 Coaching Plan Tab (Month 2)</p>
+                    <p>
+                      Before every call, Coach Bot will tell you exactly what to focus on — which
+                      emotional questions to ask, what blockers to address, and what wins to reinforce
+                      based on this client&apos;s full profile.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-[#333333]">📊 Daily Coaching Brief (Month 2)</p>
+                    <p>
+                      Your dashboard will show who you are talking to today, who needs attention,
+                      and any reminders due — all in one morning view.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-[#333333]">🧠 Pattern Intelligence (Month 3+)</p>
+                    <p>
+                      Once you have 50+ clients coached, Coach Bot will identify patterns — which
+                      approaches work for which DISC types, how long clients typically spend in each
+                      compartment, and what coaching moves lead to conversions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
+          </div>
+
+          <div id="important-data-notes">
+            <CollapsibleSection
+              title="Important Notes About Your Data"
+              icon={<Info className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
+                <h2 className="text-lg font-bold text-[#333333]">Important Notes About Your Data</h2>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Session Dates</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      The Last Contact date shown on client cards and the Gone Quiet badge are based
+                      on the most recent Fathom session you have uploaded to Coach Bot.
+                    </p>
+                    <p>
+                      If you coached a client recently but have not yet uploaded that Fathom
+                      transcript, Coach Bot does not know about that call yet.
+                    </p>
+                    <p className="font-medium text-[#333333]">To keep dates current:</p>
+                    <p>
+                      Upload each new Fathom transcript after every coaching call. Admin Streamliner
+                      → Import → drop the PDF.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Vision Statements</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      All clients currently show &quot;Vision statement not yet generated.&quot; This
+                      is expected — the Vision Statement Generator is coming in Month 2. Your clients
+                      are not missing anything.
+                    </p>
+                    <p>
+                      Coach Bot will generate these automatically once that feature is released.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Profile Completeness</h3>
+                  <p className="text-[#6B6B6B]">
+                    The Profile Completeness percentage on your dashboard counts clients who have:
+                    DISC report + You 2.0 + TUMAY + at least one Fathom session. Vision statements
+                    are NOT counted yet because they are generated in Month 2.
+                  </p>
+                </div>
               </div>
             </CollapsibleSection>
           </div>
@@ -223,6 +346,74 @@ export default function HowToUse() {
                   Rate the Executive Dashboard 1-5: 1 = confusing, 5 = exactly what I need every
                   morning.
                 </p>
+
+                <div className="space-y-6 border-t border-[#E5E7EB] pt-6">
+                  <h2 className="text-lg font-bold text-[#333333]">
+                    UAT Checklist — Client Intelligence
+                  </h2>
+                  <p className="text-[#6B6B6B]">
+                    Check these things when reviewing your client cards:
+                  </p>
+
+                  <div className="space-y-5">
+                    <div className="flex gap-3">
+                      <StepNumber number={1} />
+                      <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                        <p className="font-semibold text-[#333333]">Overview tab — stage accuracy</p>
+                        <p>
+                          Open 3 client cards and check the Overview tab. Does the stage
+                          (compartment) match where you know this client is in their journey? Note
+                          any that are wrong.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={2} />
+                      <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                        <p className="font-semibold text-[#333333]">DISC tab — coaching tips</p>
+                        <p>
+                          Check the DISC tab for 2 clients. Do the coaching tips match how you
+                          actually coach this person? Note any that feel off.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={3} />
+                      <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                        <p className="font-semibold text-[#333333]">Pink flags — Dena Sauer</p>
+                        <p>
+                          Check the pink flags on Dena Sauer. She has 2 active flags. Do they look
+                          accurate based on what you know about her situation?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={4} />
+                      <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                        <p className="font-semibold text-[#333333]">Gone Quiet badges</p>
+                        <p>
+                          These are based on uploaded Fathom dates. If you coached someone recently
+                          but have not uploaded that call yet, the badge may show incorrectly. This
+                          will resolve once you upload your latest Fathom transcripts.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={5} />
+                      <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                        <p className="font-semibold text-[#333333]">TUMAY tab — Andrew Tait</p>
+                        <p>
+                          All financial and personal data should be showing correctly.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[#6B6B6B]">
+                    Rate Client Intelligence 1-5: 1 = confusing, 5 = gives me everything I need before
+                    a call.
+                  </p>
+                </div>
               </div>
             </CollapsibleSection>
           </div>
