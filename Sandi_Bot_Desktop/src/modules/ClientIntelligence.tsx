@@ -14,7 +14,8 @@ import {
   FileText,
   Plus,
   Check,
-  ClipboardList
+  ClipboardList,
+  Clock,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -152,7 +153,47 @@ function splitPinkFlags(allFlags: string[]): {
   return { activeFlags, resolvedFlags };
 }
 
-type DisplayClient = ReturnType<typeof clientToDisplay>;
+type DisplayClient = ReturnType<typeof clientToDisplay> & {
+  gone_quiet?: boolean;
+  gone_quiet_days?: number;
+};
+
+function shouldShowGoneQuietBadge(client: {
+  gone_quiet?: boolean | null;
+  outcome_bucket?: string | null;
+}): boolean {
+  if (client?.gone_quiet !== true) return false;
+  const b = (client.outcome_bucket ?? '').toLowerCase();
+  return b === 'active';
+}
+
+const GONE_QUIET_REENGAGEMENT_TIPS: Record<'D' | 'I' | 'S' | 'C', string> = {
+  D: 'Send a direct email with one specific question. No fluff.',
+  I: 'Share a success story. Reconnect with the vision and excitement of what they wanted.',
+  S: 'Check in warmly. Ask about the family first. No pressure.',
+  C: 'Send relevant data or an article. Give time. Ask one specific question.',
+};
+
+function goneQuietTipFromNaturalScores(
+  scores: { d: number; i: number; s: number; c: number } | null
+): string | null {
+  if (!scores) return null;
+  const style = deriveStyleLetter(
+    scores.d,
+    scores.i,
+    scores.s,
+    scores.c
+  );
+  return GONE_QUIET_REENGAGEMENT_TIPS[style] ?? null;
+}
+
+function formatGoneQuietLabel(days: number | null | undefined): string {
+  const base = 'Gone Quiet';
+  if (days != null && days > 0) {
+    return `${base} · ${days}d`;
+  }
+  return base;
+}
 
 function deriveStyleLabel(
   d: number,
@@ -669,6 +710,11 @@ function ClientDetailModal({
   const { activeFlags: activePinkFlags, resolvedFlags: resolvedPinkFlags } =
     splitPinkFlags(allPinkParsed);
 
+  const goneQuietReengagementTipText =
+    shouldShowGoneQuietBadge(client) && discScores
+      ? goneQuietTipFromNaturalScores(discScores)
+      : null;
+
   const handleInactivate = () => {
     if (!onInactivate) return;
     onInactivate(client.id);
@@ -964,7 +1010,30 @@ function ClientDetailModal({
                 </CardHeader>
                 <CardContent>
                   <p className="font-semibold">{client.persona}</p>
-                  <RecommendationBadge action={client.recommendation} confidence={client.confidence} />
+                  <div className="mt-2 flex flex-col gap-2">
+                    <RecommendationBadge
+                      action={client.recommendation}
+                      confidence={client.confidence}
+                    />
+                    {shouldShowGoneQuietBadge(client) && (
+                      <>
+                        <Badge
+                          className="w-fit border border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-100"
+                        >
+                          <Clock
+                            className="mr-1 h-3.5 w-3.5 shrink-0"
+                            aria-hidden
+                          />
+                          {formatGoneQuietLabel(client.gone_quiet_days)}
+                        </Badge>
+                        {goneQuietReengagementTipText ? (
+                          <p className="max-w-md text-xs italic text-slate-500">
+                            {goneQuietReengagementTipText}
+                          </p>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
               <Card>
@@ -2595,6 +2664,9 @@ export default function ClientIntelligence() {
 
   const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
   const [readinessMap, setReadinessMap] = useState<Map<string, number>>(new Map());
+  const [goneQuietById, setGoneQuietById] = useState<
+    Map<string, { gone_quiet: boolean; gone_quiet_days: number }>
+  >(new Map());
   const [discDerivedMap, setDiscDerivedMap] = useState<Map<string, { style: 'D' | 'I' | 'S' | 'C'; label: string }>>(new Map());
 
   const loadClients = () => {
@@ -2620,8 +2692,19 @@ export default function ClientIntelligence() {
         setClients(c);
         setDiscProfiles(profiles);
         const rMap = new Map<string, number>();
-        readiness.forEach((r) => rMap.set(r.client_id, r.readiness_score));
+        const gqMap = new Map<
+          string,
+          { gone_quiet: boolean; gone_quiet_days: number }
+        >();
+        readiness.forEach((r) => {
+          rMap.set(r.client_id, r.readiness_score);
+          gqMap.set(r.client_id, {
+            gone_quiet: Boolean(r.gone_quiet),
+            gone_quiet_days: Number(r.gone_quiet_days ?? 0),
+          });
+        });
         setReadinessMap(rMap);
+        setGoneQuietById(gqMap);
         const dMap = new Map<string, { style: 'D' | 'I' | 'S' | 'C'; label: string }>();
         discRows.forEach((row) => {
           const style = deriveStyleLetter(
@@ -2731,19 +2814,39 @@ export default function ClientIntelligence() {
 
   const displayClients = useMemo(
     () =>
-      filteredClients.map((client) =>
-        clientToDisplay(client, {
-          disc: discDerivedMap.get(client.id) ?? discProfiles.get(client.id),
-          readinessScore: readinessMap.get(client.id),
-        })
-      ),
-    [filteredClients, discDerivedMap, discProfiles, readinessMap]
+      filteredClients.map((client) => {
+        const gq = goneQuietById.get(client.id);
+        return {
+          ...clientToDisplay(client, {
+            disc: discDerivedMap.get(client.id) ?? discProfiles.get(client.id),
+            readinessScore: readinessMap.get(client.id),
+          }),
+          gone_quiet: gq?.gone_quiet,
+          gone_quiet_days: gq?.gone_quiet_days,
+        } satisfies DisplayClient;
+      }),
+    [
+      filteredClients,
+      discDerivedMap,
+      discProfiles,
+      readinessMap,
+      goneQuietById,
+    ]
   );
-  const selectedDisplay = selectedClient
-    ? clientToDisplay(selectedClient, {
-        disc: discDerivedMap.get(selectedClient.id) ?? discProfiles.get(selectedClient.id),
-        readinessScore: readinessMap.get(selectedClient.id),
-      })
+  const selectedDisplay: DisplayClient | null = selectedClient
+    ? (() => {
+        const gq = goneQuietById.get(selectedClient.id);
+        return {
+          ...clientToDisplay(selectedClient, {
+            disc:
+              discDerivedMap.get(selectedClient.id) ??
+              discProfiles.get(selectedClient.id),
+            readinessScore: readinessMap.get(selectedClient.id),
+          }),
+          gone_quiet: gq?.gone_quiet,
+          gone_quiet_days: gq?.gone_quiet_days,
+        };
+      })()
     : null;
 
   if (loading) {
@@ -2943,8 +3046,24 @@ export default function ClientIntelligence() {
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                  <RecommendationBadge action={client.recommendation} confidence={client.confidence} />
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+                  <RecommendationBadge
+                    action={client.recommendation}
+                    confidence={client.confidence}
+                  />
+                  {shouldShowGoneQuietBadge(client) && (
+                    <span
+                      className="inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                      title={
+                        client.gone_quiet_days != null && client.gone_quiet_days > 0
+                          ? `Gone quiet ${client.gone_quiet_days}d`
+                          : 'Gone quiet'
+                      }
+                    >
+                      <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                      Quiet
+                    </span>
+                  )}
                 </div>
               </CardContent>
             </Card>
