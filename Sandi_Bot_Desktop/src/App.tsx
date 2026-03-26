@@ -160,7 +160,7 @@ function Sidebar({
             SS
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white">Sandy Stahl</p>
+            <p className="text-sm font-medium text-white">Sandi Stahl</p>
             <p className="text-xs text-slate-400">Franchise Coach</p>
           </div>
         </div>

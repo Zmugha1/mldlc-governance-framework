@@ -53,6 +53,58 @@ import { cn } from '@/lib/utils';
 
 const CONFIRMED_BY = 'Zubia';
 
+const STAGE_DISPLAY_NAMES: Record<string, string> = {
+  IC: 'Initial Contact',
+  C1: 'Seeker Connection',
+  C2: 'Seeker Clarification',
+  C3: 'Possibilities',
+  C4: 'Client Career 2.0',
+  C5: 'Business Purchase',
+};
+
+function getStageDisplayName(stage: string): string {
+  return STAGE_DISPLAY_NAMES[stage] ?? 'Unknown Stage';
+}
+
+const BUCKET_DISPLAY_NAMES: Record<string, string> = {
+  active: 'Active',
+  converted: 'Business Complete',
+  paused: 'Paused',
+  inactive: 'Inactive',
+};
+
+function getBucketDisplayName(bucket: string | null | undefined): string {
+  const k = (bucket ?? '').toLowerCase();
+  return BUCKET_DISPLAY_NAMES[k] ?? (bucket?.trim() ? bucket : '—');
+}
+
+type PipelineStageCode = 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
+
+function parsePipelineStageCode(
+  raw: string | null | undefined
+): PipelineStageCode | null {
+  const v = (raw ?? '').trim();
+  if (
+    v === 'IC' ||
+    v === 'C1' ||
+    v === 'C2' ||
+    v === 'C3' ||
+    v === 'C4' ||
+    v === 'C5'
+  ) {
+    return v;
+  }
+  return null;
+}
+
+function getStageBadgeColor(stageCode: string): string {
+  const label = getStageDisplayName(stageCode);
+  if (label === 'Unknown Stage') return '#E2E8F0';
+  return (
+    stageConfig[label as keyof typeof stageConfig]?.color ?? '#E2E8F0'
+  );
+}
+
 type DisplayClient = ReturnType<typeof clientToDisplay>;
 
 function deriveStyleLabel(
@@ -194,40 +246,8 @@ function toDisplayValue(value: unknown, fallback = '—'): string {
   return str.length > 0 ? str : fallback;
 }
 
-function normalizeStageCode(raw: string | null | undefined): 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5' {
-  const value = (raw ?? '').trim();
-  const map: Record<string, 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5'> = {
-    IC: 'IC',
-    C1: 'C1',
-    C2: 'C2',
-    C3: 'C3',
-    C4: 'C4',
-    C5: 'C5',
-    'Initial Contact': 'IC',
-    'Seeker Connection': 'C1',
-    'Seeker Clarification': 'C2',
-    Possibilities: 'C3',
-    'Coach Client Collaboration': 'C3',
-    'Client Career 2.0': 'C4',
-    'Business Purchase': 'C5',
-  };
-  return map[value] ?? 'IC';
-}
-
-function stageLabelFromCode(code: 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5'): string {
-  const labels: Record<'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5', string> = {
-    IC: 'Initial Contact',
-    C1: 'Seeker Connection',
-    C2: 'Seeker Clarification',
-    C3: 'Possibilities',
-    C4: 'Client Career 2.0',
-    C5: 'Business Purchase',
-  };
-  return labels[code];
-}
-
-function compartmentFromStageCode(code: 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5'): number {
-  const compartments: Record<'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5', number> = {
+function compartmentFromStageCode(code: PipelineStageCode): number {
+  const compartments: Record<PipelineStageCode, number> = {
     IC: 0,
     C1: 1,
     C2: 2,
@@ -366,7 +386,8 @@ function ClientDetailModal({
 
   useEffect(() => {
     if (client && isOpen) {
-      const stageForDraft = normalizeStageCode(client.inferred_stage ?? client.stage);
+      const stageForDraft =
+        parsePipelineStageCode(client.inferred_stage) ?? 'IC';
       setNoteDraft((prev) => ({ ...prev, stage: stageForDraft }));
       getStageReadiness(client.id).then(setReadiness);
       getAllStageReadiness()
@@ -576,9 +597,11 @@ function ClientDetailModal({
 
   if (!client) return null;
 
-  const inferredStageCode = normalizeStageCode(client.inferred_stage ?? client.stage);
-  const stageLabel = stageLabelFromCode(inferredStageCode);
-  const stageCompartment = compartmentFromStageCode(inferredStageCode);
+  const inferredPipelineCode = parsePipelineStageCode(client.inferred_stage);
+  const stageLabel = getStageDisplayName(client.inferred_stage?.trim() ?? '');
+  const stageCompartment = inferredPipelineCode
+    ? compartmentFromStageCode(inferredPipelineCode)
+    : null;
 
   const handleInactivate = () => {
     if (!onInactivate) return;
@@ -689,7 +712,7 @@ function ClientDetailModal({
       setShowAddNote(false);
       setNoteDraft({
         session_date: new Date().toISOString().split('T')[0],
-        stage: inferredStageCode,
+        stage: parsePipelineStageCode(client.inferred_stage) ?? 'IC',
         notes: '',
         next_actions: '',
       });
@@ -727,8 +750,20 @@ function ClientDetailModal({
               >
                 {client.avatar}
               </div>
-              <div>
-                <h2 className="text-2xl font-bold">{client.name}</h2>
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-bold">{client.name}</h2>
+                  <Badge
+                    className="text-slate-800 text-xs font-semibold border-0"
+                    style={{
+                      backgroundColor: getStageBadgeColor(
+                        client.inferred_stage?.trim() ?? ''
+                      ),
+                    }}
+                  >
+                    {getStageDisplayName(client.inferred_stage?.trim() ?? '')}
+                  </Badge>
+                </div>
                 <p className="text-sm text-slate-500 font-normal">
                   {discStyleLabel} • {contact.company || '—'}
                 </p>
@@ -795,10 +830,21 @@ function ClientDetailModal({
                   <CardTitle className="text-sm text-slate-500">Stage</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Badge className="text-white" style={{ backgroundColor: '#2563EB' }}>
+                  <Badge
+                    className="text-slate-800"
+                    style={{
+                      backgroundColor: getStageBadgeColor(
+                        client.inferred_stage?.trim() ?? ''
+                      ),
+                    }}
+                  >
                     {stageLabel}
                   </Badge>
-                  <p className="text-xs text-slate-500 mt-2">Compartment {stageCompartment}</p>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {stageCompartment !== null
+                      ? `Compartment ${stageCompartment}`
+                      : 'Compartment —'}
+                  </p>
                 </CardContent>
               </Card>
               <Card>
@@ -931,7 +977,7 @@ function ClientDetailModal({
                   <p className="text-sm text-slate-600">{readiness.recommendation_reason}</p>
                   <div className="why-here">
                     <h4 className="text-sm font-semibold text-slate-700 mb-2">
-                      Why at {readiness.current_stage_full}
+                      Why at {getStageDisplayName(readiness.current_stage)}
                     </h4>
                     <ul className="list-disc list-inside space-y-1 text-sm text-slate-600">
                       {readiness.why_here.map((r, i) => (
@@ -941,7 +987,10 @@ function ClientDetailModal({
                   </div>
                   <div className="what-needed">
                     <h4 className="text-sm font-semibold text-slate-700 mb-2">
-                      To advance to {readiness.next_stage_full ?? '—'}
+                      To advance to{' '}
+                      {readiness.next_stage
+                        ? getStageDisplayName(readiness.next_stage)
+                        : '—'}
                     </h4>
                     <ul className="list-disc list-inside space-y-1 text-sm text-slate-600">
                       {readiness.what_is_needed.map((r, i) => (
@@ -969,7 +1018,11 @@ function ClientDetailModal({
                       }}
                       className="bg-green-600 hover:bg-green-700"
                     >
-                      Move to {readiness.next_stage_full} →
+                      Move to{' '}
+                      {readiness.next_stage
+                        ? getStageDisplayName(readiness.next_stage)
+                        : '—'}{' '}
+                      →
                     </Button>
                   )}
                 </CardContent>
@@ -1341,12 +1394,20 @@ function ClientDetailModal({
                             }))
                           }
                         >
-                          <option value="IC">IC</option>
-                          <option value="C1">C1</option>
-                          <option value="C2">C2</option>
-                          <option value="C3">C3</option>
-                          <option value="C4">C4</option>
-                          <option value="C5">C5</option>
+                          {(
+                            [
+                              'IC',
+                              'C1',
+                              'C2',
+                              'C3',
+                              'C4',
+                              'C5',
+                            ] as const
+                          ).map((code) => (
+                            <option key={code} value={code}>
+                              {getStageDisplayName(code)}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -1409,7 +1470,11 @@ function ClientDetailModal({
                         <div key={`${s.id}-${idx}`} className="p-3 rounded-lg bg-slate-50 border border-slate-100 space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-sm font-semibold text-slate-900">
-                              {s.session_date || 'Date not recorded'} | {toDisplayValue(s.stage)} | {blocksComplete}/9 blocks
+                              {s.session_date || 'Date not recorded'} |{' '}
+                              {getStageDisplayName(
+                                String(s.stage ?? '').trim()
+                              )}{' '}
+                              | {blocksComplete}/9 blocks
                             </p>
                             <div className="flex items-center gap-2">
                               {!isStructured && (
@@ -2472,10 +2537,15 @@ export default function ClientIntelligence() {
 
   const filteredClients = useMemo(() => {
     return clients.filter((client) => {
+      if ((client.outcome_bucket ?? '').toLowerCase() === 'inactive') {
+        return false;
+      }
       const matchesSearch =
         client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (client.company?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
-      const matchesStage = selectedStage === 'all' || client.stage === selectedStage;
+      const inferred = (client.inferred_stage ?? '').trim();
+      const matchesStage =
+        selectedStage === 'all' || inferred === selectedStage;
       return matchesSearch && matchesStage;
     });
   }, [clients, searchTerm, selectedStage]);
@@ -2562,11 +2632,13 @@ export default function ClientIntelligence() {
             className="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Stages</option>
-            {Object.keys(stageConfig).map((key) => (
-              <option key={key} value={key}>
-                {stageConfig[key as keyof typeof stageConfig].label}
-              </option>
-            ))}
+            {(['IC', 'C1', 'C2', 'C3', 'C4', 'C5'] as const).map(
+              (code) => (
+                <option key={code} value={code}>
+                  {getStageDisplayName(code)}
+                </option>
+              )
+            )}
           </select>
           <Button
             onClick={() => setShowCreateDialog(true)}
@@ -2638,10 +2710,16 @@ export default function ClientIntelligence() {
 
                 <div className="flex flex-wrap gap-2 mb-4">
                   <Badge
-                    style={{ backgroundColor: stageConfig[client.stage as keyof typeof stageConfig]?.color }}
+                    style={{
+                      backgroundColor: getStageBadgeColor(
+                        client.inferred_stage?.trim() ?? ''
+                      ),
+                    }}
                     className="text-slate-700 text-xs"
                   >
-                    {stageConfig[client.stage as keyof typeof stageConfig]?.label ?? client.stage}
+                    {getStageDisplayName(
+                      client.inferred_stage?.trim() ?? ''
+                    )}
                   </Badge>
                   <Badge variant="outline" className="text-xs">
                     {client.persona}
@@ -2816,7 +2894,9 @@ export default function ClientIntelligence() {
                         }}
                       >
                         <td className="p-3 font-medium">{c.name}</td>
-                        <td className="p-3 text-slate-600">{c.outcome_bucket}</td>
+                        <td className="p-3 text-slate-600">
+                          {getBucketDisplayName(c.outcome_bucket)}
+                        </td>
                         <td className="p-3">
                           <StatusBadge status={c.you2_status} label="You2" />
                         </td>
