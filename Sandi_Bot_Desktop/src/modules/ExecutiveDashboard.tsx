@@ -867,7 +867,7 @@ export default function ExecutiveDashboard() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="w-full max-w-none">
         <CardHeader>
           <CardTitle className="text-lg">Clients at a Glance</CardTitle>
           <CardDescription className="text-slate-500">
@@ -881,12 +881,13 @@ export default function ExecutiveDashboard() {
             </span>
           </p>
         </CardHeader>
-        <CardContent className="space-y-0">
-          <Table>
+        <CardContent className="w-full max-w-none space-y-0">
+          <div className="w-full max-w-none">
+            <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Compartment</TableHead>
+                <TableHead className="min-w-[160px]">Name</TableHead>
+                <TableHead className="min-w-[180px]">Compartment</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Recommendation</TableHead>
                 <TableHead>DISC</TableHead>
@@ -909,8 +910,10 @@ export default function ExecutiveDashboard() {
                   isStaleFathomSessionDate(row.lastSessionDate);
                 return (
                   <TableRow key={row.id}>
-                    <TableCell className="font-semibold text-slate-900">{row.name}</TableCell>
-                    <TableCell className="text-slate-700">{row.compartment}</TableCell>
+                    <TableCell className="min-w-[160px] font-semibold text-slate-900">
+                      {row.name}
+                    </TableCell>
+                    <TableCell className="min-w-[180px] text-slate-700">{row.compartment}</TableCell>
                     <TableCell className="text-slate-600">{row.statusLabel}</TableCell>
                     <TableCell>
                       <span
@@ -997,6 +1000,7 @@ export default function ExecutiveDashboard() {
               })}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
