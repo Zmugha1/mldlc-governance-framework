@@ -45,6 +45,12 @@ const STAGES = [
   'Business Purchase',
 ];
 
+/** Dashboard-only labels for stageConfig.compartment (source data unchanged). */
+const COMPARTMENT_SUBTITLE_DISPLAY: Record<string, string> = {
+  'Business Development': 'Compartment 0',
+  Closed: 'Business Complete',
+};
+
 const recommendationStyleMap: Record<
   'VALIDATE' | 'GATHER' | 'PAUSE',
   { color: string; bgColor: string }
@@ -126,7 +132,9 @@ function PipelineStageCard({
       </div>
       <div className="flex-1 min-w-0">
         <h4 className="font-semibold text-slate-900">{config.label}</h4>
-        <p className="text-sm text-slate-500">{config.compartment}</p>
+        <p className="text-sm text-slate-500">
+          {COMPARTMENT_SUBTITLE_DISPLAY[config.compartment] ?? config.compartment}
+        </p>
       </div>
     </div>
   );
