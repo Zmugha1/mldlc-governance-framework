@@ -13,6 +13,19 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Tooltip as UiTooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   BarChart,
   Bar,
   XAxis,
@@ -64,6 +77,57 @@ const recommendationStyleMap: Record<
   GATHER: { color: '#F59E0B', bgColor: '#FEF3C7' },
   PAUSE: { color: '#6B7280', bgColor: '#F3F4F6' },
 };
+
+const REC_ORDER: Record<'VALIDATE' | 'GATHER' | 'PAUSE', number> = {
+  VALIDATE: 0,
+  GATHER: 1,
+  PAUSE: 2,
+};
+
+const DISC_LETTER_COLORS: Record<'D' | 'I' | 'S' | 'C', string> = {
+  D: '#EF4444',
+  I: '#EAB308',
+  S: '#22C55E',
+  C: '#3B82F6',
+};
+
+/** Last session before this is shown with stale warning (uploaded Fathom dates). */
+const STALE_SESSION_INSTANT = Date.UTC(2024, 0, 1);
+
+function activePinkFlagCount(flags: string[]): number {
+  return flags.filter((f) => !String(f).startsWith('resolved:')).length;
+}
+
+function parseDiscLetter(style: string | undefined | null): 'D' | 'I' | 'S' | 'C' | null {
+  const ch = (style ?? '').trim().charAt(0).toUpperCase();
+  if (ch === 'D' || ch === 'I' || ch === 'S' || ch === 'C') return ch;
+  return null;
+}
+
+function outcomeBucketDisplay(bucket: string | undefined | null): string {
+  const b = (bucket ?? '').toLowerCase();
+  if (b === 'active') return 'Active';
+  if (b === 'paused') return 'Paused';
+  return bucket?.trim() || '—';
+}
+
+function formatSessionDate(iso: string | null | undefined): string {
+  if (iso == null || String(iso).trim() === '') return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function isStaleFathomSessionDate(iso: string | null | undefined): boolean {
+  if (iso == null || String(iso).trim() === '') return false;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return false;
+  return t < STALE_SESSION_INSTANT;
+}
 
 interface KPICardProps {
   title: string;
@@ -159,6 +223,9 @@ export default function ExecutiveDashboard() {
   const [tumayCount, setTumayCount] = useState(0);
   const [discCount, setDiscCount] = useState(0);
   const [dashboardKpis, setDashboardKpis] = useState<Awaited<ReturnType<typeof getDashboardKPIs>> | null>(null);
+  const [sessionStatsByClient, setSessionStatsByClient] = useState<
+    Map<string, { count: number; lastDate: string | null }>
+  >(new Map());
 
   const loadDashboardData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -178,6 +245,7 @@ export default function ExecutiveDashboard() {
         tumayRows,
         discRows,
         kpis,
+        sessionRows,
       ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
@@ -217,11 +285,31 @@ export default function ExecutiveDashboard() {
           []
         ),
         getDashboardKPIs(),
+        dbSelect<{
+          client_id: string;
+          session_count: number;
+          last_session_date: string | null;
+        }>(
+          `SELECT client_id,
+                  COUNT(*) as session_count,
+                  MAX(session_date) as last_session_date
+           FROM coaching_sessions
+           GROUP BY client_id`,
+          []
+        ),
       ]);
       setStats(s);
       setClients(c);
       setDiscDistribution(d);
       setReadinessRows(readiness);
+      const sessMap = new Map<string, { count: number; lastDate: string | null }>();
+      for (const row of sessionRows) {
+        sessMap.set(row.client_id, {
+          count: Number(row.session_count ?? 0),
+          lastDate: row.last_session_date ?? null,
+        });
+      }
+      setSessionStatsByClient(sessMap);
       setActiveConversationCount(Number(conversationRows[0]?.count ?? 0));
 
       const fc = Number(fathomRows[0]?.count ?? 0);
@@ -354,6 +442,52 @@ export default function ExecutiveDashboard() {
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [readinessRows, clients]);
+
+  const clientsAtAGlanceRows = useMemo(() => {
+    const byId = new Map(clients.map((cl) => [cl.id, cl]));
+    type Row = {
+      id: string;
+      name: string;
+      compartment: string;
+      statusLabel: string;
+      recommendation: 'VALIDATE' | 'GATHER' | 'PAUSE';
+      discLetter: 'D' | 'I' | 'S' | 'C' | null;
+      sessionCount: number;
+      lastSessionDate: string | null;
+      pinkCount: number;
+    };
+    const list: Row[] = [];
+    for (const r of readinessRows) {
+      const ob = (r.outcome_bucket ?? '').toLowerCase();
+      if (ob !== 'active' && ob !== 'paused') continue;
+      const cl = byId.get(r.client_id);
+      if (!cl) continue;
+      const rec = r.recommendation;
+      if (rec !== 'VALIDATE' && rec !== 'GATHER' && rec !== 'PAUSE') continue;
+      const sess = sessionStatsByClient.get(r.client_id);
+      const sessionCount = sess?.count ?? 0;
+      const lastSessionDate = sess?.lastDate ?? null;
+      list.push({
+        id: r.client_id,
+        name: r.client_name,
+        compartment: normalizeDisplayStage(cl.inferred_stage ?? cl.stage),
+        statusLabel: outcomeBucketDisplay(r.outcome_bucket),
+        recommendation: rec,
+        discLetter: parseDiscLetter(cl.disc_style),
+        sessionCount,
+        lastSessionDate,
+        pinkCount: activePinkFlagCount(r.pink_flags ?? []),
+      });
+    }
+    list.sort((a, b) => {
+      const ra = REC_ORDER[a.recommendation];
+      const rb = REC_ORDER[b.recommendation];
+      if (ra !== rb) return ra - rb;
+      if (b.pinkCount !== a.pinkCount) return b.pinkCount - a.pinkCount;
+      return a.name.localeCompare(b.name);
+    });
+    return list;
+  }, [readinessRows, clients, sessionStatsByClient]);
 
   if (loading) {
     return (
@@ -725,6 +859,127 @@ export default function ExecutiveDashboard() {
               />
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Clients at a Glance</CardTitle>
+          <CardDescription className="text-slate-500">
+            Your full pipeline in one view
+          </CardDescription>
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-3 py-2 mt-2">
+            <span className="inline-flex items-center gap-1">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Last Contact dates are based on uploaded Fathom sessions. Upload new call transcripts to
+              keep dates current.
+            </span>
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Compartment</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Recommendation</TableHead>
+                <TableHead>DISC</TableHead>
+                <TableHead>Sessions</TableHead>
+                <TableHead>Pink flags</TableHead>
+                <TableHead>Last contact</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {clientsAtAGlanceRows.map((row) => {
+                const recStyle = recommendationStyleMap[row.recommendation];
+                const stale =
+                  row.sessionCount > 0 &&
+                  row.lastSessionDate != null &&
+                  isStaleFathomSessionDate(row.lastSessionDate);
+                return (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-semibold text-slate-900">{row.name}</TableCell>
+                    <TableCell className="text-slate-700">{row.compartment}</TableCell>
+                    <TableCell className="text-slate-600">{row.statusLabel}</TableCell>
+                    <TableCell>
+                      <span
+                        className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                        style={{
+                          backgroundColor: recStyle.bgColor,
+                          color: recStyle.color,
+                        }}
+                      >
+                        {row.recommendation}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {row.discLetter ? (
+                        <span
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white"
+                          style={{ backgroundColor: DISC_LETTER_COLORS[row.discLetter] }}
+                        >
+                          {row.discLetter}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-sm">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="tabular-nums">{row.sessionCount}</span>
+                        {row.sessionCount === 0 ? (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-amber-50 px-1 py-0 text-amber-800"
+                            title="No Fathom sessions uploaded"
+                          >
+                            <AlertTriangle className="h-3 w-3" aria-hidden />
+                          </Badge>
+                        ) : null}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {row.pinkCount > 0 ? (
+                        <Badge className="bg-red-600 text-white hover:bg-red-600">
+                          {row.pinkCount}
+                        </Badge>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      {row.sessionCount === 0 ? (
+                        <span className="text-slate-500 text-sm">No sessions yet</span>
+                      ) : row.lastSessionDate ? (
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          <span className={cn(stale && 'text-amber-900 font-medium')}>
+                            {formatSessionDate(row.lastSessionDate)}
+                          </span>
+                          {stale ? (
+                            <UiTooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex rounded p-0.5 hover:bg-amber-100"
+                                  aria-label="Last contact may be outdated"
+                                >
+                                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-xs text-xs">
+                                May not reflect most recent call. Upload latest Fathom to update.
+                              </TooltipContent>
+                            </UiTooltip>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 text-sm">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>
