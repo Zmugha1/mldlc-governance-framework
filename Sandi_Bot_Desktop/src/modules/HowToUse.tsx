@@ -12,6 +12,7 @@ import {
   Lightbulb,
   Sun,
   HelpCircle,
+  ListChecks,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,6 +80,7 @@ export default function HowToUse() {
 
   const navItems = [
     { label: 'What is Coach Bot?', icon: <BookOpen className="h-4 w-4" />, section: 'what-is-coach-bot' },
+    { label: 'UAT Checklist', icon: <ListChecks className="h-4 w-4" />, section: 'uat-checklist' },
     { label: 'Morning routine', icon: <Sun className="h-4 w-4" />, section: 'morning-routine' },
     { label: 'Client card tabs', icon: <Users className="h-4 w-4" />, section: 'client-tabs' },
     { label: 'After a call', icon: <ClipboardCheck className="h-4 w-4" />, section: 'after-call' },
@@ -146,6 +148,81 @@ export default function HowToUse() {
                   <li>Analyzes your Fathom calls automatically</li>
                   <li>Tells you what to focus on before every call</li>
                 </ul>
+              </div>
+            </CollapsibleSection>
+          </div>
+
+          <div id="uat-checklist">
+            <CollapsibleSection
+              title="UAT Checklist"
+              icon={<ListChecks className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
+                <h2 className="text-lg font-bold text-[#333333]">
+                  UAT Checklist — Executive Dashboard
+                </h2>
+                <p className="text-[#6B6B6B]">
+                  When you first open Coach Bot, check these 5 things on your dashboard:
+                </p>
+
+                <div className="space-y-5">
+                  <div className="flex gap-3">
+                    <StepNumber number={1} />
+                    <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                      <p className="font-semibold text-[#333333]">Total Clients shows 16</p>
+                      <p>
+                        If you see a different number, note it in your feedback form.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <StepNumber number={2} />
+                    <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                      <p className="font-semibold text-[#333333]">
+                        AI Recommendations shows: VALIDATE 2, GATHER 7, PAUSE 4
+                      </p>
+                      <p>
+                        If the numbers look wrong for your clients, note it in your feedback form.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <StepNumber number={3} />
+                    <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                      <p className="font-semibold text-[#333333]">
+                        Validate Clients section shows Alex Raiyn and Jeff Dayton
+                      </p>
+                      <p>These are your two clients in compartment 4 or 5 right now.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <StepNumber number={4} />
+                    <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                      <p className="font-semibold text-[#333333]">
+                        5-Compartment Journey — check that your clients appear in the right
+                        compartments.
+                      </p>
+                      <p>
+                        If a client is in the wrong compartment, note their name and where they
+                        should be.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <StepNumber number={5} />
+                    <div className="min-w-0 space-y-1 text-[#6B6B6B]">
+                      <p className="font-semibold text-[#333333]">
+                        Time Saved — does 18.5 hours feel accurate based on the work Coach Bot has
+                        done processing your files?
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[#6B6B6B]">
+                  Rate the Executive Dashboard 1-5: 1 = confusing, 5 = exactly what I need every
+                  morning.
+                </p>
               </div>
             </CollapsibleSection>
           </div>
