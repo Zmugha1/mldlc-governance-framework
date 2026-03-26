@@ -8,6 +8,7 @@ import {
   TrendingUp,
   ChevronRight,
   AlertCircle,
+  AlertTriangle,
   Upload,
   FolderOpen,
   FileText,
@@ -103,6 +104,52 @@ function getStageBadgeColor(stageCode: string): string {
   return (
     stageConfig[label as keyof typeof stageConfig]?.color ?? '#E2E8F0'
   );
+}
+
+const PINK_FLAG_LABELS: Record<string, string> = {
+  timeline_slipping: 'Timeline Concern',
+  engagement_risk: 'Engagement Risk',
+  financial_concern: 'Financial Review',
+  spouse_alignment: 'Spouse Not Aligned',
+  ghosting_risk: 'Ghosting Pattern',
+};
+
+function titleCaseWords(s: string): string {
+  return s
+    .split(/\s+/)
+    .map((w) =>
+      w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''
+    )
+    .join(' ');
+}
+
+function pinkFlagDisplayName(flagKey: string): string {
+  if (PINK_FLAG_LABELS[flagKey]) return PINK_FLAG_LABELS[flagKey];
+  return titleCaseWords(flagKey.replace(/_/g, ' '));
+}
+
+/** Raw JSON array from clients.pink_flags; invalid JSON → [] */
+function parseClientPinkFlagsJson(
+  raw: string | null | undefined
+): string[] {
+  try {
+    const p = JSON.parse(raw || '[]');
+    if (!Array.isArray(p)) return [];
+    return p.filter((f): f is string => typeof f === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function splitPinkFlags(allFlags: string[]): {
+  activeFlags: string[];
+  resolvedFlags: string[];
+} {
+  const activeFlags = allFlags.filter((f) => !f.startsWith('resolved:'));
+  const resolvedFlags = allFlags
+    .filter((f) => f.startsWith('resolved:'))
+    .map((f) => f.replace(/^resolved:/, ''));
+  return { activeFlags, resolvedFlags };
 }
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
@@ -383,6 +430,10 @@ function ClientDetailModal({
   }>>([]);
   const [fathomSessionCount, setFathomSessionCount] = useState<number>(0);
   const [showInactivateConfirm, setShowInactivateConfirm] = useState(false);
+  const [localPinkFlagsJson, setLocalPinkFlagsJson] = useState<string>('[]');
+  const [resolvingPinkFlag, setResolvingPinkFlag] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (client && isOpen) {
@@ -577,7 +628,18 @@ function ClientDetailModal({
           setFathomSessions([]);
           setFathomSessionCount(0);
         });
+      dbSelect<{ pink_flags: string | null }>(
+        `SELECT pink_flags FROM clients WHERE id = ?`,
+        [client.id]
+      )
+        .then((rows) => {
+          setLocalPinkFlagsJson(rows[0]?.pink_flags ?? '[]');
+        })
+        .catch(() => {
+          setLocalPinkFlagsJson(client.pink_flags ?? '[]');
+        });
     } else {
+      setLocalPinkFlagsJson('[]');
       setReadiness(null);
       setYou2Vision('No statement yet');
       setYou2Details(null);
@@ -602,6 +664,10 @@ function ClientDetailModal({
   const stageCompartment = inferredPipelineCode
     ? compartmentFromStageCode(inferredPipelineCode)
     : null;
+
+  const allPinkParsed = parseClientPinkFlagsJson(localPinkFlagsJson);
+  const { activeFlags: activePinkFlags, resolvedFlags: resolvedPinkFlags } =
+    splitPinkFlags(allPinkParsed);
 
   const handleInactivate = () => {
     if (!onInactivate) return;
@@ -721,6 +787,43 @@ function ClientDetailModal({
     }
   };
 
+  const handleMarkPinkFlagResolved = async (flagName: string) => {
+    if (!client) return;
+    const allFlags = parseClientPinkFlagsJson(localPinkFlagsJson);
+    const idx = allFlags.findIndex((f) => f === flagName);
+    if (idx === -1) return;
+    setResolvingPinkFlag(flagName);
+    try {
+      const updatedFlags = [...allFlags];
+      updatedFlags[idx] = `resolved:${flagName}`;
+      const serialized = JSON.stringify(updatedFlags);
+      const iso = new Date().toISOString();
+      await dbExecute(
+        `UPDATE clients
+         SET pink_flags = ?, updated_at = ?
+         WHERE id = ?`,
+        [serialized, iso, client.id]
+      );
+      await dbExecute(
+        `INSERT INTO audit_log
+         (action_type, client_id, input_data, output_data, reasoning, model_used)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          'PINK_FLAG_RESOLVED',
+          client.id,
+          flagName,
+          `resolved:${flagName}`,
+          'Sandi marked flag as addressed',
+          'deterministic',
+        ]
+      );
+      setLocalPinkFlagsJson(serialized);
+      getStageReadiness(client.id).then(setReadiness);
+    } finally {
+      setResolvingPinkFlag(null);
+    }
+  };
+
   const blockDefinitions = [
     { key: 'block_opening', title: 'Session Opening', icon: '🎯', color: 'text-blue-700', checklist: 'Session Opening — confirm energy and contracting' },
     { key: 'block_emotional', title: 'Emotional Discovery', icon: '💭', color: 'text-purple-700', checklist: 'Emotional Discovery — ask what feelings emerged' },
@@ -753,6 +856,14 @@ function ClientDetailModal({
               <div className="flex flex-col gap-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-2xl font-bold">{client.name}</h2>
+                  {activePinkFlags.length > 0 && (
+                    <Badge
+                      className="min-h-6 min-w-6 shrink-0 rounded-full border-0 bg-red-600 px-2 text-xs font-bold text-white hover:bg-red-600"
+                      title={`${activePinkFlags.length} active pink flag(s)`}
+                    >
+                      {activePinkFlags.length}
+                    </Badge>
+                  )}
                   <Badge
                     className="text-slate-800 text-xs font-semibold border-0"
                     style={{
@@ -876,6 +987,69 @@ function ClientDetailModal({
                 </CardContent>
               </Card>
             </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg text-slate-800">
+                  Pink flags
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {activePinkFlags.length === 0 ? (
+                  <p className="text-sm text-slate-500">No active flags</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {activePinkFlags.map((flag) => (
+                      <li
+                        key={flag}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2 text-sm font-medium text-red-900">
+                          <AlertTriangle
+                            className="h-4 w-4 shrink-0 text-amber-600"
+                            aria-hidden
+                          />
+                          {pinkFlagDisplayName(flag)}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-red-800 hover:bg-red-100 hover:text-red-900"
+                          disabled={resolvingPinkFlag === flag}
+                          onClick={() => handleMarkPinkFlagResolved(flag)}
+                        >
+                          {resolvingPinkFlag === flag
+                            ? 'Saving…'
+                            : 'Mark Resolved'}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {resolvedPinkFlags.length > 0 && (
+                  <div className="border-t border-slate-100 pt-4">
+                    <p className="mb-2 text-sm font-semibold text-slate-700">
+                      Addressed Flags
+                    </p>
+                    <ul className="space-y-2">
+                      {resolvedPinkFlags.map((flag, i) => (
+                        <li
+                          key={`${flag}-${i}`}
+                          className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-900"
+                        >
+                          <Check
+                            className="h-4 w-4 shrink-0 text-green-600"
+                            aria-hidden
+                          />
+                          {pinkFlagDisplayName(flag)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>
