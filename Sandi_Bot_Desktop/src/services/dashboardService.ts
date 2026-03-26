@@ -121,6 +121,8 @@ export interface DashboardKPIs {
   gather_count: number;
   pause_count: number;
   avg_readiness: number;
+  /** (converted / eligible total) * 100, rounded; eligible = not inactive */
+  conversion_rate: number;
 }
 
 export interface HotProspect {
@@ -146,11 +148,25 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
   const gather_count = activeOnly.filter(
     r => r.recommendation === 'GATHER'
   ).length;
-  const pauseRows = await dbSelect<{ count: number }>(
-    `SELECT COUNT(*) as count FROM clients WHERE outcome_bucket = 'paused'`,
-    []
-  );
+  const [pauseRows, convertedRows, eligibleRows] = await Promise.all([
+    dbSelect<{ count: number }>(
+      `SELECT COUNT(*) as count FROM clients WHERE outcome_bucket = 'paused'`,
+      []
+    ),
+    dbSelect<{ count: number }>(
+      `SELECT COUNT(*) as count FROM clients WHERE outcome_bucket = 'converted'`,
+      []
+    ),
+    dbSelect<{ count: number }>(
+      `SELECT COUNT(*) as count FROM clients WHERE outcome_bucket != 'inactive'`,
+      []
+    ),
+  ]);
   const pause_count = Number(pauseRows[0]?.count ?? 0);
+  const converted = Number(convertedRows[0]?.count ?? 0);
+  const totalEligible = Number(eligibleRows[0]?.count ?? 0);
+  const conversion_rate =
+    totalEligible > 0 ? Math.round((converted / totalEligible) * 100) : 0;
 
   const scores = activeOnly
     .map(r => r.readiness_score)
@@ -162,7 +178,13 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
       )
     : 0;
 
-  return { validate_count, gather_count, pause_count, avg_readiness };
+  return {
+    validate_count,
+    gather_count,
+    pause_count,
+    avg_readiness,
+    conversion_rate,
+  };
 }
 
 export async function getHotProspects(
