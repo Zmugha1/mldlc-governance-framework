@@ -719,24 +719,30 @@ export default function AdminStreamliner() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-100">
-                    <div className="flex items-center gap-3">
-                      <Database className="h-5 w-5 text-green-600" />
-                      <span className="text-green-900">Knowledge Graph</span>
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Database className="h-5 w-5 shrink-0 text-slate-500" />
+                      <div className="min-w-0">
+                        <span className="text-slate-800 font-medium">Knowledge Graph</span>
+                        <p className="text-xs text-slate-500 mt-0.5">Neo4j graph — available Month 3</p>
+                      </div>
                     </div>
-                    <Badge className="bg-green-500 text-white">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Active
+                    <Badge className="shrink-0 bg-slate-300 text-slate-800 hover:bg-slate-300 border-0">
+                      Coming Soon
                     </Badge>
                   </div>
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-100">
-                    <div className="flex items-center gap-3">
-                      <Activity className="h-5 w-5 text-green-600" />
-                      <span className="text-green-900">AI Recommendations</span>
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Activity className="h-5 w-5 shrink-0 text-slate-500" />
+                      <div className="min-w-0">
+                        <span className="text-slate-800 font-medium">AI Recommendations</span>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Full recommendation engine — Month 2
+                        </p>
+                      </div>
                     </div>
-                    <Badge className="bg-green-500 text-white">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Active
+                    <Badge className="shrink-0 bg-slate-300 text-slate-800 hover:bg-slate-300 border-0">
+                      Coming Soon
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-100">
