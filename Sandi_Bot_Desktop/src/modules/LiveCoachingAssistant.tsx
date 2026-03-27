@@ -286,20 +286,28 @@ function deriveStyleLabel(d: number, i: number, s: number, c: number): string {
   return labels[`${top}${second}`] ?? labels[top] ?? `High ${top}`;
 }
 
-const getDangerText = (danger: any): string => {
-  if (typeof danger === 'string') return danger;
-  if (danger?.text) return danger.text;
-  if (danger?.description) return danger.description;
-  if (danger?.value) return danger.value;
-  return JSON.stringify(danger);
+const getDangerText = (item: any): string => {
+  if (typeof item === 'string') {
+    try {
+      const parsed = JSON.parse(item);
+      return parsed.danger || parsed.text || parsed.description || item;
+    } catch {
+      return item;
+    }
+  }
+  return item?.danger || item?.text || item?.description || String(item);
 };
 
-const getOpportunityText = (opportunity: any): string => {
-  if (typeof opportunity === 'string') return opportunity;
-  if (opportunity?.text) return opportunity.text;
-  if (opportunity?.description) return opportunity.description;
-  if (opportunity?.value) return opportunity.value;
-  return JSON.stringify(opportunity);
+const getOpportunityText = (item: any): string => {
+  if (typeof item === 'string') {
+    try {
+      const parsed = JSON.parse(item);
+      return parsed.opportunity || parsed.text || parsed.description || item;
+    } catch {
+      return item;
+    }
+  }
+  return item?.opportunity || item?.text || item?.description || String(item);
 };
 
 function parseJsonListWithExtractor(
