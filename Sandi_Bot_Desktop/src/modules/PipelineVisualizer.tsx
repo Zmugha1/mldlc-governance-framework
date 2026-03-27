@@ -74,6 +74,26 @@ const STAGE_DISPLAY_NAMES = [
   'Business Purchase',
 ] as const;
 
+/** Knowledge graph uses legacy names; show Sandi labels in this module only. */
+function pipelineKnowledgeStageTitle(name: string): string {
+  if (/coach,?\s*client,?\s*collaboration/i.test(name.trim())) return 'Possibilities';
+  return name;
+}
+
+function knowledgePinkFlagsForStageColumn(
+  displayStage: (typeof STAGE_DISPLAY_NAMES)[number]
+): string[] {
+  const stages = knowledgeGraph.clientExperience.stages;
+  if (displayStage === 'Possibilities') {
+    const s = stages.find((kg) => /coach,?\s*client,?\s*collaboration/i.test(kg.name));
+    return s?.pinkFlags ?? [];
+  }
+  const s = stages.find(
+    (kg) => kg.name === displayStage || kg.name.startsWith(`${displayStage} (`)
+  );
+  return s?.pinkFlags ?? [];
+}
+
 const DISPLAY_TO_STAGE_CODE: Record<(typeof STAGE_DISPLAY_NAMES)[number], PipelineStage> = {
   'Initial Contact': 'IC',
   'Seeker Connection': 'C1',
@@ -119,7 +139,6 @@ function StageColumn({
   onClick,
   onMoveNext,
   onPauseClient,
-  stats
 }: {
   stage: (typeof STAGE_DISPLAY_NAMES)[number];
   clients: PipelineStageClient[];
@@ -129,15 +148,14 @@ function StageColumn({
   onClick: () => void;
   onMoveNext: (clientId: string, clientName: string, stageDisplay: (typeof STAGE_DISPLAY_NAMES)[number]) => void;
   onPauseClient: (clientId: string, clientName: string) => void;
-  stats?: { avgDaysInStage: number; conversionRate: number };
 }) {
   const config = stageConfig[stage as keyof typeof stageConfig];
-  const pinkFlags = knowledgeGraph.clientExperience.stages.find(s => s.name === stage)?.pinkFlags || [];
+  const pinkFlags = knowledgePinkFlagsForStageColumn(stage);
 
   return (
     <div 
       className={cn(
-        "flex flex-col rounded-xl border-2 transition-all cursor-pointer min-w-[220px]",
+        "flex flex-col rounded-xl border-2 transition-all cursor-pointer min-w-[260px]",
         isActive 
           ? "border-blue-500 bg-blue-50/50 shadow-lg" 
           : "border-slate-200 bg-white hover:border-slate-300"
@@ -205,12 +223,12 @@ function StageColumn({
                   {Math.round(readinessById.get(raw.id) ?? 0)}%
                 </span>
               </div>
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-6 px-2 text-[10px]"
+                  className="h-auto min-h-8 shrink-0 px-2 py-1.5 text-xs whitespace-nowrap"
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveNext(raw.id, displayName, stage);
@@ -222,7 +240,7 @@ function StageColumn({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-6 px-2 text-[10px] border-amber-300 text-amber-700 hover:bg-amber-50"
+                  className="h-auto min-h-8 shrink-0 px-2 py-1.5 text-xs whitespace-nowrap border-amber-300 text-amber-700 hover:bg-amber-50"
                   onClick={(e) => {
                     e.stopPropagation();
                     onPauseClient(raw.id, displayName);
@@ -236,12 +254,8 @@ function StageColumn({
         })}
       </div>
 
-      {/* Stage Stats */}
+      {/* Stage reference: pink flag themes for this compartment */}
       <div className="p-3 border-t border-slate-100 rounded-b-xl bg-slate-50/50">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">Avg: {stats?.avgDaysInStage ?? 0} days</span>
-          <span className="text-slate-500">Convert: {stats?.conversionRate ?? 0}%</span>
-        </div>
         <PinkFlagAlert flags={pinkFlags} />
       </div>
     </div>
@@ -565,7 +579,6 @@ export default function PipelineVisualizer() {
 
   // Group clients by stage from readiness (display format for StageColumn)
   const clientsByStage = useMemo(() => {
-    const defaults = getPipelineStageDefaults();
     return STAGE_DISPLAY_NAMES.map(stage => ({
       stage,
       clients: readiness
@@ -573,7 +586,6 @@ export default function PipelineVisualizer() {
         .map(r => clientMap.get(r.client_id))
         .filter((c): c is Client => c != null)
         .map((c) => ({ raw: c, display: clientToDisplay(c) })),
-      stats: { avgDaysInStage: defaults.avgDaysInStage, conversionRate: defaults.conversionRate }
     }));
   }, [readiness, clientMap]);
 
@@ -666,7 +678,7 @@ export default function PipelineVisualizer() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">5-Compartment Client Experience Journey</CardTitle>
-          <CardDescription>Based on Coaching Experience Framework</CardDescription>
+          <CardDescription>Your clients organized by compartment</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
@@ -680,7 +692,9 @@ export default function PipelineVisualizer() {
                   <div className="h-8 w-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0" style={{ backgroundColor: stage.color }}>
                     {compartmentAbbr}
                   </div>
-                  <h4 className="font-semibold text-slate-900 min-w-0">{stage.name}</h4>
+                  <h4 className="font-semibold text-slate-900 min-w-0">
+                    {pipelineKnowledgeStageTitle(stage.name)}
+                  </h4>
                 </div>
                 <p className="text-sm text-slate-600 mb-2">{stage.objective}</p>
                 <div className="text-xs text-slate-500">
@@ -703,7 +717,7 @@ export default function PipelineVisualizer() {
         </CardHeader>
         <CardContent>
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {clientsByStage.map(({ stage, clients: stageClients, stats }) => (
+            {clientsByStage.map(({ stage, clients: stageClients }) => (
               <StageColumn
                 key={stage}
                 stage={stage}
@@ -714,7 +728,6 @@ export default function PipelineVisualizer() {
                 onClick={() => setSelectedStage(selectedStage === stage ? null : stage)}
                 onMoveNext={handleMoveNext}
                 onPauseClient={openPauseModal}
-                stats={stats}
               />
             ))}
           </div>
@@ -789,7 +802,9 @@ export default function PipelineVisualizer() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {knowledgeGraph.clientExperience.stages.map((stage) => (
               <div key={stage.name} className="p-4 rounded-xl bg-pink-50 border border-pink-100">
-                <h4 className="font-semibold text-pink-900 mb-2">{stage.name}</h4>
+                <h4 className="font-semibold text-pink-900 mb-2">
+                  {pipelineKnowledgeStageTitle(stage.name)}
+                </h4>
                 <ul className="space-y-1">
                   {stage.pinkFlags.map((flag, i) => (
                     <li key={i} className="text-sm text-pink-700 flex items-start gap-2">
