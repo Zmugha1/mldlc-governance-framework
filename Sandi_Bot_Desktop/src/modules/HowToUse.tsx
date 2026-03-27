@@ -16,6 +16,7 @@ import {
   Sparkles,
   Info,
   Brain,
+  Layers,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,6 +92,11 @@ export default function HowToUse() {
     },
     { label: 'UAT Checklist', icon: <ListChecks className="h-4 w-4" />, section: 'uat-checklist' },
     { label: 'Morning routine', icon: <Sun className="h-4 w-4" />, section: 'morning-routine' },
+    {
+      label: 'Pipeline Visualizer',
+      icon: <Layers className="h-4 w-4" />,
+      section: 'pipeline-visualizer',
+    },
     {
       label: 'How Coach Bot makes decisions',
       icon: <Brain className="h-4 w-4" />,
@@ -645,6 +651,148 @@ export default function HowToUse() {
                     Shows the personality breakdown of all your clients. High I (7) means most of
                     your clients are Influencing style — enthusiastic, story-driven, people-oriented.
                   </p>
+                </div>
+              </div>
+
+              <div
+                id="pipeline-visualizer"
+                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
+              >
+                <h2 className="text-lg font-bold text-[#333333]">Pipeline Visualizer</h2>
+                <p className="text-[#6B6B6B]">
+                  This page shows your entire client pipeline organized by compartment. Use it to move
+                  clients between stages and see who is where in their journey.
+                </p>
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">The Pipeline Board</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      Each column is a compartment. Clients appear as cards in their current compartment.
+                    </p>
+                    <p className="font-semibold text-[#333333]">Each client card shows:</p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>Client name</li>
+                      <li>GATHER, VALIDATE, or PAUSE badge</li>
+                      <li>Readiness percentage</li>
+                      <li>Two action buttons</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Moving a Client Forward</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>When a client is ready to move to the next compartment:</p>
+                    <ol className="list-inside list-decimal space-y-2 pl-1">
+                      <li>Find their card in the Pipeline Board</li>
+                      <li>Click &quot;Move to next stage&quot;</li>
+                      <li>The client moves to the next compartment</li>
+                      <li>Coach Bot records the move in the audit log automatically</li>
+                    </ol>
+                    <p>Clients never move backwards.</p>
+                    <p>If you move a client by mistake, contact Zubia to correct it.</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Moving a Client to PAUSE</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>When life happens and a client needs to go on hold:</p>
+                    <ol className="list-inside list-decimal space-y-2 pl-1">
+                      <li>Find their card in the Pipeline Board</li>
+                      <li>Click &quot;Move to PAUSE&quot;</li>
+                      <li>Enter a pause reason (required)</li>
+                      <li>Set a follow-up date (required)</li>
+                      <li>The client moves to Paused status</li>
+                    </ol>
+                    <p>
+                      Paused clients stay in their compartment but show a PAUSE badge. They are excluded
+                      from your active pipeline counts.
+                    </p>
+                    <p className="font-semibold text-[#333333]">To reactivate a paused client:</p>
+                    <p>
+                      Go to their card in Client Intelligence and update their outcome status.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">The Conversion Funnel</h3>
+                  <p className="text-[#6B6B6B]">
+                    Shows how many clients are in each compartment right now. A healthy pipeline has
+                    clients spread across multiple compartments — not all bunched in one.
+                  </p>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Pink Flags by Stage</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      Shows common warning signs at each compartment based on Sandi&apos;s coaching
+                      experience. These are reference reminders for what to watch for — not your
+                      individual client flags.
+                    </p>
+                    <p>
+                      Your individual client pink flags are managed on each client&apos;s Overview tab in
+                      Client Intelligence.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    UAT Checklist — Pipeline Visualizer
+                  </h3>
+                  <div className="space-y-5 text-[#6B6B6B]">
+                    <div className="flex gap-3">
+                      <StepNumber number={1} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Does the Pipeline Board show your clients in the right compartments? Note any
+                          client that appears in the wrong compartment.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={2} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Does Compartment 2 show 9 clients? That is correct — most of your current
+                          clients are in Seeker Clarification.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={3} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Try clicking &quot;Move to next stage&quot; on a test client. Does it move
+                          correctly? (You can move them back by contacting Zubia.)
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={4} />
+                      <div className="min-w-0 space-y-1">
+                        <p>Does the Conversion Funnel match what you expect from your pipeline?</p>
+                      </div>
+                    </div>
+                    <p>
+                      Rate the Pipeline Visualizer 1-5: 1 = confusing, 5 = I can manage my whole pipeline
+                      from this page.
+                    </p>
+                  </div>
                 </div>
               </div>
 
