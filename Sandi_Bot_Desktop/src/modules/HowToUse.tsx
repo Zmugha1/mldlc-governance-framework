@@ -856,6 +856,40 @@ export default function HowToUse() {
                   vision, DISC signals, objections, commitments, reflection, and your coach
                   assessment.
                 </p>
+                <div className="mt-4 space-y-4 border-t border-[#E5E7EB] pt-4 text-[#6B6B6B]">
+                  <h3 className="text-base font-semibold text-[#333333]">
+                    Two Types of Fathom Sessions
+                  </h3>
+                  <p>Your Fathom tab may show one of two formats:</p>
+                  <div className="space-y-2">
+                    <p className="font-semibold text-[#333333]">Full CLEAR Session (9 blocks)</p>
+                    <p>
+                      When Coach Bot can identify all 9 parts of a structured coaching call, it
+                      extracts them into separate blocks:
+                    </p>
+                    <p className="pl-1 text-[#333333]">
+                      Opening, Emotional Discovery, Life Context, Vision, DISC Signals, Objections,
+                      Commitments, Reflection, Coach Assessment
+                    </p>
+                    <p>A CLEAR score appears at the top.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="font-semibold text-[#333333]">Pre-Structure Session</p>
+                    <p>
+                      Early or informal calls that do not follow the CLEAR framework are stored as a
+                      plain summary note. These are labeled &quot;Pre-structure session&quot; and show
+                      0/9 blocks. No CLEAR score is shown.
+                    </p>
+                  </div>
+                  <p>
+                    Both formats are normal and expected. Early calls with new clients are often
+                    exploratory and do not yet follow a structured framework.
+                  </p>
+                  <p>
+                    As you upload new Fathom transcripts from structured coaching calls, those will
+                    show the full 9-block format with CLEAR scoring.
+                  </p>
+                </div>
                 <p>
                   <span className="font-semibold text-[#333333]">Reminders</span> — Follow-up dates
                   and notes. Pause reason and follow-up date live here when a client is paused.
