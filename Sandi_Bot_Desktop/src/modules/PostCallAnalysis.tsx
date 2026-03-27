@@ -212,9 +212,12 @@ export default function PostCallAnalysis() {
   const [insights, setInsights] = useState<ClearInsights | null>(null);
   const [selectedSession, setSelectedSession] = useState<SelectedSessionBlocks | null>(null);
   const [selectedDiscStyle, setSelectedDiscStyle] = useState('C');
+  const [savedSessionCountForClient, setSavedSessionCountForClient] = useState(0);
 
   // Calculate overall score
   const overallScore = useMemo(() => calculateOverallScore(scores), [scores]);
+  const showOverallClearNumeric =
+    Boolean(selectedClient) && savedSessionCountForClient > 0;
 
   // Radar chart data
   const radarData = clearDimensions.map(dim => ({
@@ -414,6 +417,28 @@ export default function PostCallAnalysis() {
       setSelectedSession(null);
       setSelectedDiscStyle('C');
     });
+  }, [selectedClient]);
+
+  useEffect(() => {
+    if (!selectedClient) {
+      setSavedSessionCountForClient(0);
+      return;
+    }
+    let cancelled = false;
+    void dbSelect<{ c: number }>(
+      `SELECT COUNT(*) as c FROM coaching_sessions
+       WHERE client_id = ? AND overall_clear_score IS NOT NULL`,
+      [selectedClient]
+    )
+      .then((rows) => {
+        if (!cancelled) setSavedSessionCountForClient(Number(rows[0]?.c ?? 0));
+      })
+      .catch(() => {
+        if (!cancelled) setSavedSessionCountForClient(0);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedClient]);
 
   if (loading) {
@@ -630,25 +655,41 @@ export default function PostCallAnalysis() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-blue-100 mb-1">Overall CLEAR Score</p>
-                      <h2 className="text-5xl font-bold">{overallScore.toFixed(1)}</h2>
-                      <p className="text-blue-100 mt-2">out of 5.0</p>
+                      <h2 className="text-5xl font-bold">
+                        {showOverallClearNumeric ? overallScore.toFixed(1) : '—'}
+                      </h2>
+                      <p className="text-blue-100 mt-2">
+                        {showOverallClearNumeric
+                          ? 'out of 5.0'
+                          : !selectedClient
+                            ? 'Select a client to see score'
+                            : 'No sessions recorded yet'}
+                      </p>
                     </div>
                     <div className="h-20 w-20 rounded-full bg-white/20 flex items-center justify-center">
                       <BarChart3 className="h-10 w-10" />
                     </div>
                   </div>
-                  <div className="mt-6">
-                    <div className="flex justify-between text-sm mb-2">
-                      <span>Performance</span>
-                      <span>{overallScore >= 4 ? 'Excellent' : overallScore >= 3 ? 'Good' : 'Needs Improvement'}</span>
+                  {showOverallClearNumeric && (
+                    <div className="mt-6">
+                      <div className="flex justify-between text-sm mb-2">
+                        <span>Performance</span>
+                        <span>
+                          {overallScore >= 4
+                            ? 'Excellent'
+                            : overallScore >= 3
+                              ? 'Good'
+                              : 'Needs Improvement'}
+                        </span>
+                      </div>
+                      <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-white rounded-full transition-all"
+                          style={{ width: `${(overallScore / 5) * 100}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-3 bg-white/20 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-white rounded-full transition-all"
-                        style={{ width: `${(overallScore / 5) * 100}%` }}
-                      />
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
 
