@@ -18,6 +18,7 @@ import {
   Brain,
   Layers,
   MessageSquare,
+  ClipboardList,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -102,6 +103,11 @@ export default function HowToUse() {
       label: 'Live Coaching Assistant',
       icon: <MessageSquare className="h-4 w-4" />,
       section: 'live-coaching-assistant',
+    },
+    {
+      label: 'Post-Call Analysis',
+      icon: <ClipboardList className="h-4 w-4" />,
+      section: 'post-call-analysis',
     },
     {
       label: 'How Coach Bot makes decisions',
@@ -925,6 +931,169 @@ export default function HowToUse() {
                     <p>
                       Rate the Live Coaching Assistant 1-5: 1 = not useful, 5 = I will use this before every
                       call.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                id="post-call-analysis"
+                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
+              >
+                <h2 className="text-lg font-bold text-[#333333]">Post-Call Analysis</h2>
+                <p className="text-[#6B6B6B]">
+                  Use this page after every coaching call to score yourself on the CLEAR framework and track
+                  your coaching quality over time.
+                </p>
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">The CLEAR Framework</h3>
+                  <p className="mb-4 text-[#6B6B6B]">
+                    CLEAR is Sandi&apos;s coaching methodology. It stands for:
+                  </p>
+                  <div className="space-y-4 text-[#6B6B6B]">
+                    <div>
+                      <p className="font-semibold text-[#333333]">C — Contracting</p>
+                      <p className="mt-1">
+                        Did you set clear expectations at the start of the call? Did the client agree on the
+                        agenda and outcomes?
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">L — Listening</p>
+                      <p className="mt-1">
+                        Did you listen more than you talked? Did you reflect back what you heard?
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">E — Exploring</p>
+                      <p className="mt-1">
+                        Did you ask open questions that helped the client discover their own answers?
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">A — Action</p>
+                      <p className="mt-1">
+                        Did the client commit to specific next steps before the call ended?
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#333333]">R — Reflection</p>
+                      <p className="mt-1">
+                        Did you help the client reflect on what they learned and how they are growing?
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">How to Score a Call</h3>
+                  <ol className="list-inside list-decimal space-y-3 pl-1 text-[#6B6B6B]">
+                    <li>Select a client from the list</li>
+                    <li>Set the call date</li>
+                    <li>Rate yourself 1-5 on each CLEAR dimension</li>
+                    <li>Add any notes about the call</li>
+                    <li>Click Save Analysis</li>
+                    <li>Coach Bot saves the score and adds it to the client&apos;s Fathom history</li>
+                  </ol>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Reading Your Scores</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      The radar chart shows your balance across all 5 dimensions. A perfect coach scores
+                      evenly across all 5.
+                    </p>
+                    <p className="font-semibold text-[#333333]">Common patterns:</p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>
+                        High Contracting, low Reflection: Good at opening calls, less strong at closing the
+                        loop
+                      </li>
+                      <li>
+                        High Exploring, low Action: Great questions but clients leave without clear next steps
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">History Tab</h3>
+                  <p className="text-[#6B6B6B]">
+                    Shows all your past CLEAR scores for the selected client. Track improvement over time as
+                    you coach them through their journey.
+                  </p>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Insights Tab</h3>
+                  <p className="text-[#6B6B6B]">
+                    Coming in Month 2 — emotional depth analysis and DISC-specific question recommendations
+                    based on your sessions.
+                  </p>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    UAT Checklist — Post-Call Analysis
+                  </h3>
+                  <div className="space-y-5 text-[#6B6B6B]">
+                    <div className="flex gap-3">
+                      <StepNumber number={1} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Select Alex Raiyn from the client list. Does the form activate? Does the score card
+                          change from —?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={2} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Rate yourself on all 5 CLEAR dimensions for a recent call with Alex. Click Save
+                          Analysis. Does it save without error?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={3} />
+                      <div className="min-w-0 space-y-1">
+                        <p>Click the History tab. Does Alex&apos;s session appear?</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={4} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Select a client with no sessions (Andrew Tait or Bigith Pattar Veetil). Does the
+                          score card show — and &quot;No sessions recorded yet&quot;?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={5} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Do the CLEAR labels make sense to you? Contracting, Listening, Exploring, Action,
+                          Reflection — are these the right words for your coaching framework?
+                        </p>
+                      </div>
+                    </div>
+                    <p>
+                      Rate Post-Call Analysis 1-5: 1 = not useful, 5 = I will score every call I do from now
+                      on.
                     </p>
                   </div>
                 </div>
