@@ -111,14 +111,16 @@ function ScoreBadge({ score }: { score: number }) {
 function CLEARScoreInput({ 
   dimension, 
   value, 
-  onChange 
+  onChange,
+  disabled = false,
 }: { 
   dimension: typeof clearDimensions[0]; 
   value: number; 
   onChange: (value: number) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+    <div className={cn('p-4 rounded-xl bg-slate-50 border border-slate-100', disabled && 'opacity-60')}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <div 
@@ -140,6 +142,7 @@ function CLEARScoreInput({
         min={1}
         max={5}
         step={1}
+        disabled={disabled}
         className="w-full"
       />
       <div className="flex justify-between mt-2 text-xs text-slate-400">
@@ -423,6 +426,8 @@ export default function PostCallAnalysis() {
     );
   }
 
+  const analysisFormEnabled = Boolean(selectedClient);
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="new">
@@ -474,6 +479,7 @@ export default function PostCallAnalysis() {
                         type="date"
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
+                        disabled={!analysisFormEnabled}
                       />
                     </div>
                     <div>
@@ -488,6 +494,12 @@ export default function PostCallAnalysis() {
                 </CardContent>
               </Card>
 
+              {!analysisFormEnabled && (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  Select a client from the list to begin a post-call analysis.
+                </p>
+              )}
+
               {/* CLEAR Scores */}
               <Card>
                 <CardHeader>
@@ -501,6 +513,7 @@ export default function PostCallAnalysis() {
                       dimension={dimension}
                       value={scores[dimension.key as keyof typeof scores]}
                       onChange={(value) => setScores(prev => ({ ...prev, [dimension.key]: value }))}
+                      disabled={!analysisFormEnabled}
                     />
                   ))}
                 </CardContent>
@@ -590,7 +603,7 @@ export default function PostCallAnalysis() {
               <Button 
                 onClick={handleSave} 
                 className="w-full"
-                disabled={!selectedClient}
+                disabled={!analysisFormEnabled}
               >
                 {savedMessage ? (
                   <>
