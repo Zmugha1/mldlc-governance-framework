@@ -735,9 +735,11 @@ export default function LiveCoachingAssistant() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-y-6 lg:gap-x-0 h-[calc(100vh-200px)]">
       {/* Left Panel - Client Selection */}
-      <div className="lg:col-span-1 space-y-4 overflow-auto">
+      <div
+        className="lg:col-span-1 space-y-4 overflow-auto lg:pr-6 lg:[border-right:1px_solid_var(--color-border-tertiary)]"
+      >
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Select Client</CardTitle>
@@ -854,7 +856,7 @@ export default function LiveCoachingAssistant() {
       </div>
 
       {/* Right Panel - Chat Interface */}
-      <div className="lg:col-span-2 flex flex-col">
+      <div className="lg:col-span-2 flex flex-col lg:pl-6">
         <Card className="flex-1 flex flex-col">
           <CardHeader className="border-b border-slate-100 pb-4">
             <div className="flex items-center justify-between">
