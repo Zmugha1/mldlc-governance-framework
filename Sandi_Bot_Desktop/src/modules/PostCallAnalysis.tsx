@@ -51,29 +51,42 @@ import {
 import { dbExecute, dbSelect } from '@/services/db';
 import { cn } from '@/lib/utils';
 
+/** Maps legacy service labels to CLEAR UI labels (postCallService still returns old names). */
+const CLEAR_LABEL_DISPLAY: Record<string, string> = {
+  Curiosity: 'Contracting',
+  Locating: 'Listening',
+  Engagement: 'Exploring',
+  Accountability: 'Action',
+  Reflection: 'Reflection',
+};
+
+function displayClearLabel(label: string): string {
+  return CLEAR_LABEL_DISPLAY[label] ?? label;
+}
+
 // CLEAR Dimensions from Knowledge Graph
 const clearDimensions = [
   { 
     key: 'curiosity', 
-    label: 'Curiosity', 
+    label: 'Contracting', 
     description: knowledgeGraph.clearFramework.curiosity.description,
     color: '#3B82F6'
   },
   { 
     key: 'locating', 
-    label: 'Locating', 
+    label: 'Listening', 
     description: knowledgeGraph.clearFramework.locating.description,
     color: '#22C55E'
   },
   { 
     key: 'engagement', 
-    label: 'Engagement', 
+    label: 'Exploring', 
     description: knowledgeGraph.clearFramework.engagement.description,
     color: '#F59E0B'
   },
   { 
     key: 'accountability', 
-    label: 'Accountability', 
+    label: 'Action', 
     description: knowledgeGraph.clearFramework.accountability.description,
     color: '#8B5CF6'
   },
@@ -661,7 +674,7 @@ export default function PostCallAnalysis() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-yellow-800 mb-2">
-                    Your lowest dimension is <strong>{coachingTip.dimension}</strong>.
+                    Your lowest dimension is <strong>{displayClearLabel(coachingTip.dimension)}</strong>.
                   </p>
                   <p className="text-sm text-yellow-700">
                     {coachingTip.tip}
@@ -676,10 +689,10 @@ export default function PostCallAnalysis() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2 text-sm">
-                    <p><strong>C</strong>uriosity - Ask open-ended questions</p>
-                    <p><strong>L</strong>ocating - Find their mental coordinates</p>
-                    <p><strong>E</strong>ngagement - Use their words, dig deeper</p>
-                    <p><strong>A</strong>ccountability - Get specific commitments</p>
+                    <p><strong>C</strong>ontracting - Ask open-ended questions</p>
+                    <p><strong>L</strong>istening - Find their mental coordinates</p>
+                    <p><strong>E</strong>xploring - Use their words, dig deeper</p>
+                    <p><strong>A</strong>ction - Get specific commitments</p>
                     <p><strong>R</strong>eflection - Ask about a-ha moments</p>
                   </div>
                 </CardContent>
@@ -722,19 +735,19 @@ export default function PostCallAnalysis() {
                       </div>
                       <div className="grid grid-cols-5 gap-2">
                         <div className="text-center">
-                          <p className="text-xs text-slate-500">Cur</p>
+                          <p className="text-xs text-slate-500">Con</p>
                           <p className="text-sm font-medium">{session.clear_curiosity}</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-xs text-slate-500">Loc</p>
+                          <p className="text-xs text-slate-500">Lis</p>
                           <p className="text-sm font-medium">{session.clear_locating}</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-xs text-slate-500">Eng</p>
+                          <p className="text-xs text-slate-500">Exp</p>
                           <p className="text-sm font-medium">{session.clear_engagement}</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-xs text-slate-500">Acc</p>
+                          <p className="text-xs text-slate-500">Act</p>
                           <p className="text-sm font-medium">{session.clear_accountability}</p>
                         </div>
                         <div className="text-center">
@@ -808,7 +821,7 @@ export default function PostCallAnalysis() {
                   <div className="space-y-2">
                     {getStrengthsAndOpportunities(scores).strengths.map((item) => (
                       <div key={item.label} className="p-3 rounded-lg bg-green-50 border border-green-100">
-                        <p className="font-medium text-green-900">{item.label}</p>
+                        <p className="font-medium text-green-900">{displayClearLabel(item.label)}</p>
                         <p className="text-sm text-green-700">Score: {item.score}/5</p>
                       </div>
                     ))}
@@ -822,7 +835,7 @@ export default function PostCallAnalysis() {
                   <div className="space-y-2">
                     {getStrengthsAndOpportunities(scores).opportunities.map((item) => (
                       <div key={item.label} className="p-3 rounded-lg bg-orange-50 border border-orange-100">
-                        <p className="font-medium text-orange-900">{item.label}</p>
+                        <p className="font-medium text-orange-900">{displayClearLabel(item.label)}</p>
                         <p className="text-sm text-orange-700">Score: {item.score}/5</p>
                       </div>
                     ))}
