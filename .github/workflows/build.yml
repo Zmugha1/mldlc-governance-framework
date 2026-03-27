@@ -5,10 +5,6 @@ on:
     branches: [dev]
   workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: Sandi_Bot_Desktop
-
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -27,6 +23,13 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Download pdfium Windows
+        run: |
+          curl -L -o pdfium.zip "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-windows-x64.zip"
+          unzip pdfium.zip -d pdfium_extracted
+          copy pdfium_extracted\bin\pdfium.dll src-tauri\pdfium.dll
+        shell: cmd
 
       - name: Build Windows installer
         run: npm run tauri:build
@@ -59,6 +62,12 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Download pdfium Mac
+        run: |
+          curl -L -o pdfium.zip "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-mac-arm64.zip"
+          unzip pdfium.zip -d pdfium_extracted
+          cp pdfium_extracted/lib/libpdfium.dylib src-tauri/libpdfium.dylib
 
       - name: Build Mac installer
         run: npm run tauri:build
