@@ -135,6 +135,7 @@ function StageColumn({
   clients,
   clientRecommendations,
   readinessById,
+  readinessClientNamesById,
   isActive,
   onClick,
   onMoveNext,
@@ -144,6 +145,7 @@ function StageColumn({
   clients: PipelineStageClient[];
   clientRecommendations: Map<string, string>;
   readinessById: Map<string, number>;
+  readinessClientNamesById: Map<string, string>;
   isActive: boolean;
   onClick: () => void;
   onMoveNext: (clientId: string, clientName: string, stageDisplay: (typeof STAGE_DISPLAY_NAMES)[number]) => void;
@@ -167,13 +169,23 @@ function StageColumn({
         className="p-4 rounded-t-xl"
         style={{ backgroundColor: config.color }}
       >
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-slate-600 uppercase tracking-wide">
-            {config.compartment}
-          </span>
-          <span className="text-lg font-bold text-slate-800">
-            {clients.length}
-          </span>
+        <div
+          className={cn(
+            'mb-2 flex items-center',
+            stage === 'Initial Contact' ? 'justify-end' : 'justify-between'
+          )}
+        >
+          {stage !== 'Initial Contact' ? (
+            <span
+              className={cn(
+                'text-xs font-medium text-slate-600 tracking-wide',
+                stage === 'Business Purchase' ? 'normal-case' : 'uppercase'
+              )}
+            >
+              {stage === 'Business Purchase' ? 'Business Complete' : config.compartment}
+            </span>
+          ) : null}
+          <span className="text-lg font-bold text-slate-800">{clients.length}</span>
         </div>
         <h4 className="font-semibold text-slate-900">{config.label}</h4>
         <p className="text-xs text-slate-600 mt-1">{config.description}</p>
@@ -192,7 +204,11 @@ function StageColumn({
         ) : clients.map(({ raw, display: client }) => {
           const rec = clientRecommendations.get(raw.id) ?? 'GATHER';
           const recColor = REC_COLORS[rec] ?? '#f59e0b';
-          const displayName = (raw.name ?? '').trim() || '—';
+          const displayName =
+            String(raw.name ?? '').trim() ||
+            String(client.name ?? '').trim() ||
+            String(readinessClientNamesById.get(raw.id) ?? '').trim() ||
+            '—';
           return (
             <div
               key={raw.id}
@@ -606,6 +622,12 @@ export default function PipelineVisualizer() {
     return m;
   }, [readiness]);
 
+  const readinessClientNamesById = useMemo(() => {
+    const m = new Map<string, string>();
+    readiness.forEach((r) => m.set(r.client_id, r.client_name ?? ''));
+    return m;
+  }, [readiness]);
+
   const clientMap = useMemo(() => {
     const m = new Map<string, Client>();
     clients.forEach(c => m.set(c.id, c));
@@ -767,6 +789,7 @@ export default function PipelineVisualizer() {
                 clients={stageClients}
                 clientRecommendations={clientRecommendations}
                 readinessById={readinessById}
+                readinessClientNamesById={readinessClientNamesById}
                 isActive={selectedStage === stage}
                 onClick={() => setSelectedStage(selectedStage === stage ? null : stage)}
                 onMoveNext={handleMoveNext}
