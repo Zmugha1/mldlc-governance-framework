@@ -28,7 +28,6 @@ import {
   moveClientToPause,
   type PipelineStage,
 } from '@/services/stageReadinessService';
-import { getPipelineStageDefaults } from '@/services/pipelineService';
 import { getDashboardKPIs } from '@/services/dashboardService';
 import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter';
 import type { Client } from '@/types';
@@ -646,18 +645,15 @@ export default function PipelineVisualizer() {
     }));
   }, [readiness, clientMap]);
 
-  // Pipeline flow data from real clients
-  const flowData = useMemo(() => {
-    const defaults = getPipelineStageDefaults();
-    return STAGE_DISPLAY_NAMES.map(stage => {
-      const count = clients.filter(c => c.stage === stage).length;
-      return {
+  // Stage Performance chart: same per-stage counts as Conversion Funnel (DB inferred_stage)
+  const flowData = useMemo(
+    () =>
+      STAGE_DISPLAY_NAMES.map((stage) => ({
         name: stage,
-        clients: count,
-        conversion: defaults.flowConversion
-      };
-    });
-  }, [clients]);
+        clients: funnelCountsByStage[stage] ?? 0,
+      })),
+    [funnelCountsByStage]
+  );
 
   const totalClients = clients.length;
   const totalActivePinkFlagsForClients = clients.reduce((total, client) => {
@@ -821,34 +817,28 @@ export default function PipelineVisualizer() {
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={flowData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                <XAxis 
-                  dataKey="name" 
+                <XAxis
+                  dataKey="name"
                   tick={{ fontSize: 9 }}
                   angle={-30}
                   textAnchor="end"
                   height={70}
                 />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'white',
                     border: '1px solid #E2E8F0',
-                    borderRadius: '8px'
+                    borderRadius: '8px',
                   }}
                 />
-                <Bar yAxisId="left" dataKey="clients" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="right" dataKey="conversion" fill="#22C55E" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="clients" fill="#3B82F6" radius={[4, 4, 0, 0]} name="Clients" />
               </BarChart>
             </ResponsiveContainer>
-            <div className="flex justify-center gap-6 mt-4">
+            <div className="mt-4 flex justify-center">
               <div className="flex items-center gap-2">
                 <div className="h-3 w-3 rounded-full bg-blue-500" />
-                <span className="text-sm text-slate-600">Clients</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-green-500" />
-                <span className="text-sm text-slate-600">Conversion %</span>
+                <span className="text-sm text-slate-600">Clients per stage (same as funnel)</span>
               </div>
             </div>
           </CardContent>
