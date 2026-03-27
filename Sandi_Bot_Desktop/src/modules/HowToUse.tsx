@@ -19,6 +19,7 @@ import {
   Layers,
   MessageSquare,
   ClipboardList,
+  Settings,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -108,6 +109,11 @@ export default function HowToUse() {
       label: 'Post-Call Analysis',
       icon: <ClipboardList className="h-4 w-4" />,
       section: 'post-call-analysis',
+    },
+    {
+      label: 'Admin Streamliner',
+      icon: <Settings className="h-4 w-4" />,
+      section: 'admin-streamliner',
     },
     {
       label: 'How Coach Bot makes decisions',
@@ -1094,6 +1100,155 @@ export default function HowToUse() {
                     <p>
                       Rate Post-Call Analysis 1-5: 1 = not useful, 5 = I will score every call I do from now
                       on.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                id="admin-streamliner"
+                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
+              >
+                <h2 className="text-lg font-bold text-[#333333]">Admin Streamliner</h2>
+                <p className="text-[#6B6B6B]">
+                  This is your back-office control center. Use it to import client files, check system health,
+                  and manage your settings.
+                </p>
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Import Tab</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      This is how you add new client data to Coach Bot. Drop files here after every call or
+                      when a new client joins.
+                    </p>
+                    <p className="font-semibold text-[#333333]">Supported file types:</p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>DISC report PDF (TTI Talent Insights)</li>
+                      <li>You 2.0 intake form</li>
+                      <li>TUMAY financial profile JSON</li>
+                      <li>Fathom coaching call transcript PDF</li>
+                    </ul>
+                    <p className="font-semibold text-[#333333]">How to import:</p>
+                    <ol className="list-inside list-decimal space-y-2 pl-1">
+                      <li>Click the Import tab</li>
+                      <li>Drop the file into the import area OR click to browse and select the file</li>
+                      <li>Coach Bot detects the file type automatically</li>
+                      <li>Click Import to process</li>
+                      <li>The file is extracted and saved to the client&apos;s profile automatically</li>
+                    </ol>
+                    <p>
+                      Coach Bot matches files to clients by name. Make sure client names in your files match
+                      the names in Coach Bot.
+                    </p>
+                    <p>
+                      After importing a Fathom transcript: Go to the client&apos;s Fathom tab in Client
+                      Intelligence to review the 9-block extraction and CLEAR score.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Local File Watcher</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      Coach Bot watches a folder called client-files next to the app. Drop files into that
+                      folder and Coach Bot detects them automatically.
+                    </p>
+                    <p>
+                      Files detected show here with an Import button. Click Import All New Files to process
+                      them in one click.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Analytics Tab</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>Shows a summary of your pipeline health:</p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>Total Clients in system</li>
+                      <li>VALIDATE Ready clients (currently 2)</li>
+                      <li>System status indicators</li>
+                    </ul>
+                    <p>
+                      Note: Knowledge Graph and Full AI Recommendations are coming in Month 3 and Month 2
+                      respectively. The current system shows Coming Soon for these.
+                    </p>
+                    <p>
+                      Top Engaged Clients and confidence scores will show real data in Month 2 once the
+                      engagement tracking is fully wired.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Resources Tab</h3>
+                  <p className="text-[#6B6B6B]">
+                    Reference materials and coaching guides to support your work with clients.
+                  </p>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Settings Tab</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>Backup and system configuration. Use Backup Now to manually save your client database.</p>
+                    <p>Your data is stored locally on this laptop only.</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    UAT Checklist — Admin Streamliner
+                  </h3>
+                  <div className="space-y-5 text-[#6B6B6B]">
+                    <div className="flex gap-3">
+                      <StepNumber number={1} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Go to Import tab. Drop a Fathom PDF for any client. Does Coach Bot detect it
+                          automatically? Does it show the correct client name? Click Import — does it process
+                          without error?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={2} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Go to Analytics tab. Does Total Clients show 16? Does VALIDATE Ready show 2? Does
+                          Knowledge Graph show Coming Soon? Does AI Recommendations show Coming Soon?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={3} />
+                      <div className="min-w-0 space-y-1">
+                        <p>Go to Settings tab. Click Backup Now. Does it confirm the backup completed?</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={4} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Check the Local File Watcher. Does it show any files waiting to be imported? If yes —
+                          are they real client files or test files?
+                        </p>
+                      </div>
+                    </div>
+                    <p>
+                      Rate Admin Streamliner 1-5: 1 = confusing, 5 = importing files is easy and I will do it
+                      after every call.
                     </p>
                   </div>
                 </div>
