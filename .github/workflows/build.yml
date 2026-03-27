@@ -13,28 +13,37 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT }}
 
+      - name: Set working directory
+        run: echo "Working in $(pwd)"
+        working-directory: Sandi_Bot_Desktop
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+        working-directory: Sandi_Bot_Desktop
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        working-directory: Sandi_Bot_Desktop
 
       - name: Install dependencies
         run: npm install
+        working-directory: Sandi_Bot_Desktop
 
       - name: Build Windows installer
         run: npm run tauri:build
+        working-directory: Sandi_Bot_Desktop
 
       - name: Upload Windows MSI
         uses: actions/upload-artifact@v4
         with:
           name: coach-bot-windows
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
+            Sandi_Bot_Desktop/src-tauri/target/release/bundle/msi/*.msi
+            Sandi_Bot_Desktop/src-tauri/target/release/bundle/nsis/*.exe
           retention-days: 30
+        working-directory: Sandi_Bot_Desktop
 
   build-mac:
     runs-on: macos-latest
@@ -43,21 +52,29 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT }}
 
+      - name: Set working directory
+        run: echo "Working in $(pwd)"
+        working-directory: Sandi_Bot_Desktop
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+        working-directory: Sandi_Bot_Desktop
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin x86_64-apple-darwin
+        working-directory: Sandi_Bot_Desktop
 
       - name: Install dependencies
         run: npm install
+        working-directory: Sandi_Bot_Desktop
 
       - name: Build Mac installer
         run: npm run tauri:build
+        working-directory: Sandi_Bot_Desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
 
@@ -66,6 +83,7 @@ jobs:
         with:
           name: coach-bot-mac
           path: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/macos/*.app
+            Sandi_Bot_Desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            Sandi_Bot_Desktop/src-tauri/target/release/bundle/macos/*.app
           retention-days: 30
+        working-directory: Sandi_Bot_Desktop
