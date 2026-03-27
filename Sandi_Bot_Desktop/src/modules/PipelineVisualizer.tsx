@@ -100,6 +100,15 @@ interface GateFacts {
   vision_statement: string | null;
 }
 
+type PipelineStageClient = { raw: Client; display: DisplayClient };
+
+function pipelineCardSubtitle(raw: Client, display: DisplayClient): string {
+  const industry = display.tumay.industriesOfInterest[0];
+  if (!industry || industry === '—') return raw.company?.trim() || '—';
+  if (industry.trimStart().startsWith('{')) return raw.company?.trim() || '—';
+  return industry;
+}
+
 // Stage Column Component
 function StageColumn({
   stage,
@@ -113,7 +122,7 @@ function StageColumn({
   stats
 }: {
   stage: (typeof STAGE_DISPLAY_NAMES)[number];
-  clients: DisplayClient[];
+  clients: PipelineStageClient[];
   clientRecommendations: Map<string, string>;
   readinessById: Map<string, number>;
   isActive: boolean;
@@ -162,12 +171,13 @@ function StageColumn({
           <div className="text-xs text-slate-500 p-2">
             No clients in this stage.
           </div>
-        ) : clients.map((client) => {
-          const rec = clientRecommendations.get(client.id) ?? 'GATHER';
+        ) : clients.map(({ raw, display: client }) => {
+          const rec = clientRecommendations.get(raw.id) ?? 'GATHER';
           const recColor = REC_COLORS[rec] ?? '#f59e0b';
+          const displayName = (raw.name ?? '').trim() || '—';
           return (
             <div
-              key={client.id}
+              key={raw.id}
               className="p-3 rounded-lg bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow"
             >
               <div className="flex items-center gap-2 mb-2">
@@ -178,8 +188,10 @@ function StageColumn({
                   {client.avatar}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">{client.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{client.tumay.industriesOfInterest[0]}</p>
+                  <p className="text-sm font-medium text-slate-900 truncate">{displayName}</p>
+                  <p className="text-xs text-slate-500 truncate">
+                    {pipelineCardSubtitle(raw, client)}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center justify-between">
@@ -190,7 +202,7 @@ function StageColumn({
                   {rec}
                 </span>
                 <span className="text-xs text-slate-600 font-medium">
-                  {Math.round(readinessById.get(client.id) ?? 0)}%
+                  {Math.round(readinessById.get(raw.id) ?? 0)}%
                 </span>
               </div>
               <div className="mt-2 flex items-center gap-2">
@@ -201,7 +213,7 @@ function StageColumn({
                   className="h-6 px-2 text-[10px]"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onMoveNext(client.id, client.name, stage);
+                    onMoveNext(raw.id, displayName, stage);
                   }}
                 >
                   Move to next stage
@@ -213,7 +225,7 @@ function StageColumn({
                   className="h-6 px-2 text-[10px] border-amber-300 text-amber-700 hover:bg-amber-50"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onPauseClient(client.id, client.name);
+                    onPauseClient(raw.id, displayName);
                   }}
                 >
                   Move to PAUSE
@@ -555,7 +567,7 @@ export default function PipelineVisualizer() {
         .filter(r => (STAGE_READINESS_TO_COLUMN[r.current_stage_full] ?? r.current_stage_full) === stage)
         .map(r => clientMap.get(r.client_id))
         .filter((c): c is Client => c != null)
-        .map((c) => clientToDisplay(c)),
+        .map((c) => ({ raw: c, display: clientToDisplay(c) })),
       stats: { avgDaysInStage: defaults.avgDaysInStage, conversionRate: defaults.conversionRate }
     }));
   }, [readiness, clientMap]);
