@@ -638,10 +638,18 @@ export default function PipelineVisualizer() {
   }, [clients]);
 
   const totalClients = clients.length;
-  const totalActivePinkFlags = useMemo(
-    () => totalActivePinkFlagsForClients(clients),
-    [clients]
-  );
+  const totalActivePinkFlagsForClients = clients.reduce((total, client) => {
+    try {
+      const flags = JSON.parse(client.pink_flags || '[]');
+      const active = flags.filter(
+        (f: string) => !f.startsWith('resolved:')
+      ).length;
+      return total + active;
+    } catch {
+      return total;
+    }
+  }, 0);
+  const totalActivePinkFlags = totalActivePinkFlagsForClients;
 
   if (loading) {
     return (
