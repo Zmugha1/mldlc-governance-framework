@@ -17,6 +17,7 @@ import {
   Info,
   Brain,
   Layers,
+  MessageSquare,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -96,6 +97,11 @@ export default function HowToUse() {
       label: 'Pipeline Visualizer',
       icon: <Layers className="h-4 w-4" />,
       section: 'pipeline-visualizer',
+    },
+    {
+      label: 'Live Coaching Assistant',
+      icon: <MessageSquare className="h-4 w-4" />,
+      section: 'live-coaching-assistant',
     },
     {
       label: 'How Coach Bot makes decisions',
@@ -791,6 +797,134 @@ export default function HowToUse() {
                     <p>
                       Rate the Pipeline Visualizer 1-5: 1 = confusing, 5 = I can manage my whole pipeline
                       from this page.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                id="live-coaching-assistant"
+                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
+              >
+                <h2 className="text-lg font-bold text-[#333333]">Live Coaching Assistant</h2>
+                <p className="text-[#6B6B6B]">
+                  This page is your AI coaching partner. Use it before or during a call to get instant
+                  guidance based on your client&apos;s full profile.
+                </p>
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">How to Use It</h3>
+                  <ol className="list-inside list-decimal space-y-3 pl-1 text-[#6B6B6B]">
+                    <li>Select a client from the left panel</li>
+                    <li>
+                      Review their Coaching Context — DISC style, stage, vision statement, key dangers
+                      and opportunities
+                    </li>
+                    <li>
+                      <span className="text-[#333333]">Use the quick action buttons for instant answers:</span>
+                      <ul className="mt-2 list-inside list-disc space-y-1 pl-4">
+                        <li>Should I push or pause?</li>
+                        <li>What homework should I give?</li>
+                        <li>What should I say on the call?</li>
+                        <li>Financial angle?</li>
+                        <li>Handle spouse concerns?</li>
+                        <li>Address pink flags?</li>
+                      </ul>
+                    </li>
+                    <li>Or type any question in the chat box</li>
+                    <li>
+                      Coach Bot responds using this client&apos;s actual DISC, You 2.0, and Fathom data
+                    </li>
+                  </ol>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Recommended Scripts</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      Scroll down to see word-for-word scripts for different stages and situations. Click
+                      the copy icon to copy a script to your clipboard before a call.
+                    </p>
+                    <p className="font-semibold text-[#333333]">Scripts are organized by:</p>
+                    <ul className="list-inside list-disc space-y-2">
+                      <li>Opening — how to start the call</li>
+                      <li>Discovery — questions to ask</li>
+                      <li>Objection — how to handle pushback</li>
+                      <li>Close — how to end the call</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">Privacy</h3>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      All interactions are logged for audit transparency. The shield icon in the top right
+                      confirms this.
+                    </p>
+                    <p>Nothing leaves your laptop — Coach Bot runs entirely offline using Ollama.</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5E7EB] pt-6" aria-hidden />
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    UAT Checklist — Live Coaching Assistant
+                  </h3>
+                  <div className="space-y-5 text-[#6B6B6B]">
+                    <div className="flex gap-3">
+                      <StepNumber number={1} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Select Dena Sauer from the client list. Does her DISC style show correctly?
+                          Does her vision statement appear? Do her key dangers make sense?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={2} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Click &quot;Address pink flags.&quot; Does Coach Bot give you relevant guidance
+                          based on her actual flags?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={3} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Click &quot;Should I push or pause?&quot; Does the response make sense for where
+                          Dena is in her journey (C2)?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={4} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Type a custom question: &quot;What is the best way to open my next call with
+                          Dena?&quot; Does Coach Bot give a useful response?
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <StepNumber number={5} />
+                      <div className="min-w-0 space-y-1">
+                        <p>
+                          Select Alex Raiyn and ask: &quot;What should I focus on this call?&quot; Does the
+                          response reflect that Alex is at Business Purchase stage?
+                        </p>
+                      </div>
+                    </div>
+                    <p>
+                      Rate the Live Coaching Assistant 1-5: 1 = not useful, 5 = I will use this before every
+                      call.
                     </p>
                   </div>
                 </div>
