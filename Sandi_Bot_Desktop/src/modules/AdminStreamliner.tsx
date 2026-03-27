@@ -37,7 +37,7 @@ import {
   bulkReExtractVisionAndTumay,
   bulkReExtractFathomSessions
 } from '@/services/documentExtractionService';
-import { getAllClients, getRankedClients, getPushClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
+import { getAllClients, getRankedClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
 import { getAuditLog, auditEntriesToActivityLogs } from '@/services/auditService';
 import { dbSelect } from '@/services/db';
 import { createBackup, getLastBackup } from '@/services/backupService';
@@ -163,12 +163,24 @@ export default function AdminStreamliner() {
   }>>([]);
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [validateReadyCount, setValidateReadyCount] = useState(0);
+
+  const fetchValidateReadyCount = async (): Promise<number> => {
+    const rows = await dbSelect<{ c: number }>(
+      `SELECT COUNT(*) as c FROM clients
+       WHERE outcome_bucket = 'active'
+         AND inferred_stage IN ('C4', 'C5')`,
+      []
+    );
+    return Number(rows[0]?.c ?? 0);
+  };
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([getAllClients(), getAuditLog(100)])
-      .then(([rawClients, auditEntries]) => {
+    Promise.all([getAllClients(), getAuditLog(100), fetchValidateReadyCount()])
+      .then(([rawClients, auditEntries, validateCount]) => {
+        setValidateReadyCount(validateCount);
         setClients(rawClients.map((client) => clientToDisplay(client)));
         const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
         setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
@@ -235,6 +247,7 @@ export default function AdminStreamliner() {
       setClients(rawClients.map((client) => clientToDisplay(client)));
       const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
       setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
+      setValidateReadyCount(await fetchValidateReadyCount());
     } catch (err) {
       setImportResult({
         processed: 0,
@@ -265,6 +278,7 @@ export default function AdminStreamliner() {
       setClients(rawClients.map((client) => clientToDisplay(client)));
       const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
       setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
+      setValidateReadyCount(await fetchValidateReadyCount());
     } catch (err) {
       setImportResult({
         processed: 0,
@@ -772,7 +786,7 @@ export default function AdminStreamliner() {
                   </div>
                   <div className="p-4 rounded-xl bg-green-50 border border-green-100 text-center">
                     <p className="text-3xl font-bold text-green-600">
-                      {getPushClients(clients).length}
+                      {validateReadyCount}
                     </p>
                     <p className="text-sm text-green-700">VALIDATE Ready</p>
                   </div>
