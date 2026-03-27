@@ -1,10 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { 
-  Users, 
-  Clock, 
-  TrendingUp, 
+import {
+  Users,
+  TrendingUp,
   ArrowRight,
-  AlertTriangle
+  AlertTriangle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -29,7 +28,8 @@ import {
   moveClientToPause,
   type PipelineStage,
 } from '@/services/stageReadinessService';
-import { calculateConversionRate, getPipelineStageDefaults } from '@/services/pipelineService';
+import { getPipelineStageDefaults } from '@/services/pipelineService';
+import { getDashboardKPIs } from '@/services/dashboardService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import type { Client } from '@/types';
 import { cn } from '@/lib/utils';
@@ -307,6 +307,9 @@ export default function PipelineVisualizer() {
   const [followUpDate, setFollowUpDate] = useState('');
   const [pauseError, setPauseError] = useState<string | null>(null);
   const [gateModalOpen, setGateModalOpen] = useState(false);
+  const [dashboardKpis, setDashboardKpis] = useState<Awaited<
+    ReturnType<typeof getDashboardKPIs>
+  > | null>(null);
   const [pendingMove, setPendingMove] = useState<{
     clientId: string;
     clientName: string;
@@ -322,6 +325,7 @@ export default function PipelineVisualizer() {
     Promise.all([
       getAllClients(),
       getAllStageReadiness(),
+      getDashboardKPIs(),
       dbSelect<{
         id: string;
         name: string;
@@ -360,9 +364,10 @@ export default function PipelineVisualizer() {
         []
       ),
     ])
-      .then(([c, r, gateRows]) => {
+      .then(([c, r, kpis, gateRows]) => {
         setClients(c);
         setReadiness(r);
+        setDashboardKpis(kpis);
         const m = new Map<string, GateFacts>();
         gateRows.forEach((row) => {
           m.set(row.id, {
@@ -586,8 +591,10 @@ export default function PipelineVisualizer() {
   }, [clients]);
 
   const totalClients = clients.length;
-  const convertedCount = clients.filter(c => c.outcome === 'CONVERTED').length;
-  const conversionRate = calculateConversionRate(convertedCount, totalClients);
+  const totalActivePinkFlags = useMemo(
+    () => totalActivePinkFlagsForClients(clients),
+    [clients]
+  );
 
   if (loading) {
     return (
@@ -613,7 +620,7 @@ export default function PipelineVisualizer() {
   return (
     <div className="space-y-6">
       {/* Pipeline Overview Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -634,21 +641,8 @@ export default function PipelineVisualizer() {
                 <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{conversionRate}%</p>
+                <p className="text-2xl font-bold">{dashboardKpis?.conversion_rate ?? 0}%</p>
                 <p className="text-xs text-slate-500">Conversion Rate</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-yellow-100 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">0</p>
-                <p className="text-xs text-slate-500">Avg. Days/Stage</p>
               </div>
             </div>
           </CardContent>
@@ -660,7 +654,7 @@ export default function PipelineVisualizer() {
                 <AlertTriangle className="h-5 w-5 text-pink-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">0</p>
+                <p className="text-2xl font-bold">{totalActivePinkFlags}</p>
                 <p className="text-xs text-slate-500">Pink Flags</p>
               </div>
             </div>
