@@ -286,16 +286,48 @@ function deriveStyleLabel(d: number, i: number, s: number, c: number): string {
   return labels[`${top}${second}`] ?? labels[top] ?? `High ${top}`;
 }
 
-function parseJsonList(raw: unknown): string[] {
+const getDangerText = (danger: any): string => {
+  if (typeof danger === 'string') return danger;
+  if (danger?.text) return danger.text;
+  if (danger?.description) return danger.description;
+  if (danger?.value) return danger.value;
+  return JSON.stringify(danger);
+};
+
+const getOpportunityText = (opportunity: any): string => {
+  if (typeof opportunity === 'string') return opportunity;
+  if (opportunity?.text) return opportunity.text;
+  if (opportunity?.description) return opportunity.description;
+  if (opportunity?.value) return opportunity.value;
+  return JSON.stringify(opportunity);
+};
+
+function parseJsonListWithExtractor(
+  raw: unknown,
+  toText: (item: unknown) => string
+): string[] {
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => toText(item))
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
   if (typeof raw !== 'string') return [];
   try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => toText(item))
+      .map((s) => s.trim())
+      .filter(Boolean);
   } catch {
     return raw.split('\n').map((s) => s.trim()).filter(Boolean);
   }
+}
+
+function parseJsonList(raw: unknown): string[] {
+  return parseJsonListWithExtractor(raw, getDangerText);
 }
 
 // Script Card with Copy
@@ -554,8 +586,8 @@ export default function LiveCoachingAssistant() {
       natural_s: Number(row.natural_s ?? 0),
       natural_c: Number(row.natural_c ?? 0),
       one_year_vision: row.one_year_vision ?? '',
-      dangers: parseJsonList(row.dangers),
-      opportunities: parseJsonList(row.opportunities),
+      dangers: parseJsonListWithExtractor(row.dangers, getDangerText),
+      opportunities: parseJsonListWithExtractor(row.opportunities, getOpportunityText),
       areas_of_interest: parseJsonList(row.areas_of_interest),
       financial_net_worth_range: row.financial_net_worth_range ?? '',
     });
