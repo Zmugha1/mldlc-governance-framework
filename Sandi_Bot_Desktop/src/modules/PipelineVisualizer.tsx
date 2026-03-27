@@ -30,7 +30,7 @@ import {
 } from '@/services/stageReadinessService';
 import { getPipelineStageDefaults } from '@/services/pipelineService';
 import { getDashboardKPIs } from '@/services/dashboardService';
-import { clientToDisplay } from '@/services/clientAdapter';
+import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter';
 import type { Client } from '@/types';
 import { cn } from '@/lib/utils';
 import { dbExecute, dbSelect } from '@/services/db';
@@ -266,11 +266,35 @@ const STAGE_READINESS_TO_COLUMN: Record<string, string> = {
   'Coach Client Collaboration': 'Possibilities',
 };
 
+function emptyFunnelCounts(): Record<(typeof STAGE_DISPLAY_NAMES)[number], number> {
+  const o = {} as Record<(typeof STAGE_DISPLAY_NAMES)[number], number>;
+  for (const s of STAGE_DISPLAY_NAMES) o[s] = 0;
+  return o;
+}
+
+function funnelCountsFromDbRows(
+  rows: Array<{ inferred_stage: string | null; count: number }>
+): Record<(typeof STAGE_DISPLAY_NAMES)[number], number> {
+  const out = emptyFunnelCounts();
+  for (const row of rows) {
+    const display = normalizeDisplayStage(row.inferred_stage ?? undefined);
+    const key = (STAGE_DISPLAY_NAMES as readonly string[]).includes(display)
+      ? (display as (typeof STAGE_DISPLAY_NAMES)[number])
+      : 'Initial Contact';
+    out[key] += Number(row.count ?? 0);
+  }
+  return out;
+}
+
 // Conversion Funnel Component
-function ConversionFunnel({ clients }: { clients: Client[] }) {
+function ConversionFunnel({
+  countsByStage,
+}: {
+  countsByStage: Record<(typeof STAGE_DISPLAY_NAMES)[number], number>;
+}) {
   const funnelData = useMemo(() => {
-    return STAGE_DISPLAY_NAMES.map(stage => {
-      const count = clients.filter(c => c.stage === stage).length;
+    return STAGE_DISPLAY_NAMES.map((stage) => {
+      const count = countsByStage[stage] ?? 0;
       const config = stageConfig[stage as keyof typeof stageConfig];
       return {
         stage,
@@ -278,7 +302,7 @@ function ConversionFunnel({ clients }: { clients: Client[] }) {
         color: config?.color ?? '#94A3B8'
       };
     });
-  }, [clients]);
+  }, [countsByStage]);
 
   return (
     <div className="space-y-3">
@@ -332,6 +356,9 @@ export default function PipelineVisualizer() {
     missingRequirement: string;
     warningMessage: string;
   } | null>(null);
+  const [funnelCountsByStage, setFunnelCountsByStage] = useState<
+    Record<(typeof STAGE_DISPLAY_NAMES)[number], number>
+  >(() => emptyFunnelCounts());
 
   const loadPipelineData = () => {
     setLoading(true);
@@ -377,11 +404,19 @@ export default function PipelineVisualizer() {
          GROUP BY c.id`,
         []
       ),
+      dbSelect<{ inferred_stage: string | null; count: number }>(
+        `SELECT inferred_stage, COUNT(*) as count
+         FROM clients
+         WHERE outcome_bucket != 'inactive'
+         GROUP BY inferred_stage`,
+        []
+      ),
     ])
-      .then(([c, r, kpis, gateRows]) => {
+      .then(([c, r, kpis, gateRows, funnelRows]) => {
         setClients(c);
         setReadiness(r);
         setDashboardKpis(kpis);
+        setFunnelCountsByStage(funnelCountsFromDbRows(funnelRows));
         const m = new Map<string, GateFacts>();
         gateRows.forEach((row) => {
           m.set(row.id, {
@@ -742,7 +777,7 @@ export default function PipelineVisualizer() {
             <CardTitle className="text-lg">Conversion Funnel</CardTitle>
           </CardHeader>
           <CardContent>
-            <ConversionFunnel clients={clients} />
+            <ConversionFunnel countsByStage={funnelCountsByStage} />
           </CardContent>
         </Card>
 
