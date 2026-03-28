@@ -21,17 +21,20 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
-        run: npm install
-
       - name: Download pdfium Windows
+        working-directory: Sandi_Bot_Desktop
         run: |
           curl -L -o pdfium.zip "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-windows-x64.zip"
           unzip pdfium.zip -d pdfium_extracted
           copy pdfium_extracted\bin\pdfium.dll src-tauri\pdfium.dll
         shell: cmd
 
+      - name: Install dependencies
+        working-directory: Sandi_Bot_Desktop
+        run: npm install
+
       - name: Build Windows installer
+        working-directory: Sandi_Bot_Desktop
         run: npm run tauri:build
 
       - name: Upload Windows MSI
@@ -60,16 +63,19 @@ jobs:
         with:
           targets: aarch64-apple-darwin x86_64-apple-darwin
 
-      - name: Install dependencies
-        run: npm install
-
       - name: Download pdfium Mac
+        working-directory: Sandi_Bot_Desktop
         run: |
           curl -L -o pdfium.zip "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-mac-arm64.zip"
           unzip pdfium.zip -d pdfium_extracted
           cp pdfium_extracted/lib/libpdfium.dylib src-tauri/libpdfium.dylib
 
+      - name: Install dependencies
+        working-directory: Sandi_Bot_Desktop
+        run: npm install
+
       - name: Build Mac installer
+        working-directory: Sandi_Bot_Desktop
         run: npm run tauri:build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
