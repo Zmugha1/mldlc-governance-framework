@@ -21,13 +21,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Download pdfium Windows
-        working-directory: Sandi_Bot_Desktop
-        run: |
-          curl -L -o pdfium.zip "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-windows-x64.zip"
-          unzip pdfium.zip -d pdfium_extracted
-          copy pdfium_extracted\bin\pdfium.dll src-tauri\pdfium.dll
-        shell: cmd
+      # pdfium binaries must exist in
+      # src-tauri/ before this step runs.
+      # See README for setup instructions.
 
       - name: Install dependencies
         working-directory: Sandi_Bot_Desktop
@@ -63,12 +59,9 @@ jobs:
         with:
           targets: aarch64-apple-darwin x86_64-apple-darwin
 
-      - name: Download pdfium Mac
-        working-directory: Sandi_Bot_Desktop
-        run: |
-          curl -L -o pdfium.zip "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-mac-arm64.zip"
-          unzip pdfium.zip -d pdfium_extracted
-          cp pdfium_extracted/lib/libpdfium.dylib src-tauri/libpdfium.dylib
+      # pdfium binaries must exist in
+      # src-tauri/ before this step runs.
+      # See README for setup instructions.
 
       - name: Install dependencies
         working-directory: Sandi_Bot_Desktop
