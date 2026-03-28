@@ -436,3 +436,51 @@ Uses pdfium-render. Always use for PDFs.
 invoke('extract_text', { filePath: string })
 Returns: Promise<string>
 Handles PDF, PPTX, DOCX, TXT, CSV.
+
+---
+
+## REGISTERED TAURI COMMANDS (confirmed working)
+
+- invoke('ollama_generate') — Ollama proxy
+  Options: num_ctx:4096, num_predict:1024,
+  temperature:0.1, timeout:120s
+  Model: qwen2.5:7b
+  NEVER call fetch localhost:11434 directly
+
+- invoke('extract_pdf_pages') — PDF extraction
+  Uses pdfium-render (primary)
+  Falls back to Tesseract OCR
+  NEVER use lopdf or JS PDF libraries
+
+## BINARY DEPENDENCIES
+
+- pdfium.dll — Windows, src-tauri/pdfium.dll
+- icon.ico — src-tauri/icons/icon.ico
+- icon.png — src-tauri/icons/icon.png
+
+All force-committed to repo (in .gitignore)
+
+## DATABASE
+
+- File: sandi_bot.db
+- Location: %APPDATA%\com.sandibot.desktop\
+- Access: getDb() via tauri-plugin-sql
+- Migrations: 1-50 complete, never edit
+- Next migration: 51+
+- client_id: always TEXT UUID never integer
+
+## CONFIRMED WORKING OLLAMA OPTIONS
+
+num_ctx: 4096 (minimum for full TUMAY docs)
+num_predict: 1024 (minimum to avoid truncation)
+temperature: 0.1
+timeout: 120 seconds
+NEVER use num_predict: 512 (causes JSON truncation)
+NEVER use num_ctx: 2048 (insufficient)
+
+## CI/CD
+
+Workflow: .github/workflows/build.yml
+Trigger: every push to dev branch
+Outputs: Windows MSI + Mac DMG
+Secret required: GH_PAT in repo settings
