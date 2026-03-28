@@ -399,3 +399,91 @@ Backup location: C:\Users\zumah\AppData\Roaming\
 4. Run: npx tsc --noEmit
    Fix any errors before proceeding
 5. Ask what P0 item or phase we are on
+
+---
+
+## INSTALLER BUILD — HOW TO BUILD
+
+### Local Windows build (your machine):
+
+cd to Sandi_Bot_Desktop directory
+
+Run: npm run tauri:build
+
+Output: src-tauri/target/release/bundle/msi/
+
+Requires: cargo check must pass first
+
+Requires: pdfium.dll must be in src-tauri/
+
+### Automated CI build (GitHub Actions):
+
+Every git push sandi dev triggers automatic
+Windows + Mac builds in GitHub Actions.
+
+Go to github.com/Zmugha1/Sandi_Bot_Desktop
+
+Click Actions → latest build → Artifacts
+
+Download coach-bot-windows or coach-bot-mac
+
+### Version bump before release:
+
+Edit src-tauri/tauri.conf.json
+
+Change "version": "0.1.0" to new version
+
+Commit and push — installer name updates automatically
+
+---
+
+## BINARY FILES IN REPO (must never delete)
+
+- src-tauri/pdfium.dll — Windows PDF extraction
+- src-tauri/icons/icon.ico — Windows installer icon
+- src-tauri/icons/icon.png — Mac build icon
+
+These are force-added (in .gitignore) but committed.
+
+Never delete them. Never run git clean on src-tauri.
+
+---
+
+## GITHUB ACTIONS WORKFLOW
+
+File: .github/workflows/build.yml
+
+Triggers on every push to dev branch.
+
+Builds Windows MSI and Mac DMG simultaneously.
+
+Artifacts retained for 30 days.
+
+Requires secret: GH_PAT (GitHub Personal Access Token)
+
+Set in: repo Settings → Secrets → Actions → GH_PAT
+
+---
+
+## CURRENT VERSION
+
+v0.1.0 — UAT delivery March 27 2026
+
+Sandi Stahl — Founding Partner
+
+Windows MSI delivered via Google Drive
+
+---
+
+## PHASE STATUS AS OF MARCH 27 2026
+
+Phase 4: COMPLETE
+
+Phase 5: MOSTLY COMPLETE
+
+  Built: CLEAR scoring, 9-block Fathom, DISC tips,
+  pink flags, gone quiet badge
+
+  Remaining: 5B emotional detection, 5E coaching plan tab
+
+Phase 6-15: Not started — retainer months 2-24
