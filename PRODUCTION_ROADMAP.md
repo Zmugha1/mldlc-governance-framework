@@ -1,3 +1,77 @@
+# COACH BOT PRODUCTION STATUS
+Last updated: March 27 2026
+
+## CURRENT VERSION: v0.1.0
+UAT delivery to Sandi Stahl — March 27 2026
+
+## PHASE COMPLETION STATUS
+
+### Phase 4 — COMPLETE ✅
+All P0 items delivered:
+P0-1 VALIDATE/GATHER rename
+P0-2 Delete → Inactivate
+P0-3 Migration 49 pause fields
+P0-4 Pipeline clickable
+P0-5 Coach Bot rename
+P0-6 TES references removed
+P0-7 TUMAY extraction 17/17
+P0-8 Client card 6 tabs
+P0-9 Windows installer built
+P0-10 StatusBar accurate
+
+### Phase 5 — MOSTLY COMPLETE ✅
+Built and delivered:
+- CLEAR rubric and auto-scoring
+- 9-block Fathom analysis
+- DISC coaching tips
+- Pink flag detection and green flag toggle
+- Gone quiet badge with confirmed thresholds
+- How to Use complete guide with UAT checklists
+
+Remaining (Month 1 retainer):
+- 5B Emotional question detection
+- 5E Coaching Plan tab
+
+### Phase 6 — NOT STARTED
+Month 2 retainer:
+- Daily coaching brief
+- Google Calendar integration (demo April 3)
+- Reminders tab functional
+- Stage gate document requirements
+
+### Phase 7+ — NOT STARTED
+Month 3+ retainer:
+- Vision statement auto-generation
+- PPTX download
+- Neo4j knowledge graph
+- GraphRAG and embeddings
+
+## CLIENT ROSTER
+Sandi Stahl — Founding Partner
+  Status: UAT delivery March 27 2026
+  Build fee: waived
+  Retainer: $150/month from Month 13
+  Referral: 10%
+
+Fred Webster — R&D Tier (next)
+  Status: Pending Sandi UAT success
+  Build fee: $1,000
+  Retainer: $0 months 1-6, $100/month thereafter
+  OS: Mac — requires Mac DMG installer
+
+## PRICING (standard going forward)
+Build fee: $15,000
+Monthly retainer: $750/month
+R&D tier: $1,000 build, $0 six months, $100/month
+
+## NEXT MILESTONES
+April 3 — Google Calendar demo with Sandi
+Month 1 — 5B and 5E retainer items
+Month 2 — Phase 6 features
+Month 3 — Fred Webster build begins
+
+---
+
 # Coach Bot — Complete Production Roadmap
 **AI Solutions Architect:** Dr. Data — Decision Intelligence
 **Client:** Sandi Stahl — Franchise Coach, The Entrepreneur's Source (do not reference TES by name in any UI or marketing)
@@ -747,13 +821,13 @@ Migration 50 adds reminders table:
 ```sql
 CREATE TABLE IF NOT EXISTS reminders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  client_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
   reminder_date DATE NOT NULL,
   note TEXT NOT NULL,
   reminder_type TEXT DEFAULT 'follow_up',
   completed INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (client_id) REFERENCES clients(id)
+    FOREIGN KEY (client_id) REFERENCES clients(id)
 );
 ```
 
@@ -1257,7 +1331,7 @@ After setup: Zero internet required. Ever.
 
 ---
 
-*This document is the single source of truth for all production development.*
+*This document is the single source of truth for all production development.*  
 *All Cursor prompts reference this file.*
 *Last updated: March 24 2026*
-*Developer: Dr. Data — Decision Intelligence*
+*Developer: Dr. Data — Decision Intelligence*  
