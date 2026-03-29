@@ -4,7 +4,6 @@ import {
   TrendingUp,
   Target,
   Phone,
-  Clock,
   ArrowUpRight,
   Zap,
   RefreshCw,
@@ -424,10 +423,6 @@ export default function ExecutiveDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [readinessRows, setReadinessRows] = useState<Awaited<ReturnType<typeof getAllStageReadiness>>>([]);
   const [activeConversationCount, setActiveConversationCount] = useState(0);
-  const [timeSavedHours, setTimeSavedHours] = useState(0);
-  const [fathomCount, setFathomCount] = useState(0);
-  const [tumayCount, setTumayCount] = useState(0);
-  const [discCount, setDiscCount] = useState(0);
   const [dashboardKpis, setDashboardKpis] = useState<Awaited<ReturnType<typeof getDashboardKPIs>> | null>(null);
   const [sessionStatsByClient, setSessionStatsByClient] = useState<
     Map<string, { count: number; lastDate: string | null }>
@@ -475,9 +470,6 @@ export default function ExecutiveDashboard() {
         d,
         readiness,
         conversationRows,
-        fathomRows,
-        tumayRows,
-        discRows,
         kpis,
         sessionRows,
         discProfileRows,
@@ -496,30 +488,6 @@ export default function ExecutiveDashboard() {
              SELECT id FROM clients
              WHERE outcome_bucket = 'active'
            )`,
-          []
-        ),
-        dbSelect<{ count: number }>(
-          `SELECT COUNT(*) as count
-           FROM coaching_sessions
-           WHERE client_id IN (
-             SELECT id FROM clients
-             WHERE outcome_bucket != 'inactive'
-           )`,
-          []
-        ),
-        dbSelect<{ count: number }>(
-          `SELECT COUNT(*) as count
-           FROM clients
-           WHERE tumay_data IS NOT NULL
-           AND LENGTH(tumay_data) > 5
-           AND outcome_bucket != 'inactive'`,
-          []
-        ),
-        dbSelect<{ count: number }>(
-          `SELECT COUNT(*) as count
-           FROM client_disc_profiles dp
-           JOIN clients c ON c.id = dp.client_id
-           WHERE c.outcome_bucket != 'inactive'`,
           []
         ),
         getDashboardKPIs(),
@@ -601,15 +569,7 @@ export default function ExecutiveDashboard() {
       setC3WeekCount(Number(c3WeekRows[0]?.count ?? 0));
       setC3YtdCount(Number(c3YtdRows[0]?.count ?? 0));
 
-      const fc = Number(fathomRows[0]?.count ?? 0);
-      const tc = Number(tumayRows[0]?.count ?? 0);
-      const dc = Number(discRows[0]?.count ?? 0);
-      setFathomCount(fc);
-      setTumayCount(tc);
-      setDiscCount(dc);
       setDashboardKpis(kpis);
-      const timeSavedMinutes = fc * 15 + tc * 20 + dc * 10;
-      setTimeSavedHours(Math.round((timeSavedMinutes / 60) * 10) / 10);
 
       const activeReadiness = readiness.filter((row) => row.outcome_bucket === 'active');
       const validateIds = activeReadiness
@@ -870,24 +830,6 @@ export default function ExecutiveDashboard() {
           icon={TrendingUp}
           description="Pipeline conversion efficiency"
           color="#8B5CF6"
-        />
-        <KPICard
-          title="Calls This Week"
-          value={stats.callsThisWeek}
-          change="On track"
-          changeType="positive"
-          icon={Phone}
-          description="Scheduled + completed"
-          color="#EC4899"
-        />
-        <KPICard
-          title="Time Saved"
-          value={`${timeSavedHours} hrs`}
-          icon={Clock}
-          description={
-            `AI-assisted coaching\n${fathomCount} sessions + ${tumayCount} profiles + ${discCount} DISC reports`
-          }
-          color="#14B8A6"
         />
         <PlacementTrackerCard placementCount={placementTrackerCount} />
         <C3ThisWeekCard weekCount={c3WeekCount} ytdCount={c3YtdCount} />
