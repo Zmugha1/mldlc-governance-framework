@@ -248,6 +248,15 @@ const GONE_QUIET_RESPONSE_OPTIONS = [
   'No action yet',
 ] as const;
 
+const PINK_FLAG_RESPONSE_OPTIONS = [
+  'Called — left voicemail',
+  'Sent email',
+  'Scheduled session',
+  'Had conversation — still engaged',
+  'Addressed in last call',
+  'Monitoring — no action yet',
+] as const;
+
 function formatLastContactDisplay(raw: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
@@ -551,6 +560,18 @@ function ClientDetailModal({
   const [goneQuietResponseLogged, setGoneQuietResponseLogged] = useState(false);
   const [goneQuietResponseSaving, setGoneQuietResponseSaving] = useState(false);
   const goneQuietResponseResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pinkFlagResponseValues, setPinkFlagResponseValues] = useState<
+    Record<string, string>
+  >({});
+  const [pinkFlagResponseLogged, setPinkFlagResponseLogged] = useState<
+    Record<string, boolean>
+  >({});
+  const [pinkFlagResponseSaving, setPinkFlagResponseSaving] = useState<
+    Record<string, boolean>
+  >({});
+  const pinkFlagResponseTimersRef = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map());
 
   useEffect(() => {
     if (isOpen && client?.id) {
@@ -560,6 +581,11 @@ function ClientDetailModal({
         clearTimeout(goneQuietResponseResetTimerRef.current);
         goneQuietResponseResetTimerRef.current = null;
       }
+      pinkFlagResponseTimersRef.current.forEach(clearTimeout);
+      pinkFlagResponseTimersRef.current.clear();
+      setPinkFlagResponseValues({});
+      setPinkFlagResponseLogged({});
+      setPinkFlagResponseSaving({});
     }
   }, [isOpen, client?.id]);
 
@@ -568,6 +594,8 @@ function ClientDetailModal({
       if (goneQuietResponseResetTimerRef.current) {
         clearTimeout(goneQuietResponseResetTimerRef.current);
       }
+      pinkFlagResponseTimersRef.current.forEach(clearTimeout);
+      pinkFlagResponseTimersRef.current.clear();
     };
   }, []);
 
@@ -1024,6 +1052,69 @@ function ClientDetailModal({
     }
   };
 
+  const handlePinkFlagResponseChange = async (
+    flag: string,
+    event: ChangeEvent<HTMLSelectElement>
+  ) => {
+    const value = event.target.value;
+    if (!value || !client) return;
+    const prevTimer = pinkFlagResponseTimersRef.current.get(flag);
+    if (prevTimer) {
+      clearTimeout(prevTimer);
+      pinkFlagResponseTimersRef.current.delete(flag);
+    }
+    setPinkFlagResponseValues((prev) => ({ ...prev, [flag]: value }));
+    setPinkFlagResponseSaving((prev) => ({ ...prev, [flag]: true }));
+    try {
+      const today = localCalendarDateYyyyMmDd();
+      const createdAt = new Date().toISOString();
+      await dbExecute(
+        `INSERT INTO intervention_logs
+         (id, client_id, signal_type, signal_date, response_type, response_date, response_notes, outcome, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          crypto.randomUUID(),
+          client.id,
+          'pink_flag',
+          today,
+          value,
+          today,
+          null,
+          null,
+          createdAt,
+        ]
+      );
+      setPinkFlagResponseLogged((prev) => ({ ...prev, [flag]: true }));
+      const t = setTimeout(() => {
+        setPinkFlagResponseValues((prev) => {
+          const next = { ...prev };
+          delete next[flag];
+          return next;
+        });
+        setPinkFlagResponseLogged((prev) => {
+          const next = { ...prev };
+          delete next[flag];
+          return next;
+        });
+        pinkFlagResponseTimersRef.current.delete(flag);
+      }, 2000);
+      pinkFlagResponseTimersRef.current.set(flag, t);
+    } catch (e) {
+      console.error('intervention_logs insert failed (pink_flag):', e);
+      setPinkFlagResponseValues((prev) => {
+        const next = { ...prev };
+        delete next[flag];
+        return next;
+      });
+    } finally {
+      setPinkFlagResponseSaving((prev) => {
+        const next = { ...prev };
+        delete next[flag];
+        return next;
+      });
+    }
+  };
+
   const handleMarkPinkFlagResolved = async (flagName: string) => {
     if (!client) return;
     const allFlags = parseClientPinkFlagsJson(localPinkFlagsJson);
@@ -1295,30 +1386,61 @@ function ClientDetailModal({
                   <p className="text-sm text-slate-500">No active flags</p>
                 ) : (
                   <ul className="space-y-2">
-                    {activePinkFlags.map((flag) => (
+                    {activePinkFlags.map((flag, pinkFlagIdx) => (
                       <li
                         key={flag}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2"
+                        className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2"
                       >
-                        <div className="flex items-center gap-2 text-sm font-medium text-red-900">
-                          <AlertTriangle
-                            className="h-4 w-4 shrink-0 text-amber-600"
-                            aria-hidden
-                          />
-                          {pinkFlagDisplayName(flag)}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-900">
+                            <AlertTriangle
+                              className="h-4 w-4 shrink-0 text-amber-600"
+                              aria-hidden
+                            />
+                            {pinkFlagDisplayName(flag)}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-red-800 hover:bg-red-100 hover:text-red-900"
+                            disabled={resolvingPinkFlag === flag}
+                            onClick={() => handleMarkPinkFlagResolved(flag)}
+                          >
+                            {resolvingPinkFlag === flag
+                              ? 'Saving…'
+                              : 'Mark Resolved'}
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-red-800 hover:bg-red-100 hover:text-red-900"
-                          disabled={resolvingPinkFlag === flag}
-                          onClick={() => handleMarkPinkFlagResolved(flag)}
-                        >
-                          {resolvingPinkFlag === flag
-                            ? 'Saving…'
-                            : 'Mark Resolved'}
-                        </Button>
+                        <div className="space-y-1.5 border-t border-red-100 pt-2">
+                          <Label
+                            htmlFor={`pink-flag-response-${client.id}-${pinkFlagIdx}`}
+                            className="text-xs font-medium text-slate-600"
+                          >
+                            Log your response
+                          </Label>
+                          <select
+                            id={`pink-flag-response-${client.id}-${pinkFlagIdx}`}
+                            className="w-full max-w-md rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
+                            value={pinkFlagResponseValues[flag] ?? ''}
+                            disabled={Boolean(pinkFlagResponseSaving[flag])}
+                            onChange={(e) => {
+                              void handlePinkFlagResponseChange(flag, e);
+                            }}
+                          >
+                            <option value="">{GONE_QUIET_RESPONSE_PLACEHOLDER}</option>
+                            {PINK_FLAG_RESPONSE_OPTIONS.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                          {pinkFlagResponseLogged[flag] ? (
+                            <p className="text-sm font-medium text-green-600">
+                              Response logged
+                            </p>
+                          ) : null}
+                        </div>
                       </li>
                     ))}
                   </ul>
