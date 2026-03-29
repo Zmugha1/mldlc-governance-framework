@@ -39,8 +39,8 @@ import {
   bulkReExtractFathomSessions
 } from '@/services/documentExtractionService';
 import { getAllClients, getRankedClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
-import { getAuditLog, auditEntriesToActivityLogs } from '@/services/auditService';
-import { dbSelect } from '@/services/db';
+import { getAuditLog, auditEntriesToActivityLogs, logEntry } from '@/services/auditService';
+import { dbSelect, dbExecute } from '@/services/db';
 import { createBackup, getLastBackup } from '@/services/backupService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import type { ActivityLog } from '@/types';
@@ -57,6 +57,38 @@ interface You2CompletenessAuditRow {
   opportunities: string;
   strengths: string;
   skills: string;
+}
+
+const SKILLS_ONLY_REEXTRACT_NAMES = [
+  'Bigith Pattar Veetil',
+  'Jeff Dayton',
+  'Matthew Pierce',
+  'Miles Martin',
+  'David Van Abbema',
+  'Kevin Lynch',
+  'Mike Cain',
+  'Elizabeth Jikiemi',
+  'Mark Neff',
+  'Mike Brooks',
+  'Nathan Stiers',
+] as const;
+
+const SKILLS_ONLY_OLLAMA_MODEL = 'qwen2.5:7b-instruct-q4_k_m';
+
+function parseSkillsOnlyResponse(raw: string): string[] | null {
+  const trimmed = raw.trim();
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    const obj = JSON.parse(trimmed.slice(start, end + 1)) as {
+      skills?: unknown;
+    };
+    if (!Array.isArray(obj.skills)) return null;
+    return obj.skills.map((s) => String(s));
+  } catch {
+    return null;
+  }
 }
 
 // Activity Type Config
@@ -179,6 +211,9 @@ export default function AdminStreamliner() {
   const [completenessAuditRows, setCompletenessAuditRows] = useState<You2CompletenessAuditRow[] | null>(null);
   const [completenessAuditLoading, setCompletenessAuditLoading] = useState(false);
   const [completenessAuditError, setCompletenessAuditError] = useState<string | null>(null);
+  const [skillsReExtractRunning, setSkillsReExtractRunning] = useState(false);
+  const [skillsReExtractLines, setSkillsReExtractLines] = useState<string[]>([]);
+  const [skillsReExtractSummary, setSkillsReExtractSummary] = useState<string | null>(null);
 
   const fetchValidateReadyCount = async (): Promise<number> => {
     const rows = await dbSelect<{ c: number }>(
@@ -281,6 +316,183 @@ export default function AdminStreamliner() {
       setCompletenessAuditRows(null);
     } finally {
       setCompletenessAuditLoading(false);
+    }
+  };
+
+  const handleReExtractSkillsOnly = async () => {
+    setSkillsReExtractRunning(true);
+    setSkillsReExtractLines([]);
+    setSkillsReExtractSummary(null);
+    const lines: string[] = [];
+    let updatedCount = 0;
+    const total = SKILLS_ONLY_REEXTRACT_NAMES.length;
+
+    const flushLines = () => setSkillsReExtractLines([...lines]);
+
+    try {
+      let you2BasePrompt = '';
+      try {
+        you2BasePrompt = await invoke<string>('read_prompt_file', {
+          name: 'you2_extraction',
+        });
+      } catch {
+        you2BasePrompt = '';
+      }
+
+      for (const name of SKILLS_ONLY_REEXTRACT_NAMES) {
+        const clientRows = await dbSelect<{ id: string }>(
+          `SELECT id FROM clients WHERE name = $1 LIMIT 1`,
+          [name]
+        );
+        const clientId = clientRows[0]?.id;
+        if (!clientId) {
+          lines.push(`Processing ${name}... done`);
+          flushLines();
+          await logEntry(
+            'you2_skills_reextract',
+            null,
+            name,
+            null,
+            'Skipped: client not found by name',
+            'n/a'
+          );
+          continue;
+        }
+
+        const docRows = await dbSelect<{ file_path: string; file_name: string }>(
+          `SELECT file_path, file_name FROM document_extractions
+           WHERE client_id = $1 AND document_type = 'you2'
+           ORDER BY
+             CASE WHEN LOWER(file_path) LIKE '%.pdf' THEN 0 ELSE 1 END,
+             extraction_date DESC
+           LIMIT 1`,
+          [clientId]
+        );
+        const filePath = docRows[0]?.file_path;
+        const fileName = docRows[0]?.file_name ?? '';
+        if (!filePath || !filePath.toLowerCase().endsWith('.pdf')) {
+          lines.push(`Processing ${name}... done`);
+          flushLines();
+          await logEntry(
+            'you2_skills_reextract',
+            clientId,
+            filePath ?? '',
+            null,
+            'Skipped: no You 2.0 PDF in document_extractions',
+            'n/a'
+          );
+          continue;
+        }
+
+        let workingText = '';
+        try {
+          const pageResult = await invoke<{
+            text: string;
+            success: boolean;
+            error?: string;
+          }>('extract_pdf_pages', {
+            filePath,
+            pageNumbers: [1, 2, 3, 4, 5],
+          });
+          if (!pageResult.success) {
+            throw new Error(pageResult.error ?? 'PDF extraction failed');
+          }
+          workingText = pageResult.text;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          lines.push(`Processing ${name}... done`);
+          flushLines();
+          await logEntry(
+            'you2_skills_reextract',
+            clientId,
+            filePath,
+            null,
+            `Failed: could not read PDF — ${msg}`,
+            'n/a'
+          );
+          continue;
+        }
+
+        const skillsInstruction = `${you2BasePrompt}
+
+---
+
+SKILLS-ONLY RE-EXTRACTION: From the document text below, extract only transferable / key skills (TUMAY Question 6 and related skill headings). Return ONLY valid JSON with this exact shape. No markdown, no explanation, no other keys:
+{"skills":["string"]}
+
+Document text:
+${workingText}`;
+
+        let skills: string[] | null = null;
+        try {
+          const rawResponse = await invoke<string>('ollama_generate', {
+            model: SKILLS_ONLY_OLLAMA_MODEL,
+            prompt: skillsInstruction,
+          });
+          skills = parseSkillsOnlyResponse(rawResponse);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          lines.push(`Processing ${name}... done`);
+          flushLines();
+          await logEntry(
+            'you2_skills_reextract',
+            clientId,
+            filePath,
+            null,
+            `Failed: Ollama — ${msg}`,
+            SKILLS_ONLY_OLLAMA_MODEL
+          );
+          continue;
+        }
+
+        if (!skills) {
+          lines.push(`Processing ${name}... done`);
+          flushLines();
+          await logEntry(
+            'you2_skills_reextract',
+            clientId,
+            filePath,
+            null,
+            'Failed: could not parse skills JSON from model response',
+            SKILLS_ONLY_OLLAMA_MODEL
+          );
+          continue;
+        }
+
+        const { rowsAffected } = await dbExecute(
+          `UPDATE client_you2_profiles
+           SET skills = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE client_id = $2`,
+          [JSON.stringify(skills), clientId]
+        );
+
+        if (rowsAffected > 0) {
+          updatedCount += 1;
+        }
+
+        lines.push(`Processing ${name}... done`);
+        flushLines();
+        await logEntry(
+          'you2_skills_reextract',
+          clientId,
+          filePath,
+          JSON.stringify(skills),
+          rowsAffected > 0
+            ? `Updated skills only (${skills.length} items) for ${name}`
+            : `No client_you2_profiles row updated for ${name}`,
+          SKILLS_ONLY_OLLAMA_MODEL
+        );
+      }
+
+      setSkillsReExtractSummary(
+        `Re-extraction complete: ${updatedCount} of ${total} updated`
+      );
+    } catch (err) {
+      setSkillsReExtractSummary(
+        `Re-extraction failed: ${String((err as Error)?.message ?? err)}`
+      );
+    } finally {
+      setSkillsReExtractRunning(false);
     }
   };
 
@@ -614,6 +826,34 @@ export default function AdminStreamliner() {
                   <ListChecks className="h-4 w-4 mr-2" />
                   Run Completeness Audit
                 </Button>
+                <div className="mt-3">
+                  <Button
+                    variant="secondary"
+                    onClick={() => void handleReExtractSkillsOnly()}
+                    disabled={
+                      skillsReExtractRunning ||
+                      importRunning ||
+                      completenessAuditLoading
+                    }
+                  >
+                    Re-Extract Skills Only
+                  </Button>
+                </div>
+                {skillsReExtractRunning && (
+                  <p className="text-sm text-slate-600 mt-2">Re-extracting skills…</p>
+                )}
+                {skillsReExtractLines.length > 0 && (
+                  <div className="mt-2 space-y-1 text-sm text-slate-700 font-mono">
+                    {skillsReExtractLines.map((line, i) => (
+                      <p key={`${line}-${i}`}>{line}</p>
+                    ))}
+                  </div>
+                )}
+                {skillsReExtractSummary && !skillsReExtractRunning && (
+                  <p className="text-sm text-slate-800 mt-2 font-medium">
+                    {skillsReExtractSummary}
+                  </p>
+                )}
                 {completenessAuditLoading && (
                   <p className="text-sm text-slate-600 mt-2">Running audit…</p>
                 )}
