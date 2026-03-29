@@ -205,6 +205,27 @@ function startOfWeekMondayLocal(ref: Date): Date {
 const C3_WEEKLY_TARGET = 2.5;
 
 const PLACEMENT_TARGET_COUNT = 11;
+
+/** Display stage label → pipeline code for active-client counts (Sandi plan table). */
+const PIPELINE_YTD_CODE_FROM_DISPLAY: Record<
+  string,
+  'IC' | 'C1' | 'C2' | 'C3' | 'C4'
+> = {
+  'Initial Contact': 'IC',
+  'Seeker Connection': 'C1',
+  'Seeker Clarification': 'C2',
+  Possibilities: 'C3',
+  'Client Career 2.0': 'C4',
+};
+
+const PIPELINE_YTD_ROW_DEF = [
+  { stage: 'IC', weeklyTarget: '22/wk', ytdTarget: 'n/a', c5: false },
+  { stage: 'C1', weeklyTarget: '6/wk', ytdTarget: 'n/a', c5: false },
+  { stage: 'C2', weeklyTarget: '2.81/wk', ytdTarget: 'n/a', c5: false },
+  { stage: 'C3', weeklyTarget: '2.33/wk', ytdTarget: 'n/a', c5: false },
+  { stage: 'C4', weeklyTarget: '1.68/wk', ytdTarget: 'n/a', c5: false },
+  { stage: 'C5', weeklyTarget: '0.21/wk', ytdTarget: '11', c5: true },
+] as const;
 const PLACEMENT_REVENUE_PER_UNIT = 28_000;
 const PLACEMENT_REVENUE_GOAL = 300_000;
 
@@ -686,6 +707,35 @@ export default function ExecutiveDashboard() {
     });
   }, [clients]);
 
+  const pipelineYtdProgressRows = useMemo(() => {
+    const stageCounts: Record<'IC' | 'C1' | 'C2' | 'C3' | 'C4', number> = {
+      IC: 0,
+      C1: 0,
+      C2: 0,
+      C3: 0,
+      C4: 0,
+    };
+    for (const cl of clients) {
+      if ((cl.outcome_bucket ?? '').toLowerCase() !== 'active') continue;
+      const display = normalizeDisplayStage(cl.inferred_stage ?? cl.stage);
+      const code = PIPELINE_YTD_CODE_FROM_DISPLAY[display];
+      if (code) stageCounts[code] += 1;
+    }
+    const convertedTotal = clients.filter(
+      (cl) => (cl.outcome_bucket ?? '').toLowerCase() === 'converted'
+    ).length;
+
+    return PIPELINE_YTD_ROW_DEF.map((def) => ({
+      stage: def.stage,
+      weeklyTarget: def.weeklyTarget,
+      ytdTarget: def.ytdTarget,
+      c5: def.c5,
+      clientCount: def.c5
+        ? convertedTotal
+        : stageCounts[def.stage as keyof typeof stageCounts],
+    }));
+  }, [clients]);
+
   const clientsAtAGlanceRows = useMemo(() => {
     const byId = new Map(clients.map((cl) => [cl.id, cl]));
     type Row = {
@@ -842,6 +892,55 @@ export default function ExecutiveDashboard() {
         <PlacementTrackerCard placementCount={placementTrackerCount} />
         <C3ThisWeekCard weekCount={c3WeekCount} ytdCount={c3YtdCount} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Pipeline Progress — Year to Date</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead className="font-semibold text-slate-700">Stage</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Clients</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Weekly Target</TableHead>
+                  <TableHead className="font-semibold text-slate-700">YTD Target</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pipelineYtdProgressRows.map((row) => (
+                  <TableRow key={row.stage} className="border-b border-slate-100">
+                    <TableCell className="font-medium text-slate-900">{row.stage}</TableCell>
+                    <TableCell className="text-slate-800">{row.clientCount}</TableCell>
+                    <TableCell className="text-slate-700">{row.weeklyTarget}</TableCell>
+                    <TableCell className="text-slate-700">{row.ytdTarget}</TableCell>
+                    <TableCell>
+                      {row.c5 ? (
+                        <span className="text-slate-800">
+                          {placementTrackerCount} of {PLACEMENT_TARGET_COUNT}
+                        </span>
+                      ) : row.clientCount > 0 ? (
+                        <span className="font-medium text-green-600">Active</span>
+                      ) : (
+                        <span className="font-medium text-red-600">Empty</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <p
+            className="mt-4 text-xs italic leading-relaxed whitespace-pre-line"
+            style={{ color: '#7A8F95' }}
+          >
+            {`C3 is your north star. 2.5 presentations
+per week puts you on track for 11 placements.`}
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
