@@ -122,6 +122,15 @@ function resolvePipelineStageCode(
   return DISPLAY_LABEL_TO_PIPELINE_CODE[label] ?? null;
 }
 
+function shouldShowPlacementMilestones(client: {
+  inferred_stage?: string | null;
+  outcome_bucket?: string | null;
+}): boolean {
+  if ((client.outcome_bucket ?? '').toLowerCase() === 'converted') return true;
+  const code = resolvePipelineStageCode(client.inferred_stage);
+  return code === 'C4' || code === 'C5';
+}
+
 /** Sandi: IC has no numbered compartment; C1–C5 → Compartment 1–5. */
 function stageCardCompartmentSubtitle(code: PipelineStageCode | null): string {
   if (code === null) return 'Compartment —';
@@ -587,6 +596,31 @@ function ClientDetailModal({
   const [manualSessionConfirm, setManualSessionConfirm] = useState<string | null>(
     null
   );
+  const [placementPocReached, setPlacementPocReached] = useState<string | null>(
+    null
+  );
+  const [placementTriggerSubmitted, setPlacementTriggerSubmitted] = useState<
+    string | null
+  >(null);
+  const [placementBusinessPurchase, setPlacementBusinessPurchase] = useState<
+    string | null
+  >(null);
+  const [placementRevenueStored, setPlacementRevenueStored] = useState<
+    string | null
+  >(null);
+  const [pocDateDraft, setPocDateDraft] = useState('');
+  const [triggerDateDraft, setTriggerDateDraft] = useState('');
+  const [purchaseDateDraft, setPurchaseDateDraft] = useState('');
+  const [purchaseRevenueDraft, setPurchaseRevenueDraft] = useState('');
+  const [placementMilestoneSaving, setPlacementMilestoneSaving] = useState<
+    | null
+    | 'poc'
+    | 'trigger'
+    | 'purchase'
+    | 'clear_poc'
+    | 'clear_trigger'
+    | 'clear_purchase'
+  >(null);
 
   useEffect(() => {
     if (isOpen && client?.id) {
@@ -645,6 +679,49 @@ function ClientDetailModal({
     setManualSessionNotes('');
     setManualSessionConfirm(null);
   }, [client?.id, isOpen]);
+
+  useEffect(() => {
+    if (!client?.id || !isOpen) return;
+    if (!shouldShowPlacementMilestones(client)) {
+      setPlacementPocReached(null);
+      setPlacementTriggerSubmitted(null);
+      setPlacementBusinessPurchase(null);
+      setPlacementRevenueStored(null);
+      setPocDateDraft('');
+      setTriggerDateDraft('');
+      setPurchaseDateDraft('');
+      setPurchaseRevenueDraft('');
+      return;
+    }
+    const today = localCalendarDateYyyyMmDd();
+    void dbSelect<{
+      poc_reached_date: string | null;
+      trigger_submitted_date: string | null;
+      business_purchase_date: string | null;
+      placement_revenue: string | null;
+    }>(
+      `SELECT poc_reached_date, trigger_submitted_date, business_purchase_date, placement_revenue
+       FROM clients WHERE id = ?`,
+      [client.id]
+    )
+      .then((rows) => {
+        const r = rows[0];
+        setPlacementPocReached(r?.poc_reached_date ?? null);
+        setPlacementTriggerSubmitted(r?.trigger_submitted_date ?? null);
+        setPlacementBusinessPurchase(r?.business_purchase_date ?? null);
+        setPlacementRevenueStored(r?.placement_revenue ?? null);
+        setPocDateDraft(today);
+        setTriggerDateDraft(today);
+        setPurchaseDateDraft(today);
+        setPurchaseRevenueDraft((r?.placement_revenue ?? '').trim());
+      })
+      .catch(() => {
+        setPlacementPocReached(null);
+        setPlacementTriggerSubmitted(null);
+        setPlacementBusinessPurchase(null);
+        setPlacementRevenueStored(null);
+      });
+  }, [client?.id, client?.inferred_stage, client?.outcome_bucket, isOpen]);
 
   useEffect(() => {
     if (client && isOpen) {
@@ -1249,6 +1326,171 @@ function ClientDetailModal({
     }
   };
 
+  const handlePlacementPocMark = async () => {
+    if (!client || !shouldShowPlacementMilestones(client)) return;
+    const d = pocDateDraft.trim();
+    if (!d) return;
+    setPlacementMilestoneSaving('poc');
+    try {
+      const now = new Date().toISOString();
+      await dbExecute(
+        `UPDATE clients SET poc_reached_date = ?, updated_at = ? WHERE id = ?`,
+        [d, now, client.id]
+      );
+      setPlacementPocReached(d);
+      await logEntry(
+        'placement_milestone_set',
+        client.id,
+        null,
+        `Point of Clarity: ${d}`,
+        null,
+        'deterministic'
+      );
+    } catch (e) {
+      console.error('placement POC save failed:', e);
+    } finally {
+      setPlacementMilestoneSaving(null);
+    }
+  };
+
+  const handlePlacementPocClear = async () => {
+    if (!client || !shouldShowPlacementMilestones(client)) return;
+    setPlacementMilestoneSaving('clear_poc');
+    try {
+      const now = new Date().toISOString();
+      await dbExecute(
+        `UPDATE clients SET poc_reached_date = NULL, updated_at = ? WHERE id = ?`,
+        [now, client.id]
+      );
+      setPlacementPocReached(null);
+      setPocDateDraft(localCalendarDateYyyyMmDd());
+      await logEntry(
+        'placement_milestone_set',
+        client.id,
+        null,
+        'Point of Clarity: cleared',
+        null,
+        'deterministic'
+      );
+    } catch (e) {
+      console.error('placement POC clear failed:', e);
+    } finally {
+      setPlacementMilestoneSaving(null);
+    }
+  };
+
+  const handlePlacementTriggerMark = async () => {
+    if (!client || !shouldShowPlacementMilestones(client)) return;
+    if (!placementPocReached) return;
+    const d = triggerDateDraft.trim();
+    if (!d) return;
+    setPlacementMilestoneSaving('trigger');
+    try {
+      const now = new Date().toISOString();
+      await dbExecute(
+        `UPDATE clients SET trigger_submitted_date = ?, updated_at = ? WHERE id = ?`,
+        [d, now, client.id]
+      );
+      setPlacementTriggerSubmitted(d);
+      await logEntry(
+        'placement_milestone_set',
+        client.id,
+        null,
+        `Trigger Submitted: ${d}`,
+        null,
+        'deterministic'
+      );
+    } catch (e) {
+      console.error('placement trigger save failed:', e);
+    } finally {
+      setPlacementMilestoneSaving(null);
+    }
+  };
+
+  const handlePlacementTriggerClear = async () => {
+    if (!client || !shouldShowPlacementMilestones(client)) return;
+    setPlacementMilestoneSaving('clear_trigger');
+    try {
+      const now = new Date().toISOString();
+      await dbExecute(
+        `UPDATE clients SET trigger_submitted_date = NULL, updated_at = ? WHERE id = ?`,
+        [now, client.id]
+      );
+      setPlacementTriggerSubmitted(null);
+      setTriggerDateDraft(localCalendarDateYyyyMmDd());
+      await logEntry(
+        'placement_milestone_set',
+        client.id,
+        null,
+        'Trigger Submitted: cleared',
+        null,
+        'deterministic'
+      );
+    } catch (e) {
+      console.error('placement trigger clear failed:', e);
+    } finally {
+      setPlacementMilestoneSaving(null);
+    }
+  };
+
+  const handlePlacementPurchaseMark = async () => {
+    if (!client || !shouldShowPlacementMilestones(client)) return;
+    if (!placementTriggerSubmitted) return;
+    const d = purchaseDateDraft.trim();
+    if (!d) return;
+    const rev = purchaseRevenueDraft.trim() || null;
+    setPlacementMilestoneSaving('purchase');
+    try {
+      const now = new Date().toISOString();
+      await dbExecute(
+        `UPDATE clients SET business_purchase_date = ?, placement_revenue = ?, updated_at = ? WHERE id = ?`,
+        [d, rev, now, client.id]
+      );
+      setPlacementBusinessPurchase(d);
+      setPlacementRevenueStored(rev);
+      await logEntry(
+        'placement_milestone_set',
+        client.id,
+        null,
+        `Business Purchase: ${d}${rev ? `; ${rev}` : ''}`,
+        null,
+        'deterministic'
+      );
+    } catch (e) {
+      console.error('placement purchase save failed:', e);
+    } finally {
+      setPlacementMilestoneSaving(null);
+    }
+  };
+
+  const handlePlacementPurchaseClear = async () => {
+    if (!client || !shouldShowPlacementMilestones(client)) return;
+    setPlacementMilestoneSaving('clear_purchase');
+    try {
+      const now = new Date().toISOString();
+      await dbExecute(
+        `UPDATE clients SET business_purchase_date = NULL, placement_revenue = NULL, updated_at = ? WHERE id = ?`,
+        [now, client.id]
+      );
+      setPlacementBusinessPurchase(null);
+      setPlacementRevenueStored(null);
+      setPurchaseDateDraft(localCalendarDateYyyyMmDd());
+      setPurchaseRevenueDraft('');
+      await logEntry(
+        'placement_milestone_set',
+        client.id,
+        null,
+        'Business Purchase: cleared',
+        null,
+        'deterministic'
+      );
+    } catch (e) {
+      console.error('placement purchase clear failed:', e);
+    } finally {
+      setPlacementMilestoneSaving(null);
+    }
+  };
+
   const handleMarkPinkFlagResolved = async (flagName: string) => {
     if (!client) return;
     const allFlags = parseClientPinkFlagsJson(localPinkFlagsJson);
@@ -1842,6 +2084,256 @@ function ClientDetailModal({
                 </ul>
               </CardContent>
             </Card>
+
+            {shouldShowPlacementMilestones(client) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold text-slate-900">
+                    Placement Milestones
+                  </CardTitle>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Track progress toward business purchase
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2 border-b border-slate-100 pb-4">
+                    <p className="text-sm font-semibold text-slate-800">
+                      Point of Clarity reached
+                    </p>
+                    {placementPocReached ? (
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <Check
+                          className="h-4 w-4 shrink-0 text-green-600"
+                          aria-hidden
+                        />
+                        <span className="text-slate-700">
+                          {formatLastContactDisplay(placementPocReached)}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-sm text-slate-500 underline hover:text-slate-800 disabled:opacity-50"
+                          disabled={placementMilestoneSaving !== null}
+                          onClick={() => {
+                            void handlePlacementPocClear();
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-end gap-2">
+                          <div>
+                            <Label
+                              htmlFor="placement-poc-date"
+                              className="text-xs text-slate-600"
+                            >
+                              Date
+                            </Label>
+                            <Input
+                              id="placement-poc-date"
+                              type="date"
+                              className="mt-1 w-full max-w-[11rem]"
+                              value={pocDateDraft}
+                              onChange={(e) => setPocDateDraft(e.target.value)}
+                              disabled={placementMilestoneSaving !== null}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            className="bg-teal-600 hover:bg-teal-700 text-white"
+                            disabled={
+                              placementMilestoneSaving !== null ||
+                              !pocDateDraft.trim()
+                            }
+                            onClick={() => {
+                              void handlePlacementPocMark();
+                            }}
+                          >
+                            {placementMilestoneSaving === 'poc'
+                              ? 'Saving…'
+                              : 'Mark Reached'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 border-b border-slate-100 pb-4">
+                    <p className="text-sm font-semibold text-slate-800">
+                      Trigger Submitted
+                    </p>
+                    {placementTriggerSubmitted ? (
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <Check
+                          className="h-4 w-4 shrink-0 text-green-600"
+                          aria-hidden
+                        />
+                        <span className="text-slate-700">
+                          {formatLastContactDisplay(placementTriggerSubmitted)}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-sm text-slate-500 underline hover:text-slate-800 disabled:opacity-50"
+                          disabled={placementMilestoneSaving !== null}
+                          onClick={() => {
+                            void handlePlacementTriggerClear();
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {!placementPocReached ? (
+                          <p className="text-sm text-slate-500">Mark POC first</p>
+                        ) : null}
+                        <div className="flex flex-wrap items-end gap-2">
+                          <div>
+                            <Label
+                              htmlFor="placement-trigger-date"
+                              className="text-xs text-slate-600"
+                            >
+                              Date
+                            </Label>
+                            <Input
+                              id="placement-trigger-date"
+                              type="date"
+                              className="mt-1 w-full max-w-[11rem]"
+                              value={triggerDateDraft}
+                              onChange={(e) =>
+                                setTriggerDateDraft(e.target.value)
+                              }
+                              disabled={
+                                placementMilestoneSaving !== null ||
+                                !placementPocReached
+                              }
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            className="bg-teal-600 hover:bg-teal-700 text-white"
+                            disabled={
+                              placementMilestoneSaving !== null ||
+                              !placementPocReached ||
+                              !triggerDateDraft.trim()
+                            }
+                            onClick={() => {
+                              void handlePlacementTriggerMark();
+                            }}
+                          >
+                            {placementMilestoneSaving === 'trigger'
+                              ? 'Saving…'
+                              : 'Mark Submitted'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-slate-800">
+                      Business Purchase
+                    </p>
+                    {placementBusinessPurchase ? (
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                        <Check
+                          className="h-4 w-4 shrink-0 text-green-600"
+                          aria-hidden
+                        />
+                        <span className="text-slate-700">
+                          {formatLastContactDisplay(placementBusinessPurchase)}
+                        </span>
+                        {placementRevenueStored ? (
+                          <span className="text-slate-600">
+                            · {placementRevenueStored}
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="text-sm text-slate-500 underline hover:text-slate-800 disabled:opacity-50"
+                          disabled={placementMilestoneSaving !== null}
+                          onClick={() => {
+                            void handlePlacementPurchaseClear();
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {!placementTriggerSubmitted ? (
+                          <p className="text-sm text-slate-500">
+                            Mark Trigger first
+                          </p>
+                        ) : null}
+                        <div className="flex flex-wrap items-end gap-2">
+                          <div>
+                            <Label
+                              htmlFor="placement-purchase-date"
+                              className="text-xs text-slate-600"
+                            >
+                              Date
+                            </Label>
+                            <Input
+                              id="placement-purchase-date"
+                              type="date"
+                              className="mt-1 w-full max-w-[11rem]"
+                              value={purchaseDateDraft}
+                              onChange={(e) =>
+                                setPurchaseDateDraft(e.target.value)
+                              }
+                              disabled={
+                                placementMilestoneSaving !== null ||
+                                !placementTriggerSubmitted
+                              }
+                            />
+                          </div>
+                          <div className="min-w-[8rem] flex-1 max-w-xs">
+                            <Label
+                              htmlFor="placement-purchase-revenue"
+                              className="text-xs text-slate-600"
+                            >
+                              Revenue
+                            </Label>
+                            <Input
+                              id="placement-purchase-revenue"
+                              type="text"
+                              className="mt-1 w-full"
+                              placeholder="$28,000"
+                              value={purchaseRevenueDraft}
+                              onChange={(e) =>
+                                setPurchaseRevenueDraft(e.target.value)
+                              }
+                              disabled={
+                                placementMilestoneSaving !== null ||
+                                !placementTriggerSubmitted
+                              }
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            className="bg-teal-600 hover:bg-teal-700 text-white"
+                            disabled={
+                              placementMilestoneSaving !== null ||
+                              !placementTriggerSubmitted ||
+                              !purchaseDateDraft.trim()
+                            }
+                            onClick={() => {
+                              void handlePlacementPurchaseMark();
+                            }}
+                          >
+                            {placementMilestoneSaving === 'purchase'
+                              ? 'Saving…'
+                              : 'Mark Complete'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {(client.outcome_bucket ?? '').toLowerCase() === 'converted' && (
               <Card>
