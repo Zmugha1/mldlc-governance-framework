@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, type ChangeEvent } from 'react';
 import {
   Search,
   Filter,
@@ -237,6 +237,17 @@ function formatGoneQuietLabel(days: number | null | undefined): string {
 const GONE_QUIET_SESSION_DISCLAIMER =
   'Based on last uploaded Fathom session. Upload new calls to keep this current.';
 
+const GONE_QUIET_RESPONSE_PLACEHOLDER = 'Select response...';
+
+const GONE_QUIET_RESPONSE_OPTIONS = [
+  'Called — left voicemail',
+  'Sent email',
+  'Scheduled session',
+  'Had conversation — still engaged',
+  'Going cold — considering pause',
+  'No action yet',
+] as const;
+
 function formatLastContactDisplay(raw: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
@@ -253,6 +264,13 @@ function toDateInputValue(raw: string): string {
   const d = new Date(trimmed);
   if (Number.isNaN(d.getTime())) return '';
   return d.toISOString().slice(0, 10);
+}
+
+function localCalendarDateYyyyMmDd(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function deriveStyleLabel(
@@ -529,6 +547,29 @@ function ClientDetailModal({
   const [resolvingPinkFlag, setResolvingPinkFlag] = useState<string | null>(
     null
   );
+  const [goneQuietResponseValue, setGoneQuietResponseValue] = useState('');
+  const [goneQuietResponseLogged, setGoneQuietResponseLogged] = useState(false);
+  const [goneQuietResponseSaving, setGoneQuietResponseSaving] = useState(false);
+  const goneQuietResponseResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isOpen && client?.id) {
+      setGoneQuietResponseValue('');
+      setGoneQuietResponseLogged(false);
+      if (goneQuietResponseResetTimerRef.current) {
+        clearTimeout(goneQuietResponseResetTimerRef.current);
+        goneQuietResponseResetTimerRef.current = null;
+      }
+    }
+  }, [isOpen, client?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (goneQuietResponseResetTimerRef.current) {
+        clearTimeout(goneQuietResponseResetTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (client && isOpen) {
@@ -939,6 +980,50 @@ function ClientDetailModal({
     }
   };
 
+  const handleGoneQuietResponseChange = async (
+    event: ChangeEvent<HTMLSelectElement>
+  ) => {
+    const value = event.target.value;
+    if (!value || !client) return;
+    if (goneQuietResponseResetTimerRef.current) {
+      clearTimeout(goneQuietResponseResetTimerRef.current);
+      goneQuietResponseResetTimerRef.current = null;
+    }
+    setGoneQuietResponseValue(value);
+    setGoneQuietResponseSaving(true);
+    try {
+      const today = localCalendarDateYyyyMmDd();
+      const createdAt = new Date().toISOString();
+      await dbExecute(
+        `INSERT INTO intervention_logs
+         (id, client_id, signal_type, signal_date, response_type, response_date, response_notes, outcome, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          crypto.randomUUID(),
+          client.id,
+          'gone_quiet',
+          today,
+          value,
+          today,
+          null,
+          null,
+          createdAt,
+        ]
+      );
+      setGoneQuietResponseLogged(true);
+      goneQuietResponseResetTimerRef.current = setTimeout(() => {
+        setGoneQuietResponseValue('');
+        setGoneQuietResponseLogged(false);
+        goneQuietResponseResetTimerRef.current = null;
+      }, 2000);
+    } catch (e) {
+      console.error('intervention_logs insert failed:', e);
+      setGoneQuietResponseValue('');
+    } finally {
+      setGoneQuietResponseSaving(false);
+    }
+  };
+
   const handleMarkPinkFlagResolved = async (flagName: string) => {
     if (!client) return;
     const allFlags = parseClientPinkFlagsJson(localPinkFlagsJson);
@@ -1136,6 +1221,35 @@ function ClientDetailModal({
                           />
                           {formatGoneQuietLabel(client.gone_quiet_days)}
                         </Badge>
+                        <div className="mt-2 max-w-md space-y-1.5">
+                          <Label
+                            htmlFor="gone-quiet-response"
+                            className="text-xs font-medium text-slate-600"
+                          >
+                            Log your response
+                          </Label>
+                          <select
+                            id="gone-quiet-response"
+                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
+                            value={goneQuietResponseValue}
+                            disabled={goneQuietResponseSaving}
+                            onChange={(e) => {
+                              void handleGoneQuietResponseChange(e);
+                            }}
+                          >
+                            <option value="">{GONE_QUIET_RESPONSE_PLACEHOLDER}</option>
+                            {GONE_QUIET_RESPONSE_OPTIONS.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                          {goneQuietResponseLogged ? (
+                            <p className="text-sm font-medium text-green-600">
+                              Response logged
+                            </p>
+                          ) : null}
+                        </div>
                         <p className="max-w-md text-xs italic text-slate-500">
                           {GONE_QUIET_SESSION_DISCLAIMER}
                         </p>
