@@ -269,6 +269,15 @@ const PINK_FLAG_RESPONSE_OPTIONS = [
 const GOLDEN_RULES_TEXTAREA_PLACEHOLDER =
   'What coaching moves led to this conversion? What worked with this client that you want to remember and repeat with similar clients?';
 
+// TODO Migration 54: add territory_check_notes column to clients table and replace
+// localStorage with DB persistence
+function territoryCheckStorageKey(clientId: string): string {
+  return `territory_check_${clientId}`;
+}
+
+const TERRITORY_CHECK_TEXTAREA_PLACEHOLDER =
+  'Paste your territory check results here. This information will be included when generating the vision statement PowerPoint.';
+
 function formatLastContactDisplay(raw: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
@@ -621,6 +630,8 @@ function ClientDetailModal({
     | 'clear_trigger'
     | 'clear_purchase'
   >(null);
+  const [territoryCheckDraft, setTerritoryCheckDraft] = useState('');
+  const [territoryCheckSavedMsg, setTerritoryCheckSavedMsg] = useState(false);
 
   useEffect(() => {
     if (isOpen && client?.id) {
@@ -1488,6 +1499,19 @@ function ClientDetailModal({
       console.error('placement purchase clear failed:', e);
     } finally {
       setPlacementMilestoneSaving(null);
+    }
+  };
+
+  const handleSaveTerritoryCheck = () => {
+    if (!client) return;
+    try {
+      localStorage.setItem(
+        territoryCheckStorageKey(client.id),
+        territoryCheckDraft
+      );
+      setTerritoryCheckSavedMsg(true);
+    } catch (e) {
+      console.error('territory check localStorage save failed:', e);
     }
   };
 
@@ -2675,6 +2699,49 @@ function ClientDetailModal({
                 <p className="text-slate-600">
                   {client.visionStatement.paragraph || 'No vision yet.'}
                 </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-bold text-slate-900">
+                  Territory Check
+                </CardTitle>
+                <p className="text-sm text-slate-500 mt-1">
+                  Paste territory check results here before generating the vision
+                  statement.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label htmlFor="territory-check-results">
+                    Territory Check Results
+                  </Label>
+                  <Textarea
+                    id="territory-check-results"
+                    rows={6}
+                    className="mt-1 w-full min-h-0 resize-y"
+                    placeholder={TERRITORY_CHECK_TEXTAREA_PLACEHOLDER}
+                    value={territoryCheckDraft}
+                    onChange={(e) => {
+                      setTerritoryCheckDraft(e.target.value);
+                      setTerritoryCheckSavedMsg(false);
+                    }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  className="bg-teal-600 hover:bg-teal-700 text-white"
+                  onClick={handleSaveTerritoryCheck}
+                >
+                  Save Territory Notes
+                </Button>
+                {territoryCheckSavedMsg ? (
+                  <p className="text-sm font-medium text-green-600">
+                    Territory notes saved. These will be included when you
+                    generate the vision statement.
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
             </div>
