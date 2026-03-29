@@ -257,6 +257,9 @@ const PINK_FLAG_RESPONSE_OPTIONS = [
   'Monitoring — no action yet',
 ] as const;
 
+const GOLDEN_RULES_TEXTAREA_PLACEHOLDER =
+  'What coaching moves led to this conversion? What worked with this client that you want to remember and repeat with similar clients?';
+
 function formatLastContactDisplay(raw: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
@@ -572,6 +575,10 @@ function ClientDetailModal({
   const pinkFlagResponseTimersRef = useRef<
     Map<string, ReturnType<typeof setTimeout>>
   >(new Map());
+  const [goldenRulesDraft, setGoldenRulesDraft] = useState('');
+  const [goldenRulesHasPersisted, setGoldenRulesHasPersisted] = useState(false);
+  const [goldenRulesSaving, setGoldenRulesSaving] = useState(false);
+  const [goldenRulesSavedConfirm, setGoldenRulesSavedConfirm] = useState(false);
 
   useEffect(() => {
     if (isOpen && client?.id) {
@@ -598,6 +605,31 @@ function ClientDetailModal({
       pinkFlagResponseTimersRef.current.clear();
     };
   }, []);
+
+  useEffect(() => {
+    if (!client || !isOpen) return;
+    const ob = (client.outcome_bucket ?? '').toLowerCase();
+    if (ob !== 'converted') {
+      setGoldenRulesDraft('');
+      setGoldenRulesHasPersisted(false);
+      setGoldenRulesSavedConfirm(false);
+      return;
+    }
+    void dbSelect<{ golden_rules_notes: string | null }>(
+      `SELECT golden_rules_notes FROM clients WHERE id = ?`,
+      [client.id]
+    )
+      .then((rows) => {
+        const raw = rows[0]?.golden_rules_notes ?? '';
+        setGoldenRulesDraft(raw);
+        setGoldenRulesHasPersisted(raw.trim().length > 0);
+        setGoldenRulesSavedConfirm(false);
+      })
+      .catch(() => {
+        setGoldenRulesDraft('');
+        setGoldenRulesHasPersisted(false);
+      });
+  }, [client?.id, client?.outcome_bucket, isOpen]);
 
   useEffect(() => {
     if (client && isOpen) {
@@ -1112,6 +1144,38 @@ function ClientDetailModal({
         delete next[flag];
         return next;
       });
+    }
+  };
+
+  const handleSaveGoldenRules = async () => {
+    if (!client) return;
+    const ob = (client.outcome_bucket ?? '').toLowerCase();
+    if (ob !== 'converted') return;
+    setGoldenRulesSaving(true);
+    setGoldenRulesSavedConfirm(false);
+    try {
+      const trimmed = goldenRulesDraft.trim();
+      const now = new Date().toISOString();
+      await dbExecute(
+        `UPDATE clients SET golden_rules_notes = ?, updated_at = ? WHERE id = ?`,
+        [trimmed, now, client.id]
+      );
+      setGoldenRulesHasPersisted(trimmed.length > 0);
+      setGoldenRulesSavedConfirm(true);
+      const detailsSnippet =
+        trimmed.length > 100 ? trimmed.slice(0, 100) : trimmed;
+      await logEntry(
+        'golden_rule_saved',
+        client.id,
+        null,
+        detailsSnippet || null,
+        null,
+        'deterministic'
+      );
+    } catch (e) {
+      console.error('golden_rules_notes save failed:', e);
+    } finally {
+      setGoldenRulesSaving(false);
     }
   };
 
@@ -1708,6 +1772,50 @@ function ClientDetailModal({
                 </ul>
               </CardContent>
             </Card>
+
+            {(client.outcome_bucket ?? '').toLowerCase() === 'converted' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold text-slate-900">
+                    Golden Rules
+                  </CardTitle>
+                  <p className="text-sm text-slate-500 mt-1">
+                    What made this client convert?
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Textarea
+                    rows={4}
+                    className="w-full min-h-0 resize-y"
+                    placeholder={GOLDEN_RULES_TEXTAREA_PLACEHOLDER}
+                    value={goldenRulesDraft}
+                    onChange={(e) => {
+                      setGoldenRulesDraft(e.target.value);
+                      setGoldenRulesSavedConfirm(false);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    className="bg-teal-600 hover:bg-teal-700 text-white"
+                    onClick={() => {
+                      void handleSaveGoldenRules();
+                    }}
+                    disabled={goldenRulesSaving}
+                  >
+                    {goldenRulesSaving
+                      ? 'Saving…'
+                      : goldenRulesHasPersisted
+                        ? 'Update Golden Rule'
+                        : 'Save Golden Rule'}
+                  </Button>
+                  {goldenRulesSavedConfirm ? (
+                    <p className="text-sm font-medium text-green-600">
+                      Golden rule saved
+                    </p>
+                  ) : null}
+                </CardContent>
+              </Card>
+            )}
             </div>
           </TabsContent>
 
