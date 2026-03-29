@@ -97,9 +97,60 @@ Common items:
 "I want to make a difference in my community"
 "I desire more flexibility"
 
-SKILLS:
+SKILLS — CRITICAL (multiple label variations):
+The You 2.0 document uses different labels for skills across clients.
+Extract ALL professional capabilities into the JSON "skills" array.
+
+1) Checkbox list (when present):
 Find "Question 6 - Skills and Abilities"
 Extract ONLY items where value is "Yes"
+
+2) Freeform sections — scan the full document for ANY of these headings
+or lead-in labels (case-insensitive; match partial lines):
+- "Skills"
+- "Transferable Skills"
+- "Key Skills"
+- "Abilities"
+- "Core Competencies"
+- "Professional Skills"
+- "Skill Set"
+- "What I Bring"
+- "My Strengths" (when listed as bullet items of capabilities — not the
+  paired "Strength:" / "Goal:" rows in "Top 3 Strengths & Goals"; those belong in strengths[])
+- Any section that lists capabilities the client has developed professionally
+
+Split items on commas, semicolons, or line breaks. Strip bullets (•, -, *).
+Trim whitespace. One skill per array element. De-duplicate near-duplicates.
+
+FEW-SHOT EXAMPLES — SKILLS:
+
+Example 1 — labeled "Transferable Skills":
+Input: "Transferable Skills: Strategic thinking,
+project management, structured execution,
+sound decision-making"
+Output skills: ["Strategic thinking",
+"Project management", "Structured execution",
+"Sound decision-making"]
+
+Example 2 — labeled "Key Skills":
+Input: "Key Skills: Relationship building,
+leadership development, needs-based solutions,
+mentoring and training"
+Output skills: ["Relationship building",
+"Leadership development",
+"Needs-based solutions",
+"Mentoring and training"]
+
+Example 3 — unlabeled bullet list after
+strengths section:
+Input: "• Analytical thinking
+- Data interpretation
+- Cross-functional collaboration
+- Process improvement"
+Output skills: ["Analytical thinking",
+"Data interpretation",
+"Cross-functional collaboration",
+"Process improvement"]
 
 AREAS OF INTEREST:
 Find "Question 11 - Areas of Interest"
