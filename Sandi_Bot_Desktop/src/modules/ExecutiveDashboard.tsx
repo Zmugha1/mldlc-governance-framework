@@ -9,6 +9,7 @@ import {
   Zap,
   RefreshCw,
   AlertTriangle,
+  Award,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -183,6 +184,65 @@ function formatExecutiveDashboardDate(d: Date): string {
   });
 }
 
+const PLACEMENT_TARGET_COUNT = 11;
+const PLACEMENT_REVENUE_PER_UNIT = 28_000;
+const PLACEMENT_REVENUE_GOAL = 300_000;
+
+function placementTrackerProgressColor(count: number): string {
+  if (count >= 8) return '#22C55E';
+  if (count >= 4) return '#F59E0B';
+  return '#EF4444';
+}
+
+function PlacementTrackerCard({ placementCount }: { placementCount: number }) {
+  const pctTowardTarget = Math.min(
+    100,
+    Math.round((placementCount / PLACEMENT_TARGET_COUNT) * 1000) / 10
+  );
+  const revenue = placementCount * PLACEMENT_REVENUE_PER_UNIT;
+  const barColor = placementTrackerProgressColor(placementCount);
+  const moneyFmt = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
+
+  return (
+    <Card className="hover:shadow-lg transition-shadow">
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-slate-500">Placement Tracker</p>
+            <h3 className="text-3xl font-bold text-slate-900 mt-2">
+              {placementCount} of {PLACEMENT_TARGET_COUNT} placements
+            </h3>
+            <p className="text-sm text-slate-600 mt-2">
+              {moneyFmt.format(revenue)} of {moneyFmt.format(PLACEMENT_REVENUE_GOAL)}
+            </p>
+            <div className="mt-4">
+              <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${pctTowardTarget}%`,
+                    backgroundColor: barColor,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+          <div
+            className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0"
+            style={{ backgroundColor: `${barColor}20` }}
+          >
+            <Award className="h-6 w-6" style={{ color: barColor }} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 interface KPICardProps {
   title: string;
   value: string | number;
@@ -284,6 +344,7 @@ export default function ExecutiveDashboard() {
     Map<string, 'D' | 'I' | 'S' | 'C'>
   >(() => new Map());
   const [greetingNow, setGreetingNow] = useState(() => Date.now());
+  const [placementTrackerCount, setPlacementTrackerCount] = useState(0);
 
   useEffect(() => {
     const id = window.setInterval(() => setGreetingNow(Date.now()), 60_000);
@@ -380,6 +441,13 @@ export default function ExecutiveDashboard() {
         }>(
           `SELECT client_id, natural_d, natural_i, natural_s, natural_c
            FROM client_disc_profiles`,
+          []
+        ),
+        dbSelect<{ count: number }>(
+          `SELECT COUNT(*) as count
+           FROM clients
+           WHERE business_purchase_date IS NOT NULL
+             AND outcome_bucket = 'converted'`,
           []
         ),
       ]);
@@ -667,6 +735,7 @@ export default function ExecutiveDashboard() {
           }
           color="#14B8A6"
         />
+        <PlacementTrackerCard placementCount={placementTrackerCount} />
       </div>
 
       {/* Charts Row */}
