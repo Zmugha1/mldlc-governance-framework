@@ -10,6 +10,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Award,
+  Compass,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -184,6 +185,25 @@ function formatExecutiveDashboardDate(d: Date): string {
   });
 }
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+function formatLocalYyyyMmDd(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** Monday 00:00 local calendar date (week starts Monday). */
+function startOfWeekMondayLocal(ref: Date): Date {
+  const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  const day = d.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + offset);
+  return d;
+}
+
+const C3_WEEKLY_TARGET = 2.5;
+
 const PLACEMENT_TARGET_COUNT = 11;
 const PLACEMENT_REVENUE_PER_UNIT = 28_000;
 const PLACEMENT_REVENUE_GOAL = 300_000;
@@ -236,6 +256,57 @@ function PlacementTrackerCard({ placementCount }: { placementCount: number }) {
             style={{ backgroundColor: `${barColor}20` }}
           >
             <Award className="h-6 w-6" style={{ color: barColor }} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function C3ThisWeekCard({
+  weekCount,
+  ytdCount,
+}: {
+  weekCount: number;
+  ytdCount: number;
+}) {
+  const accent =
+    weekCount >= C3_WEEKLY_TARGET
+      ? '#22C55E'
+      : weekCount >= 1
+        ? '#F59E0B'
+        : '#EF4444';
+  let statusText: string;
+  let statusClass: string;
+  if (weekCount >= C3_WEEKLY_TARGET) {
+    statusText = 'On track';
+    statusClass = 'text-green-600';
+  } else if (weekCount >= 1) {
+    statusText = 'Below target';
+    statusClass = 'text-amber-600';
+  } else {
+    statusText = 'None yet this week';
+    statusClass = 'text-red-600';
+  }
+
+  return (
+    <Card className="hover:shadow-lg transition-shadow">
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-slate-500">C3 This Week</p>
+            <h3 className="text-3xl font-bold text-slate-900 mt-2">
+              {weekCount.toFixed(1)} this week
+            </h3>
+            <p className="text-sm text-slate-600 mt-2">target: 2.5 per week</p>
+            <p className={cn('text-sm font-medium mt-2', statusClass)}>{statusText}</p>
+            <p className="text-sm text-slate-500 mt-2">{ytdCount} total this year</p>
+          </div>
+          <div
+            className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0"
+            style={{ backgroundColor: `${accent}20` }}
+          >
+            <Compass className="h-6 w-6" style={{ color: accent }} />
           </div>
         </div>
       </CardContent>
@@ -345,6 +416,8 @@ export default function ExecutiveDashboard() {
   >(() => new Map());
   const [greetingNow, setGreetingNow] = useState(() => Date.now());
   const [placementTrackerCount, setPlacementTrackerCount] = useState(0);
+  const [c3WeekCount, setC3WeekCount] = useState(0);
+  const [c3YtdCount, setC3YtdCount] = useState(0);
 
   useEffect(() => {
     const id = window.setInterval(() => setGreetingNow(Date.now()), 60_000);
@@ -369,6 +442,12 @@ export default function ExecutiveDashboard() {
     }
     setError(null);
     try {
+      const now = new Date();
+      const weekStartLocal = startOfWeekMondayLocal(now);
+      const weekStartStr = formatLocalYyyyMmDd(weekStartLocal);
+      const todayStr = formatLocalYyyyMmDd(now);
+      const calendarYear = now.getFullYear();
+
       const [
         s,
         c,
@@ -381,6 +460,9 @@ export default function ExecutiveDashboard() {
         kpis,
         sessionRows,
         discProfileRows,
+        placementRows,
+        c3WeekRows,
+        c3YtdRows,
       ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
@@ -450,6 +532,25 @@ export default function ExecutiveDashboard() {
              AND outcome_bucket = 'converted'`,
           []
         ),
+        dbSelect<{ count: number }>(
+          `SELECT COUNT(*) as count
+           FROM coaching_sessions
+           WHERE stage = 'C3'
+             AND session_date IS NOT NULL
+             AND TRIM(session_date) != ''
+             AND date(session_date) >= date($1)
+             AND date(session_date) <= date($2)`,
+          [weekStartStr, todayStr]
+        ),
+        dbSelect<{ count: number }>(
+          `SELECT COUNT(*) as count
+           FROM coaching_sessions
+           WHERE stage = 'C3'
+             AND session_date IS NOT NULL
+             AND TRIM(session_date) != ''
+             AND CAST(strftime('%Y', date(session_date)) AS INTEGER) = $1`,
+          [calendarYear]
+        ),
       ]);
       setStats(s);
       setClients(c);
@@ -475,6 +576,9 @@ export default function ExecutiveDashboard() {
       }
       setDiscLetterByProfileClientId(discFromProfiles);
       setActiveConversationCount(Number(conversationRows[0]?.count ?? 0));
+      setPlacementTrackerCount(Number(placementRows[0]?.count ?? 0));
+      setC3WeekCount(Number(c3WeekRows[0]?.count ?? 0));
+      setC3YtdCount(Number(c3YtdRows[0]?.count ?? 0));
 
       const fc = Number(fathomRows[0]?.count ?? 0);
       const tc = Number(tumayRows[0]?.count ?? 0);
@@ -736,6 +840,7 @@ export default function ExecutiveDashboard() {
           color="#14B8A6"
         />
         <PlacementTrackerCard placementCount={placementTrackerCount} />
+        <C3ThisWeekCard weekCount={c3WeekCount} ytdCount={c3YtdCount} />
       </div>
 
       {/* Charts Row */}
