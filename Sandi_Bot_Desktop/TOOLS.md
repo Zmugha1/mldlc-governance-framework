@@ -1,3 +1,65 @@
+# TOOLS REGISTRY — Coach Bot
+Last updated: March 27 2026
+
+## CONFIRMED WORKING TAURI COMMANDS
+
+### invoke('ollama_generate')
+Purpose: Only way to call Ollama from TypeScript
+Options: num_ctx:4096, num_predict:1024,
+  temperature:0.1, timeout:120s
+Model: qwen2.5:7b-instruct-q4_k_m
+NEVER use fetch() to localhost:11434 — blocked
+NEVER use num_predict:512 — truncates JSON
+NEVER use num_ctx:2048 — too small for TUMAY
+
+### invoke('extract_pdf_pages')
+Purpose: PDF text extraction
+Uses: pdfium-render (primary)
+Falls back to: Tesseract OCR
+NEVER use lopdf or any JS PDF library
+
+### invoke('extract_text')
+Purpose: General file extraction
+Handles: PDF, PPTX, DOCX, TXT, CSV
+
+### invoke('check_ollama_status')
+Purpose: Check if Ollama is running
+Returns: boolean
+Use before any extraction operation
+
+## SERVICES BUILT AND WORKING
+- stageReadinessService.ts
+- dashboardService.ts
+- clientService.ts
+- documentExtractionService.ts
+- backupService.ts
+- auditService.ts
+- ollamaService.ts
+
+## SERVICES TO BUILD — NEXT SESSION
+- interventionLogService.ts (Migration 51)
+- placementTrackingService.ts (Migration 53)
+- visionGenerationService.ts (Phase 7B)
+- pptxService.ts (Phase 7D)
+- feedbackService.ts (Migration 52)
+- sessionDateUpdateService.ts (Sequence 5A)
+
+## DATABASE
+File: sandi_bot.db
+Location: %APPDATA%\com.sandibot.desktop\
+Access: getDb() via tauri-plugin-sql
+Migrations 1-50: NEVER EDIT
+Next migration: 51+
+client_id: always TEXT UUID never integer
+
+## BINARY FILES — NEVER DELETE
+src-tauri/pdfium.dll — Windows PDF extraction
+src-tauri/icons/icon.ico — Windows installer
+src-tauri/icons/icon.png — Mac build
+All force-committed to repo (in .gitignore)
+
+---
+
 # TOOLS.md — Sandi Bot Named Operations Registry
 ## Version 1.0 | March 2026
 ## Dr. Data Decision Intelligence
