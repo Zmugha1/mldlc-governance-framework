@@ -579,6 +579,14 @@ function ClientDetailModal({
   const [goldenRulesHasPersisted, setGoldenRulesHasPersisted] = useState(false);
   const [goldenRulesSaving, setGoldenRulesSaving] = useState(false);
   const [goldenRulesSavedConfirm, setGoldenRulesSavedConfirm] = useState(false);
+  const [manualSessionDate, setManualSessionDate] = useState(() =>
+    localCalendarDateYyyyMmDd()
+  );
+  const [manualSessionNotes, setManualSessionNotes] = useState('');
+  const [manualSessionSaving, setManualSessionSaving] = useState(false);
+  const [manualSessionConfirm, setManualSessionConfirm] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (isOpen && client?.id) {
@@ -630,6 +638,13 @@ function ClientDetailModal({
         setGoldenRulesHasPersisted(false);
       });
   }, [client?.id, client?.outcome_bucket, isOpen]);
+
+  useEffect(() => {
+    if (!client || !isOpen) return;
+    setManualSessionDate(localCalendarDateYyyyMmDd());
+    setManualSessionNotes('');
+    setManualSessionConfirm(null);
+  }, [client?.id, isOpen]);
 
   useEffect(() => {
     if (client && isOpen) {
@@ -1037,6 +1052,61 @@ function ClientDetailModal({
       });
     } finally {
       setIsSavingNote(false);
+    }
+  };
+
+  const handleAddManualSession = async () => {
+    if (!client) return;
+    const dateStr = manualSessionDate.trim();
+    if (!dateStr) return;
+    setManualSessionSaving(true);
+    setManualSessionConfirm(null);
+    try {
+      const countRows = await dbSelect<{ c: number }>(
+        `SELECT COUNT(*) as c FROM coaching_sessions WHERE client_id = ?`,
+        [client.id]
+      );
+      const nextSessionNumber = Number(countRows[0]?.c ?? 0) + 1;
+      const stageCode =
+        resolvePipelineStageCode(client.inferred_stage) ?? 'IC';
+      const notesVal = manualSessionNotes.trim() || null;
+      const now = new Date().toISOString();
+      await dbExecute(
+        `INSERT INTO coaching_sessions
+         (client_id, session_date, session_number, stage, notes, next_actions, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          client.id,
+          dateStr,
+          nextSessionNumber,
+          stageCode,
+          notesVal,
+          null,
+          now,
+        ]
+      );
+      await dbExecute(
+        `UPDATE clients SET last_contact_date = ?, updated_at = ? WHERE id = ?`,
+        [dateStr, now, client.id]
+      );
+      setLastContactDateDb(dateStr);
+      await logEntry(
+        'manual_session_added',
+        client.id,
+        null,
+        dateStr,
+        null,
+        'deterministic'
+      );
+      await loadFathomSessions();
+      const friendly = formatLastContactDisplay(dateStr);
+      setManualSessionConfirm(friendly || dateStr);
+      setManualSessionDate(localCalendarDateYyyyMmDd());
+      setManualSessionNotes('');
+    } catch (e) {
+      console.error('manual session add failed:', e);
+    } finally {
+      setManualSessionSaving(false);
     }
   };
 
@@ -2119,7 +2189,58 @@ function ClientDetailModal({
           </TabsContent>
 
           <TabsContent value="fathom" className="h-full min-h-0 mt-0">
-            <div className="overflow-y-auto h-full max-h-[75vh] p-6">
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Add Session Manually</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label htmlFor="manual-session-date">Session Date</Label>
+                  <Input
+                    id="manual-session-date"
+                    type="date"
+                    className="mt-1 w-full max-w-xs"
+                    value={manualSessionDate}
+                    onChange={(e) => {
+                      setManualSessionDate(e.target.value);
+                      setManualSessionConfirm(null);
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="manual-session-notes">
+                    Session Notes (optional)
+                  </Label>
+                  <Textarea
+                    id="manual-session-notes"
+                    rows={2}
+                    className="mt-1 w-full"
+                    placeholder="Brief notes about this session"
+                    value={manualSessionNotes}
+                    onChange={(e) => {
+                      setManualSessionNotes(e.target.value);
+                      setManualSessionConfirm(null);
+                    }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  className="bg-teal-600 hover:bg-teal-700 text-white"
+                  onClick={() => {
+                    void handleAddManualSession();
+                  }}
+                  disabled={manualSessionSaving || !manualSessionDate.trim()}
+                >
+                  {manualSessionSaving ? 'Adding…' : 'Add Session'}
+                </Button>
+                {manualSessionConfirm ? (
+                  <p className="text-sm font-medium text-green-600">
+                    Session added for {manualSessionConfirm}
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
