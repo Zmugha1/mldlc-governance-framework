@@ -1,3 +1,81 @@
+# COACH BOT — LIVE PRODUCTION STATUS
+Last updated: March 27 2026
+
+## VERSION HISTORY
+v0.1.0 — March 27 2026
+  Windows MSI delivered to Sandi Stahl
+  Mac DMG built via GitHub Actions
+  Sandi using skeleton this week
+  16 clients — database transfer Tuesday
+
+v0.2.0 — Target: Friday April 3 2026
+  Vision statement PowerPoint generator
+  Business plan KPI cards YTD
+  Intervention response layer
+  Golden rules flag on converted clients
+  Territory check paste area
+  Manual session date entry
+  In-app feedback layer
+  Complete installer package with database
+
+## PHASE STATUS
+Phase 1: COMPLETE
+Phase 2: COMPLETE
+Phase 3: COMPLETE
+Phase 4: COMPLETE
+Phase 5: MOSTLY COMPLETE
+  Remaining: 5B emotional detection, 5E coaching plan
+Phase 6: NOT STARTED
+Phase 7: NOT STARTED
+Phase 8+: NOT STARTED
+
+## CLIENT ROSTER
+Sandi Stahl — Founding Partner
+  Delivered: March 27 2026
+  Build fee: waived
+  Retainer: $150/month from Month 13
+  Referral fee: 10%
+  Status: UAT week 1 — empty shell
+  Next: populated database Tuesday
+
+R&D Cohort — up to 4 coaches
+  Build fee: $1,000 each
+  Total potential: $4,000
+  Retainer: $0 months 1-6, $100/month after
+  Status: pending Sandi referrals
+
+## SANDI BUSINESS PLAN ALIGNMENT
+Target: $300K gross revenue 2026
+Placements needed: 11 at $28K average
+North star: C3 presentations per week
+C1 gap: 58% → 75% target (+17 points)
+C4 gap: 56% → 80% target (+24 points)
+Coach Bot impact: $56K additional revenue
+if gaps closed halfway
+
+## CONFIRMED BUILD PRIORITIES — from March 27 call
+1. Vision Statement PowerPoint generator
+2. Business Plan KPI cards YTD
+3. DISC dangers opportunities extraction fix
+4. Golden Rules flag on converted clients
+5. Territory check paste area on Vision tab
+6. Manual session date entry
+7. Populated installer delivery
+
+## PRICING
+Standard: $15,000 build, $750/month retainer
+R&D tier: $1,000 build, $100/month after 6
+Founding partner: build waived, $150/month from 13
+
+## NEXT MILESTONES
+Tuesday 2pm — check-in, deliver populated DB
+Friday 9am — v0.2.0 delivery call
+April 3 — Google Calendar demo
+April 3 — Collect DISC verbatim phrases
+April 3 — Confirm CLEAR benchmark with Sandi
+
+---
+
 # COACH BOT PRODUCTION STATUS
 Last updated: March 27 2026
 
