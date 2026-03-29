@@ -960,6 +960,18 @@ pub fn run() {
             )",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 53,
+            description: "add_placement_vision_fields_to_clients",
+            sql: "ALTER TABLE clients ADD COLUMN poc_reached_date TEXT;
+                  ALTER TABLE clients ADD COLUMN trigger_submitted_date TEXT;
+                  ALTER TABLE clients ADD COLUMN business_purchase_date TEXT;
+                  ALTER TABLE clients ADD COLUMN placement_revenue TEXT;
+                  ALTER TABLE clients ADD COLUMN vision_approved INTEGER DEFAULT 0;
+                  ALTER TABLE clients ADD COLUMN vision_approved_date TEXT;
+                  ALTER TABLE clients ADD COLUMN golden_rules_notes TEXT;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
