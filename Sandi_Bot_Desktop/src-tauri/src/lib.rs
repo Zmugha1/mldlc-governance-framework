@@ -944,6 +944,22 @@ pub fn run() {
             )",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 52,
+            description: "create_user_feedback",
+            sql: "CREATE TABLE IF NOT EXISTS user_feedback (
+                id TEXT PRIMARY KEY,
+                page_name TEXT NOT NULL,
+                feedback_type TEXT NOT NULL,
+                rating TEXT,
+                feedback_text TEXT,
+                feature_name TEXT,
+                thumbs_up INTEGER,
+                session_date TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
