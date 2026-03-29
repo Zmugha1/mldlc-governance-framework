@@ -303,3 +303,62 @@ Tuesday goal: get her the database.
 Tuesday 2pm — 30 min check-in
 Friday 9am — longer delivery call
 Action: send calendar invites tonight
+
+---
+
+## STZ COVERAGE SCORECARD
+## March 27 2026
+
+Previous coverage March 20: 37%
+Current coverage March 27: 62%
+Target after next Friday v0.2.0: 75%
+Full implementation: Phase 6-10
+
+### Coverage by layer:
+L1 Prompts:    60% built
+L2 Skills:     55% built
+L3 Agents:     40% built
+L4 Contracts:  35% built
+L5 Evaluation: 25% built
+Governance:    70% built
+
+### Coverage by domain:
+S1 VALIDATE/GATHER/PAUSE:    95% ✅
+S2 Stage Gates:              45% ⚠️
+S3 Daily Coaching Intel:     65% ⚠️
+S4 Gone Quiet/Re-engagement: 90% ✅
+S5 Post-Placement Follow-up: 40% ❌
+S6 Pink Flags:               85% ✅
+S7 DISC-Aware Coaching:      55% ⚠️
+S8 CLEAR Framework:          60% ⚠️
+S9 Vision Statement:         10% ❌
+S10 System Usage:            60% ⚠️
+S11 Configuration:           75% ✅
+
+### Biggest gap: L4 Contracts
+The loop between signal and outcome
+is not closed. Sandi sees signals but
+Coach Bot does not know what she did
+or whether it worked.
+
+Next Friday closes this gap:
+- intervention_logs built and in use
+- placement tracker active
+- golden rules field on converted clients
+- response fields on gone quiet and pink flags
+
+### What gets us to 75% next Friday:
+- Intervention response layer (L4)
+- Placement milestone tracking (L4)
+- Vision statement generation (L1 + L2 + L3)
+- Business plan KPI cards (L5)
+- In-app feedback layer (L5)
+- Manual session date entry (L2)
+
+### Full STZ implementation path:
+Phase 6: daily brief, reminders → L3 agents
+Phase 7: vision, PPTX → L1 prompts complete
+Phase 8: Neo4j → L4 contracts at scale
+Phase 9: graph patterns → L5 evaluation
+Phase 10: GraphRAG → L5 complete
+Phase 14: QLoRA → governance complete
