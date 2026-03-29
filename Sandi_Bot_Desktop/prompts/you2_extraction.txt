@@ -122,6 +122,14 @@ or lead-in labels (case-insensitive; match partial lines):
 Split items on commas, semicolons, or line breaks. Strip bullets (•, -, *).
 Trim whitespace. One skill per array element. De-duplicate near-duplicates.
 
+If no dedicated skills section exists,
+extract implied skills from the Top 3
+Strengths Goals text. Look for specific
+capabilities mentioned in goal statements
+like "Utilize strengths of relationship
+building, trust, hard work and compassion"
+and extract the skill phrases as an array.
+
 FEW-SHOT EXAMPLES — SKILLS:
 
 Example 1 — labeled "Transferable Skills":
@@ -151,6 +159,30 @@ Output skills: ["Analytical thinking",
 "Data interpretation",
 "Cross-functional collaboration",
 "Process improvement"]
+
+Example 4 — skills implied in strengths goals:
+Input: "Strength: I have strong transferable
+skills. Goal: Utilize strengths of
+relationship building, trust, hard work
+and compassion in a new and exciting way."
+Output skills: ["Relationship building",
+"Trust", "Hard work", "Compassion",
+"Transferable skills"]
+
+Example 5 — skills implied across multiple
+strength goal statements:
+Input: "Goal: Work with passion and joy
+for the next 10 years.
+Goal: Find a passion, work hard and smart
+and succeed."
+Output skills: ["Passion-driven work",
+"Strategic thinking", "Persistence"]
+
+If no skills can be identified anywhere
+in the document return an empty array []
+Do NOT return null.
+Do NOT return a string.
+Always return a valid JSON array.
 
 AREAS OF INTEREST:
 Find "Question 11 - Areas of Interest"
