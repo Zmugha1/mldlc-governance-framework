@@ -213,3 +213,93 @@ Sequence 7: Vision statement generation
 Sequence 8: Refresh and real-time accuracy
 Sequence 9: Complete installer package
 Sequence 10: Update all MD files
+
+---
+
+## SANDI TRANSCRIPT GAP ANALYSIS
+## March 27 2026
+
+### Confirmed by Sandi on call:
+
+1. VISION STATEMENT POWERPOINT — TOP PRIORITY
+   Source: You 2.0 + DISC + Fathom
+   Structure: 3 paragraphs
+     Professional paragraph
+     Personal paragraph
+     Personal desires paragraph
+   Reduce by 20% if too long
+   Downloads as PowerPoint in her template
+   She will send her template Monday
+   Build: Sequence 7 — highest priority
+
+2. BUSINESS PLAN KPI CARDS YTD
+   C3 presentations per week = north star
+   YTD progress vs weekly and annual targets
+   Good morning greeting with date on dashboard
+   Build: Sequence 3
+
+3. DISC DANGERS OPPORTUNITIES EXTRACTION
+   Page range too narrow — broaden it
+   Some clients missing these fields
+   Trust issue for UAT
+   Build: Sequence 2
+
+4. GOLDEN RULES FLAG — CONVERTED CLIENTS
+   What made them convert — capture it
+   Notes field on converted client overview tab
+   Feeds pattern recognition over time
+   Build: Sequence 5 — golden_rules_notes field
+   Already added to Migration 53
+
+5. TERRITORY CHECK PASTE AREA
+   Sandi pastes TES territory check results
+   Simple text area on Vision tab
+   Goes into PowerPoint generation
+   NOT a TES integration — paste only
+   Build: Sequence 7
+
+6. MANUAL SESSION DATE ENTRY
+   Confirmed on call
+   Fixes gone quiet accuracy
+   2023 placeholder dates are a trust issue
+   Build: Sequence 5A
+
+7. OLLAMA STATUS INDICATOR
+   Clear running/offline status in StatusBar
+   Setup instructions if offline
+   Already in StatusBar — verify clarity
+
+8. POPULATED INSTALLER DELIVERY
+   Tuesday 2pm — deliver populated database
+   Friday 9am — full v0.2.0 delivery
+   Sandi confirmed happy with skeleton
+   Real feedback starts when data is loaded
+
+### NOT mentioned by Sandi — our design:
+These are correct to build but not her requests.
+Do not over-explain. Let her discover the value.
+- Intervention response fields on signals
+- Decision Velocity Loop
+- In-app feedback layer
+- Placement tracker KPI card
+- At Risk This Week card
+- Pipeline Velocity card
+
+### Sandi action items from call:
+- Send PowerPoint template — needed for 7A
+- Send UAT form back — Monday
+- Print flowchart, scribble, send back — Monday
+- Review proposals — Monday end of day
+
+### Key insight from transcript:
+Sandi at 1:28:19:
+"The key thing for me is when we get this
+to the point where I can start inputting data."
+Real feedback comes when she has populated
+data and is using it before real calls.
+Tuesday goal: get her the database.
+
+### Meeting schedule confirmed:
+Tuesday 2pm — 30 min check-in
+Friday 9am — longer delivery call
+Action: send calendar invites tonight
