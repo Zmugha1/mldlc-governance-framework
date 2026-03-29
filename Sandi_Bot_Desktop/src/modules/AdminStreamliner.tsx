@@ -21,7 +21,8 @@ import {
   BookOpen,
   Heart,
   Target,
-  FolderInput
+  FolderInput,
+  ListChecks,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,17 @@ import type { ActivityLog } from '@/types';
 import { cn } from '@/lib/utils';
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
+
+interface You2CompletenessAuditRow {
+  name: string;
+  inferred_stage: string | null;
+  outcome_bucket: string | null;
+  vision: string;
+  dangers: string;
+  opportunities: string;
+  strengths: string;
+  skills: string;
+}
 
 // Activity Type Config
 const activityConfig = {
@@ -164,6 +176,9 @@ export default function AdminStreamliner() {
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [validateReadyCount, setValidateReadyCount] = useState(0);
+  const [completenessAuditRows, setCompletenessAuditRows] = useState<You2CompletenessAuditRow[] | null>(null);
+  const [completenessAuditLoading, setCompletenessAuditLoading] = useState(false);
+  const [completenessAuditError, setCompletenessAuditError] = useState<string | null>(null);
 
   const fetchValidateReadyCount = async (): Promise<number> => {
     const rows = await dbSelect<{ c: number }>(
@@ -226,6 +241,47 @@ export default function AdminStreamliner() {
     await loadBackupData();
     setBackupMessage(result.success ? 'Backup created successfully.' : 'Backup failed.');
     setBackupRunning(false);
+  };
+
+  const handleRunCompletenessAudit = async () => {
+    setCompletenessAuditLoading(true);
+    setCompletenessAuditError(null);
+    try {
+      const rows = await dbSelect<You2CompletenessAuditRow>(
+        `SELECT
+          c.name,
+          c.inferred_stage,
+          c.outcome_bucket,
+          CASE WHEN y.one_year_vision IS NOT NULL
+            AND LENGTH(y.one_year_vision) > 20
+            THEN 'OK' ELSE 'MISSING' END as vision,
+          CASE WHEN y.dangers IS NOT NULL
+            AND LENGTH(y.dangers) > 5
+            THEN 'OK' ELSE 'MISSING' END as dangers,
+          CASE WHEN y.opportunities IS NOT NULL
+            AND LENGTH(y.opportunities) > 5
+            THEN 'OK' ELSE 'MISSING' END as opportunities,
+          CASE WHEN y.strengths IS NOT NULL
+            AND LENGTH(y.strengths) > 5
+            THEN 'OK' ELSE 'MISSING' END as strengths,
+          CASE WHEN y.skills IS NOT NULL
+            AND LENGTH(y.skills) > 5
+            THEN 'OK' ELSE 'MISSING' END as skills
+        FROM clients c
+        LEFT JOIN client_you2_profiles y
+          ON c.id = y.client_id
+        WHERE c.outcome_bucket != 'inactive'
+        ORDER BY c.outcome_bucket, c.name`,
+        []
+      );
+      setCompletenessAuditRows(rows);
+    } catch (err) {
+      console.error(err);
+      setCompletenessAuditError(String((err as Error)?.message ?? err ?? 'Audit failed'));
+      setCompletenessAuditRows(null);
+    } finally {
+      setCompletenessAuditLoading(false);
+    }
   };
 
   const handleBulkImport = async () => {
@@ -548,6 +604,72 @@ export default function AdminStreamliner() {
                 >
                   Re-Extract Fathom (9-Block)
                 </Button>
+              </div>
+              <div>
+                <Button
+                  variant="secondary"
+                  onClick={() => void handleRunCompletenessAudit()}
+                  disabled={completenessAuditLoading || importRunning}
+                >
+                  <ListChecks className="h-4 w-4 mr-2" />
+                  Run Completeness Audit
+                </Button>
+                {completenessAuditLoading && (
+                  <p className="text-sm text-slate-600 mt-2">Running audit…</p>
+                )}
+                {completenessAuditError && (
+                  <p className="text-sm text-red-600 mt-2">{completenessAuditError}</p>
+                )}
+                {completenessAuditRows !== null && !completenessAuditLoading && (
+                  <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full text-sm text-left">
+                      <thead>
+                        <tr className="border-b bg-slate-50">
+                          <th className="p-2 font-semibold text-slate-700">Name</th>
+                          <th className="p-2 font-semibold text-slate-700">Stage</th>
+                          <th className="p-2 font-semibold text-slate-700">Vision</th>
+                          <th className="p-2 font-semibold text-slate-700">Dangers</th>
+                          <th className="p-2 font-semibold text-slate-700">Opportunities</th>
+                          <th className="p-2 font-semibold text-slate-700">Strengths</th>
+                          <th className="p-2 font-semibold text-slate-700">Skills</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {completenessAuditRows.map((row, i) => (
+                          <tr key={`${row.name}-${i}`} className="border-b border-slate-100">
+                            <td className="p-2 text-slate-900">{row.name}</td>
+                            <td className="p-2 text-slate-700">{row.inferred_stage ?? '—'}</td>
+                            <td className="p-2">
+                              <span className={cn('font-medium', row.vision === 'OK' ? 'text-green-600' : 'text-red-600')}>
+                                {row.vision}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span className={cn('font-medium', row.dangers === 'OK' ? 'text-green-600' : 'text-red-600')}>
+                                {row.dangers}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span className={cn('font-medium', row.opportunities === 'OK' ? 'text-green-600' : 'text-red-600')}>
+                                {row.opportunities}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span className={cn('font-medium', row.strengths === 'OK' ? 'text-green-600' : 'text-red-600')}>
+                                {row.strengths}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span className={cn('font-medium', row.skills === 'OK' ? 'text-green-600' : 'text-red-600')}>
+                                {row.skills}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
               {reExtractRunning && (
                 <p className="text-sm text-slate-600">Extracting files...</p>
