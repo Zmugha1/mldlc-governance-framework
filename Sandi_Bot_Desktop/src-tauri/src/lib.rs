@@ -926,6 +926,24 @@ pub fn run() {
                     RENAME TO coaching_sessions;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 51,
+            description: "create_intervention_logs",
+            sql: "CREATE TABLE IF NOT EXISTS intervention_logs (
+                id TEXT PRIMARY KEY,
+                client_id TEXT NOT NULL,
+                signal_type TEXT NOT NULL,
+                signal_date TEXT NOT NULL,
+                response_type TEXT,
+                response_date TEXT,
+                response_notes TEXT,
+                outcome_checked_date TEXT,
+                outcome TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (client_id) REFERENCES clients(id)
+            )",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
