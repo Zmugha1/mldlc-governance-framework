@@ -1,3 +1,79 @@
+# COACH BOT SESSION MEMORY
+Last updated: March 27 2026
+Version: v0.1.0 delivered
+Next target: v0.2.0 Friday next week
+
+## CURRENT BUILD STATUS
+Phase 4: COMPLETE
+Phase 5: MOSTLY COMPLETE
+  Built: CLEAR, 9-block Fathom, DISC tips,
+  pink flags, gone quiet badge
+  Remaining: 5B emotional detection,
+  5E coaching plan tab
+Phase 6-15: Not started
+
+## NEXT BUILD SEQUENCE
+See docs/INTERVENTION_INTELLIGENCE.md
+Full sequence 0-10, 40 builds, one file each
+
+## STZ GAP STATUS
+S1 VALIDATE/GATHER: RESOLVED
+S6 Pink Flags: RESOLVED
+S7 DISC phrases: PARTIAL — collect April 3
+S8 CLEAR benchmark: PARTIAL — confirm April 3
+S9 Vision Statement: NOT STARTED — Phase 7A
+S10 In-call usage: NOT CONFIRMED — ask April 3
+Overall STZ coverage: 62%
+
+## MIGRATIONS COMPLETE
+1-50: NEVER EDIT
+51: intervention_logs — NOT YET BUILT
+52: user_feedback — NOT YET BUILT
+53: clients table additions — NOT YET BUILT
+Next migration after 53: 54+
+
+## BINARY FILES — NEVER DELETE
+src-tauri/pdfium.dll — force committed
+src-tauri/icons/icon.ico — force committed
+src-tauri/icons/icon.png — force committed
+
+## CI/CD
+Every git push sandi dev triggers
+automatic Windows + Mac build.
+Check github.com/Zmugha1/Sandi_Bot_Desktop
+Actions tab for build status.
+Secret required: GH_PAT in repo settings.
+
+## R&D COHORT PRICING
+$1,000 per coach build fee
+$0 retainer months 1-6
+$100/month thereafter
+4 coaches = $4,000 R&D revenue
+
+## SANDI BUSINESS PLAN
+Target: $300,000 gross placement revenue
+Placements needed: 11 at $28K average
+North star: C3 presentations per week
+Biggest gaps:
+  C1 Session Held: 58% → 75%
+  C4 Session Held: 56% → 80%
+
+## MEETING SCHEDULE
+Tuesday 2pm — 30 min check-in
+Friday 9am — full delivery call
+
+## PROMPT DISCIPLINE — NEVER VIOLATE
+One fix per prompt
+One file per prompt
+Maximum 3 changes per prompt
+Always list files Cursor must NOT touch
+Never touch src-tauri/capabilities/default.json
+Never touch any Rust files in agent prompts
+Always end with npx tsc --noEmit
+Always git add specific file only
+
+---
+
 # Coach Bot — Claude Session Memory
 ## Dr. Data Decision Intelligence LLC
 ## Last updated: March 24 2026
