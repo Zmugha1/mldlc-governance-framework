@@ -25,6 +25,7 @@ import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import FeedbackButton from '../components/FeedbackButton';
 
 interface SectionProps {
   title: string;
@@ -130,6 +131,7 @@ export default function HowToUse() {
 
   return (
     <div className="space-y-6">
+      <FeedbackButton pageName="How to Use" />
       <div className="rounded-xl bg-gradient-to-r from-[#C4B7D9] to-[#D4C7E9] p-6 text-white">
         <div className="mb-3 flex items-center gap-3">
           <BookOpen className="h-8 w-8" />

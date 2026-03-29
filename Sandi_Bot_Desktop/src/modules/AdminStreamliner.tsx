@@ -45,6 +45,7 @@ import { createBackup, getLastBackup } from '@/services/backupService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import type { ActivityLog } from '@/types';
 import { cn } from '@/lib/utils';
+import FeedbackButton from '../components/FeedbackButton';
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
 
@@ -655,6 +656,7 @@ ${workingText}`;
 
   return (
     <div className="space-y-6">
+      <FeedbackButton pageName="Admin Streamliner" />
       <Tabs defaultValue="activity">
         <TabsList className="mb-4">
           <TabsTrigger value="activity">

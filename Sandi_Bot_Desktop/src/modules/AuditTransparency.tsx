@@ -22,6 +22,7 @@ import { SkeletonCard } from '@/components/SkeletonCard';
 import { getAuditLog } from '@/services/auditService';
 import type { AuditEntry } from '@/types';
 import { cn } from '@/lib/utils';
+import FeedbackButton from '../components/FeedbackButton';
 
 // Audit entry card for DB audit_log
 function AuditEntryCard({
@@ -333,6 +334,7 @@ export default function AuditTransparency() {
   
   return (
     <div className="space-y-6">
+      <FeedbackButton pageName="Audit and Transparency" />
       <Tabs defaultValue="logs">
         <TabsList className="mb-4">
           <TabsTrigger value="logs">

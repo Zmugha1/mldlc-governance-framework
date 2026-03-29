@@ -32,6 +32,7 @@ import {
   Radar
 } from 'recharts';
 import { SkeletonCard } from '@/components/SkeletonCard';
+import FeedbackButton from '../components/FeedbackButton';
 import { knowledgeGraph } from '@/data/sampleClients';
 import {
   getScoreColor,
@@ -455,6 +456,7 @@ export default function PostCallAnalysis() {
 
   return (
     <div className="space-y-6">
+      <FeedbackButton pageName="Post-Call Analysis" />
       <Tabs defaultValue="new">
         <TabsList className="mb-4">
           <TabsTrigger value="new">

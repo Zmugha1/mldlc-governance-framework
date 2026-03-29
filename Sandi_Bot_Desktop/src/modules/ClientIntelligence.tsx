@@ -30,6 +30,7 @@ import { FileUploadZone, type UploadedFile } from '@/components/FileUploadZone';
 import { LocalFileWatcher } from '@/components/LocalFileWatcher';
 import { parseDocument, generateClientFromDocuments } from '@/utils/documentParser';
 import { SkeletonCard } from '@/components/SkeletonCard';
+import FeedbackButton from '../components/FeedbackButton';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
 import { getAllClients, createClient, inactivateClient } from '@/services/clientService';
@@ -4083,6 +4084,7 @@ export default function ClientIntelligence() {
 
   return (
     <div className="space-y-6">
+      <FeedbackButton pageName="Client Intelligence" />
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'clients' | 'review')}>
         <TabsList className="mb-4">
           <TabsTrigger value="clients">Clients</TabsTrigger>

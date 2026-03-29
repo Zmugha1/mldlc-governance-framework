@@ -30,6 +30,7 @@ import { dbSelect } from '@/services/db';
 import { logEntry } from '@/services/auditService';
 import { getDiscCoachingTips, getHomeworkByStage, getPinkFlagsByStage } from '@/services/coachingService';
 import { cn } from '@/lib/utils';
+import FeedbackButton from '../components/FeedbackButton';
 
 type ActiveClient = {
   id: string;
@@ -744,6 +745,7 @@ export default function LiveCoachingAssistant() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-y-6 lg:gap-x-0 h-[calc(100vh-200px)]">
+      <FeedbackButton pageName="Live Coaching Assistant" />
       {/* Left Panel - Client Selection */}
       <div
         className="lg:col-span-1 space-y-4 overflow-auto lg:pr-6 lg:[border-right:1px_solid_var(--color-border-tertiary)]"

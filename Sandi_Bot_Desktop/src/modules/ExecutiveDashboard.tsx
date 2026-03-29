@@ -41,6 +41,7 @@ import {
   Line
 } from 'recharts';
 import { SkeletonCard } from '@/components/SkeletonCard';
+import FeedbackButton from '../components/FeedbackButton';
 import { stageConfig } from '@/data/sampleClients';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
 import { getDiscStyleBreakdown, getDashboardKPIs } from '@/services/dashboardService';
@@ -776,6 +777,7 @@ export default function ExecutiveDashboard() {
 
   return (
     <div className="space-y-6">
+      <FeedbackButton pageName="Executive Dashboard" />
       <div className="space-y-1">
         <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
           {greetingSalutation}

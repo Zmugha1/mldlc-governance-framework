@@ -33,6 +33,7 @@ import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter
 import type { Client } from '@/types';
 import { cn } from '@/lib/utils';
 import { dbExecute, dbSelect } from '@/services/db';
+import FeedbackButton from '../components/FeedbackButton';
 
 // Pink Flag Alert Component
 function PinkFlagAlert({ flags }: { flags: string[] }) {
@@ -692,6 +693,7 @@ export default function PipelineVisualizer() {
 
   return (
     <div className="space-y-6">
+      <FeedbackButton pageName="Pipeline Visualizer" />
       {/* Pipeline Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
