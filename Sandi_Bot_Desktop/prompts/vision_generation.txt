@@ -1,0 +1,124 @@
+You are generating a franchise coaching vision
+statement for a client of franchise coach
+Sandi Stahl.
+
+The vision statement must:
+- Be written in flowing prose — no bullet points
+- Be 3 to 4 paragraphs
+- Cover three themes in order:
+  1. Professional: career direction, business
+     ownership goals, income targets, timeline
+  2. Personal: family, relationships, lifestyle,
+     community, what energizes them
+  3. Desires: financial goals, legacy, freedom,
+     what they are ultimately building toward
+- Sound personal and specific to this client
+- Reflect entrepreneurial business ownership
+  mindset — not just employment goals
+- Be written in third person:
+  "[Name] is..." or "[Name] will..."
+- If too long, the final version should be
+  reducible by 20% without losing meaning
+
+Return ONLY the vision statement paragraphs.
+No labels. No headers. No markdown.
+No explanation. Just the paragraphs.
+
+Client profile:
+Name: {client_name}
+DISC Style: {disc_style}
+Dominant trait: {disc_dominant_trait}
+
+You 2.0 Vision: {one_year_vision}
+Dangers to overcome: {dangers}
+Opportunities to pursue: {opportunities}
+Strengths to leverage: {strengths}
+Skills: {skills}
+Launch timeline: {launch_timeline}
+Financial goal: {financial_net_worth_range}
+Spouse/partner: {spouse_name}
+Spouse on calls: {spouse_on_calls}
+Industries of interest: {areas_of_interest}
+
+Recent coaching notes: {recent_fathom_notes}
+
+Territory check results: {territory_check_notes}
+
+---
+
+FEW-SHOT EXAMPLES:
+
+Example 1 — High I profile (Vito Sciscioli):
+"In the coming years, Vito will be doing what
+he loves most — helping people thrive both
+professionally and personally. He will use his
+passion for engaging with others to mentor,
+train, and develop individuals into confident,
+successful professionals. Whether owning a
+thriving business or working with a top-tier
+organization, he will use his experience and
+the art of needs-based solutions to guide
+others to their next level of achievement.
+
+His success will not only be measured by
+professional accomplishments, but also by
+the financial freedom to fully support his
+family — covering monthly expenses, saving
+for retirement, and paying off mortgages.
+This freedom will also allow him to be
+present for his family and travel to warm,
+exotic destinations twice a year.
+
+Living in alignment with these goals will
+allow Vito to lead a fulfilling, impactful
+life — grounded in purpose, balance, and joy."
+
+Example 2 — High S profile (Andrew Tait):
+"Within one year, Andrew is working on
+something meaningful and impactful in real
+estate development or another venture that
+creates tangible community value. He is no
+longer feeling stale or fatigued but instead
+energized by projects that allow him to grow
+in place. He is leveraging his strong
+transferable skills in strategic thinking,
+project management, and sound decision-making.
+
+Andrew feels significantly less financial
+stress and more confident in his long-term
+trajectory. He is actively building wealth
+and equity rather than relying solely on
+short-lived job cycles. He is re-energized
+and passionate about his work, investing in
+his own growth.
+
+Andrew's career supports rather than competes
+with his family life. He is present on
+weekends, spending intentional quality time
+with his wife and child. One year from now,
+Andrew feels balanced, purposeful, financially
+steady, and fully present for the people who
+matter most."
+
+Example 3 — High D profile (financial focus):
+"One year from now, Jeff is engaged in a
+values-driven venture that energizes him and
+aligns with his integrity. He has moved away
+from quota-driven pressure into a collaborative
+business where ethics, knowledge, and service
+matter more than short-term gains.
+
+Jeff is leveraging his strengths — relationship
+building, thoughtful decision-making, and
+steady leadership — to help others achieve
+meaningful results. His work allows him to
+contribute in a supportive yet influential role
+built on trust and long-term relationships.
+
+Financially, Jeff has created a sustainable
+income within the first year through a model
+that protects retirement assets and avoids
+unreasonable debt. He feels re-energized,
+confident, and proud — building something
+valuable he can grow over the next decade
+and eventually pass along as a lasting legacy."
