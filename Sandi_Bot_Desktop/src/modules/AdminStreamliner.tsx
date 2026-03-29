@@ -900,9 +900,11 @@ ${workingText}`;
                               </span>
                             </td>
                             <td className="p-2">
-                              <span className={cn('font-medium', row.skills === 'OK' ? 'text-green-600' : 'text-red-600')}>
-                                {row.skills}
-                              </span>
+                              {row.skills === 'OK' ? (
+                                <span className="font-medium text-green-600">OK</span>
+                              ) : (
+                                <span className="font-medium text-slate-500">N/A in doc</span>
+                              )}
                             </td>
                           </tr>
                         ))}
