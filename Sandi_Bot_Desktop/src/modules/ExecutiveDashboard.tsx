@@ -168,6 +168,21 @@ function isStaleFathomSessionDate(iso: string | null | undefined): boolean {
   return t < STALE_SESSION_INSTANT;
 }
 
+function salutationForLocalHour(hour: number): string {
+  if (hour < 12) return 'Good morning, Sandi';
+  if (hour <= 17) return 'Good afternoon, Sandi';
+  return 'Good evening, Sandi';
+}
+
+function formatExecutiveDashboardDate(d: Date): string {
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 interface KPICardProps {
   title: string;
   value: string | number;
@@ -268,6 +283,22 @@ export default function ExecutiveDashboard() {
   const [discLetterByProfileClientId, setDiscLetterByProfileClientId] = useState<
     Map<string, 'D' | 'I' | 'S' | 'C'>
   >(() => new Map());
+  const [greetingNow, setGreetingNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setGreetingNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const greetingSalutation = useMemo(() => {
+    const d = new Date(greetingNow);
+    return salutationForLocalHour(d.getHours());
+  }, [greetingNow]);
+
+  const greetingDateLine = useMemo(
+    () => formatExecutiveDashboardDate(new Date(greetingNow)),
+    [greetingNow]
+  );
 
   const loadDashboardData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -563,6 +594,12 @@ export default function ExecutiveDashboard() {
 
   return (
     <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
+          {greetingSalutation}
+        </h1>
+        <p className="text-sm text-slate-500">{greetingDateLine}</p>
+      </div>
       <div className="flex items-center justify-end">
         <button
           type="button"
