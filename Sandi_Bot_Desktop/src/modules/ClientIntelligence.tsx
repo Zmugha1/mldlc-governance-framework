@@ -234,6 +234,21 @@ type DisplayClient = ReturnType<typeof clientToDisplay> & {
   vision_approved_date?: string | null;
 };
 
+type AhaMomentType =
+  | 'client_specific'
+  | 'pattern'
+  | 'disc_insight'
+  | 'stage_insight'
+  | 'general';
+
+const AHA_MOMENT_TYPE_OPTIONS: { value: AhaMomentType; label: string }[] = [
+  { value: 'client_specific', label: 'About this client specifically' },
+  { value: 'pattern', label: "A pattern I'm seeing across clients" },
+  { value: 'disc_insight', label: 'Something about this DISC style' },
+  { value: 'stage_insight', label: 'Something about this stage' },
+  { value: 'general', label: 'General coaching insight' },
+];
+
 function shouldShowGoneQuietBadge(client: {
   gone_quiet?: boolean | null;
   outcome_bucket?: string | null;
@@ -637,6 +652,12 @@ function ClientDetailModal({
   const [goldenRulesHasPersisted, setGoldenRulesHasPersisted] = useState(false);
   const [goldenRulesSaving, setGoldenRulesSaving] = useState(false);
   const [goldenRulesSavedConfirm, setGoldenRulesSavedConfirm] = useState(false);
+  const [ahaModalOpen, setAhaModalOpen] = useState(false);
+  const [ahaText, setAhaText] = useState('');
+  const [ahaType, setAhaType] = useState<AhaMomentType>('client_specific');
+  const [ahaTextError, setAhaTextError] = useState(false);
+  const [ahaSaving, setAhaSaving] = useState(false);
+  const [ahaToast, setAhaToast] = useState<string | null>(null);
   const [manualSessionDate, setManualSessionDate] = useState(() =>
     localCalendarDateYyyyMmDd()
   );
@@ -687,6 +708,20 @@ function ClientDetailModal({
     setVisionApproveMsg(null);
     setVisionDraftMode(false);
     setVisionEditText((client.visionStatement.paragraph ?? '').trim());
+  }, [client?.id]);
+
+  useEffect(() => {
+    if (!ahaToast) return;
+    const t = window.setTimeout(() => setAhaToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [ahaToast]);
+
+  useEffect(() => {
+    setAhaModalOpen(false);
+    setAhaText('');
+    setAhaType('client_specific');
+    setAhaTextError(false);
+    setAhaSaving(false);
   }, [client?.id]);
 
   useEffect(() => {
@@ -1080,6 +1115,48 @@ function ClientDetailModal({
     if (!onInactivate) return;
     onInactivate(client.id);
     setShowInactivateConfirm(false);
+  };
+
+  function resetAhaForm() {
+    setAhaText('');
+    setAhaType('client_specific');
+    setAhaTextError(false);
+  }
+
+  const handleSaveAhaMoment = async () => {
+    const trimmed = ahaText.trim();
+    if (!trimmed) {
+      setAhaTextError(true);
+      return;
+    }
+    setAhaTextError(false);
+    setAhaSaving(true);
+    try {
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const discStyle = client.disc.style;
+      const stage = (client.inferred_stage ?? '').trim() || null;
+      await dbExecute(
+        `INSERT INTO aha_moments (id, client_id, moment_text, moment_type, disc_style, stage, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [id, client.id, trimmed, ahaType, discStyle, stage, now]
+      );
+      await logEntry(
+        'aha_moment_captured',
+        client.id,
+        null,
+        trimmed.slice(0, 80),
+        null,
+        'deterministic'
+      );
+      setAhaModalOpen(false);
+      resetAhaForm();
+      setAhaToast('Aha moment saved 💡');
+    } catch (e) {
+      console.error('aha moment save failed:', e);
+    } finally {
+      setAhaSaving(false);
+    }
   };
 
   const loadFathomSessions = async () => {
@@ -1775,16 +1852,33 @@ function ClientDetailModal({
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          {onInactivate ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-[#2D4459] hover:bg-[#C8E8E5]/30"
-              onClick={() => setShowInactivateConfirm(true)}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setAhaModalOpen(true)}
+              className="text-xs font-bold transition-opacity hover:opacity-90"
+              style={{
+                background: '#FAEEDA',
+                color: '#C8613F',
+                border: '1px solid #C8613F',
+                borderRadius: 8,
+                padding: '6px 12px',
+                fontSize: 12,
+              }}
             >
-              Inactivate
-            </Button>
-          ) : null}
+              💡 Aha Moment
+            </button>
+            {onInactivate ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-[#2D4459] hover:bg-[#C8E8E5]/30"
+                onClick={() => setShowInactivateConfirm(true)}
+              >
+                Inactivate
+              </Button>
+            ) : null}
+          </div>
           {isEditingLastContact ? (
             <div className="flex flex-col items-end gap-2">
               <Input
@@ -3466,6 +3560,106 @@ function ClientDetailModal({
           </TabsContent>
         </div>
         </Tabs>
+
+      <Dialog
+        open={ahaModalOpen}
+        onOpenChange={(open) => {
+          setAhaModalOpen(open);
+          if (!open) resetAhaForm();
+        }}
+      >
+        <DialogContent
+          className="max-w-[440px] gap-0 border-0 p-0 shadow-xl"
+          style={{
+            borderRadius: 12,
+            padding: '24px 28px',
+            background: 'white',
+          }}
+        >
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle style={{ color: '#2D4459', fontSize: 16, fontWeight: 700 }}>
+              Capture Aha Moment
+            </DialogTitle>
+            <p className="text-[12px] leading-snug" style={{ color: '#7A8F95' }}>
+              What did you just realize about this client or your coaching?
+            </p>
+          </DialogHeader>
+
+          <div className="mt-5 space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="aha-moment-text" className="text-sm text-[#2D4459]">
+                What did you realize?
+              </Label>
+              <Textarea
+                id="aha-moment-text"
+                rows={3}
+                value={ahaText}
+                onChange={(e) => {
+                  setAhaText(e.target.value);
+                  setAhaTextError(false);
+                }}
+                placeholder={
+                  'e.g. Alex is not afraid of the investment — he is afraid of disappointing his father.'
+                }
+                className="w-full resize-none"
+              />
+              {ahaTextError ? (
+                <p className="text-sm text-red-600">This field is required.</p>
+              ) : null}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="aha-moment-type" className="text-sm text-[#2D4459]">
+                What kind of insight is this?
+              </Label>
+              <select
+                id="aha-moment-type"
+                value={ahaType}
+                onChange={(e) => setAhaType(e.target.value as AhaMomentType)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {AHA_MOMENT_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              className="text-sm font-medium text-[#7A8F95] underline-offset-2 hover:underline"
+              onClick={() => {
+                setAhaModalOpen(false);
+                resetAhaForm();
+              }}
+            >
+              Cancel
+            </button>
+            <Button
+              type="button"
+              disabled={ahaSaving}
+              className="w-full border-0 text-white hover:opacity-90 sm:w-auto"
+              style={{ background: '#3BBFBF' }}
+              onClick={() => void handleSaveAhaMoment()}
+            >
+              {ahaSaving ? 'Saving…' : 'Save Aha Moment'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {ahaToast ? (
+        <div
+          role="status"
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[300] max-w-[90vw] -translate-x-1/2 rounded-lg px-4 py-3 text-center text-sm font-semibold text-white shadow-lg"
+          style={{ backgroundColor: '#C8613F' }}
+        >
+          {ahaToast}
+        </div>
+      ) : null}
     </div>
   );
 }
