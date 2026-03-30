@@ -1,13 +1,11 @@
 import { useState, useMemo, useEffect, useRef, type ChangeEvent } from 'react';
 import {
-  Search,
   Briefcase,
   Mail,
   Phone,
   TrendingUp,
   AlertCircle,
   AlertTriangle,
-  Plus,
   Check,
   ClipboardList,
   Clock,
@@ -27,7 +25,7 @@ import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
-import { getAllClients, createClient, inactivateClient } from '@/services/clientService';
+import { getAllClients, getClient, inactivateClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { dbExecute, dbSelect } from '@/services/db';
 import { logEntry } from '@/services/auditService';
@@ -66,6 +64,19 @@ const CI_DISC_STYLE: Record<'D' | 'I' | 'S' | 'C', { solid: string; muted: strin
 };
 
 type SidebarRecFilter = 'all' | 'VALIDATE' | 'GATHER' | 'PAUSE' | 'gone_quiet';
+
+type NewClientStageCode = 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
+
+type NewClientOutcomeBucket = 'active' | 'paused' | 'converted';
+
+const ADD_CLIENT_STAGE_OPTIONS: { code: NewClientStageCode; label: string }[] = [
+  { code: 'IC', label: 'Initial Contact (IC)' },
+  { code: 'C1', label: 'Seeker Connection (C1)' },
+  { code: 'C2', label: 'Seeker Clarification (C2)' },
+  { code: 'C3', label: 'Possibilities (C3)' },
+  { code: 'C4', label: 'Client Career 2.0 (C4)' },
+  { code: 'C5', label: 'Business Purchase (C5)' },
+];
 
 const STAGE_DISPLAY_NAMES: Record<string, string> = {
   IC: 'Initial Contact',
@@ -4123,9 +4134,19 @@ export default function ClientIntelligence() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [createName, setCreateName] = useState('');
   const [sidebarRecFilter, setSidebarRecFilter] = useState<SidebarRecFilter>('all');
-  const [showSidebarCreate, setShowSidebarCreate] = useState(false);
+  const [addClientModalOpen, setAddClientModalOpen] = useState(false);
+  const [addClientSaving, setAddClientSaving] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientNameError, setNewClientNameError] = useState(false);
+  const [newClientEmail, setNewClientEmail] = useState('');
+  const [newClientPhone, setNewClientPhone] = useState('');
+  const [newClientCompany, setNewClientCompany] = useState('');
+  const [newClientStage, setNewClientStage] = useState<NewClientStageCode>('IC');
+  const [newClientStatus, setNewClientStatus] =
+    useState<NewClientOutcomeBucket>('active');
+  const [newClientNotes, setNewClientNotes] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [reviewClients, setReviewClients] = useState<
     Array<{
       id: string;
@@ -4229,15 +4250,80 @@ export default function ClientIntelligence() {
     if (mainTab === 'review') loadReviewClients();
   }, [mainTab]);
 
-  const handleCreateClient = async () => {
-    if (!createName.trim()) return;
+  useEffect(() => {
+    if (!toastMessage) return;
+    const t = window.setTimeout(() => setToastMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [toastMessage]);
+
+  function resetAddClientForm() {
+    setNewClientName('');
+    setNewClientNameError(false);
+    setNewClientEmail('');
+    setNewClientPhone('');
+    setNewClientCompany('');
+    setNewClientStage('IC');
+    setNewClientStatus('active');
+    setNewClientNotes('');
+  }
+
+  const handleAddClientSubmit = async () => {
+    const name = newClientName.trim();
+    if (!name) {
+      setNewClientNameError(true);
+      return;
+    }
+    setNewClientNameError(false);
+    setAddClientSaving(true);
     try {
-      await createClient({ name: createName.trim(), stage: 'Initial Contact' });
-      setCreateName('');
-      setShowSidebarCreate(false);
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const stageCode = newClientStage;
+      const displayStage = STAGE_DISPLAY_NAMES[stageCode] ?? 'Initial Contact';
+      const email = newClientEmail.trim() || null;
+      const phone = newClientPhone.trim() || null;
+      const company = newClientCompany.trim() || null;
+      const notes = newClientNotes.trim() || null;
+      const bucket = newClientStatus;
+
+      await dbExecute(
+        `INSERT INTO clients (
+          id, name, email, phone, company, stage,
+          inferred_stage, outcome_bucket,
+          readiness_score, pink_flags, notes,
+          created_at, updated_at,
+          readiness_identity, readiness_commitment, readiness_financial, readiness_execution,
+          confidence, recommendation, stage_confirmed
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8,
+          0, '[]', $9,
+          $10, $10,
+          3, 3, 3, 3,
+          50, 'NURTURE', 0
+        )`,
+        [id, name, email, phone, company, displayStage, stageCode, bucket, notes, now]
+      );
+
+      await logEntry(
+        'client_created_manual',
+        id,
+        null,
+        `${name} | ${stageCode}`,
+        null,
+        'deterministic'
+      );
+
+      setAddClientModalOpen(false);
+      resetAddClientForm();
       loadClients();
+      const created = await getClient(id);
+      setSelectedClient(created);
+      setToastMessage(`${name} added to your pipeline.`);
     } catch (err) {
       console.error(err);
+    } finally {
+      setAddClientSaving(false);
     }
   };
 
@@ -4368,6 +4454,20 @@ export default function ClientIntelligence() {
               style={{ maxHeight: 'calc(100dvh - 200px)' }}
             >
               <div className="shrink-0 space-y-3 p-3">
+                <button
+                  type="button"
+                  onClick={() => setAddClientModalOpen(true)}
+                  className="w-full border-0 font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-[#3BBFBF]/50"
+                  style={{
+                    background: '#3BBFBF',
+                    borderRadius: 8,
+                    padding: 10,
+                    fontSize: 13,
+                    marginBottom: 12,
+                  }}
+                >
+                  + Add New Client
+                </button>
                 <input
                   type="search"
                   placeholder="Search clients..."
@@ -4435,35 +4535,6 @@ export default function ClientIntelligence() {
                     </option>
                   ))}
                 </select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-[#C8E8E5] text-[#2D4459]"
-                  onClick={() => setShowSidebarCreate((v) => !v)}
-                >
-                  <Plus className="mr-1 h-4 w-4" />
-                  {showSidebarCreate ? 'Cancel' : 'New client'}
-                </Button>
-                {showSidebarCreate ? (
-                  <div className="space-y-2 rounded-lg border border-[#C8E8E5] bg-[#F4F7F8] p-2">
-                    <Input
-                      value={createName}
-                      onChange={(e) => setCreateName(e.target.value)}
-                      placeholder="Client name"
-                      className="bg-white text-sm"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="w-full bg-[#3BBFBF] text-white hover:bg-[#3BBFBF]/90"
-                      onClick={() => void handleCreateClient()}
-                      disabled={!createName.trim()}
-                    >
-                      Create
-                    </Button>
-                  </div>
-                ) : null}
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {displayClients.length === 0 ? (
@@ -4637,6 +4708,176 @@ export default function ClientIntelligence() {
         }}
         onSaved={loadReviewClients}
       />
+
+      <Dialog
+        open={addClientModalOpen}
+        onOpenChange={(open) => {
+          setAddClientModalOpen(open);
+          if (!open) resetAddClientForm();
+        }}
+      >
+        <DialogContent
+          className="max-w-[480px] gap-0 border-0 p-0 shadow-xl"
+          style={{
+            borderRadius: 12,
+            padding: '28px 32px',
+            background: 'white',
+          }}
+        >
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle style={{ color: '#2D4459', fontSize: 18, fontWeight: 700 }}>
+              Add New Client
+            </DialogTitle>
+            <p className="text-[12px] leading-snug" style={{ color: '#7A8F95' }}>
+              Create a new client record. Upload files later from Admin Streamliner.
+            </p>
+          </DialogHeader>
+
+          <div className="mt-6 space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="add-client-name" className="text-sm text-[#2D4459]">
+                Full Name <span className="text-red-600">*</span>
+              </Label>
+              <Input
+                id="add-client-name"
+                value={newClientName}
+                onChange={(e) => {
+                  setNewClientName(e.target.value);
+                  setNewClientNameError(false);
+                }}
+                placeholder="First Last"
+                className="w-full"
+              />
+              {newClientNameError ? (
+                <p className="text-sm text-red-600">Name is required</p>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="add-client-email" className="text-sm text-[#2D4459]">
+                  Email
+                </Label>
+                <Input
+                  id="add-client-email"
+                  type="email"
+                  value={newClientEmail}
+                  onChange={(e) => setNewClientEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="add-client-phone" className="text-sm text-[#2D4459]">
+                  Phone
+                </Label>
+                <Input
+                  id="add-client-phone"
+                  value={newClientPhone}
+                  onChange={(e) => setNewClientPhone(e.target.value)}
+                  placeholder="(555) 555-5555"
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="add-client-company" className="text-sm text-[#2D4459]">
+                Company
+              </Label>
+              <Input
+                id="add-client-company"
+                value={newClientCompany}
+                onChange={(e) => setNewClientCompany(e.target.value)}
+                placeholder="Company name (optional)"
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="add-client-stage" className="text-sm text-[#2D4459]">
+                Starting Stage
+              </Label>
+              <select
+                id="add-client-stage"
+                value={newClientStage}
+                onChange={(e) => setNewClientStage(e.target.value as NewClientStageCode)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {ADD_CLIENT_STAGE_OPTIONS.map((o) => (
+                  <option key={o.code} value={o.code}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="add-client-status" className="text-sm text-[#2D4459]">
+                Status
+              </Label>
+              <select
+                id="add-client-status"
+                value={newClientStatus}
+                onChange={(e) =>
+                  setNewClientStatus(e.target.value as NewClientOutcomeBucket)
+                }
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="converted">Converted</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="add-client-notes" className="text-sm text-[#2D4459]">
+                Notes (optional)
+              </Label>
+              <Textarea
+                id="add-client-notes"
+                rows={2}
+                value={newClientNotes}
+                onChange={(e) => setNewClientNotes(e.target.value)}
+                placeholder="Any initial notes about this client..."
+                className="w-full resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              className="text-sm font-medium text-[#7A8F95] underline-offset-2 hover:underline"
+              onClick={() => {
+                setAddClientModalOpen(false);
+                resetAddClientForm();
+              }}
+            >
+              Cancel
+            </button>
+            <Button
+              type="button"
+              disabled={addClientSaving}
+              className="w-full border-0 text-white hover:opacity-90 sm:w-auto"
+              style={{ background: '#3BBFBF' }}
+              onClick={() => void handleAddClientSubmit()}
+            >
+              {addClientSaving ? 'Creating…' : 'Create Client'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {toastMessage ? (
+        <div
+          role="status"
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[300] max-w-[90vw] -translate-x-1/2 rounded-lg px-4 py-3 text-center text-sm font-medium text-white shadow-lg"
+          style={{ backgroundColor: '#22c55e' }}
+        >
+          {toastMessage}
+        </div>
+      ) : null}
     </div>
   );
 }
