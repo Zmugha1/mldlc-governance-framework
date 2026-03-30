@@ -277,6 +277,93 @@ function navigateToCoachingActions(): void {
   }
 }
 
+const NEED_ATTENTION_GONE_QUIET_DAYS: Record<
+  'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5',
+  number
+> = {
+  IC: 14,
+  C1: 21,
+  C2: 14,
+  C3: 14,
+  C4: 60,
+  C5: 60,
+};
+
+type NeedAttentionKind = 'at_risk' | 'pink_flag' | 'gone_quiet';
+
+type NeedAttentionEntry = {
+  clientId: string;
+  name: string;
+  kind: NeedAttentionKind;
+  stageCode: string;
+  reasonLine: string;
+  discLetter: 'D' | 'I' | 'S' | 'C' | null;
+};
+
+function clientLastContactDate(cl: Client): string | null {
+  const raw = (cl as Client & { last_contact_date?: string | null }).last_contact_date;
+  if (raw == null || String(raw).trim() === '') return null;
+  return String(raw).trim();
+}
+
+function stagePipelineCodeForAttention(cl: Client): keyof typeof NEED_ATTENTION_GONE_QUIET_DAYS {
+  const raw = (cl.inferred_stage ?? '').trim().toUpperCase();
+  if (
+    raw === 'IC' ||
+    raw === 'C1' ||
+    raw === 'C2' ||
+    raw === 'C3' ||
+    raw === 'C4' ||
+    raw === 'C5'
+  ) {
+    return raw;
+  }
+  const d = normalizeDisplayStage(cl.inferred_stage ?? cl.stage);
+  const map: Record<string, keyof typeof NEED_ATTENTION_GONE_QUIET_DAYS> = {
+    'Initial Contact': 'IC',
+    'Seeker Connection': 'C1',
+    'Seeker Clarification': 'C2',
+    Possibilities: 'C3',
+    'Coach Client Collaboration': 'C3',
+    'Client Career 2.0': 'C4',
+    'Business Purchase': 'C5',
+  };
+  return map[d] ?? 'IC';
+}
+
+function needAttentionBorderColor(kind: NeedAttentionKind): string {
+  if (kind === 'at_risk') return '#2D4459';
+  if (kind === 'pink_flag') return '#F05F57';
+  return '#C8613F';
+}
+
+function needAttentionSignalLabel(kind: NeedAttentionKind): string {
+  if (kind === 'at_risk') return 'At Risk';
+  if (kind === 'pink_flag') return 'Pink Flag';
+  return 'Gone Quiet';
+}
+
+/** Switch to Client Intelligence and stash name for auto-select (read in Client Intelligence). */
+function navigateToClientIntelligence(clientName: string): void {
+  try {
+    localStorage.setItem('selected_client_name', clientName);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(
+    new CustomEvent('coachbot:navigate-module', {
+      bubbles: true,
+      detail: { module: 'clients' as const },
+    })
+  );
+  const rail = document.querySelector('.fixed.inset-y-0.left-0');
+  const nav = rail?.querySelector('nav .space-y-1');
+  const btns = nav?.querySelectorAll(':scope > button');
+  if (btns && btns.length >= 3) {
+    (btns[2] as HTMLButtonElement).click();
+  }
+}
+
 /** Monday 00:00 local calendar date (week starts Monday). */
 function startOfWeekMondayLocal(ref: Date): Date {
   const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
@@ -801,6 +888,85 @@ export default function ExecutiveDashboard() {
     });
   }, [clientsAtAGlanceRows, glanceRecFilter, glanceStageFilter]);
 
+  /** Matches At Risk / Gone Quiet / Pink Flags queries on active clients (priority: at risk → pink → gone quiet). */
+  const needsAttentionOrdered = useMemo((): NeedAttentionEntry[] => {
+    const isActive = (cl: Client) => (cl.outcome_bucket ?? '').toLowerCase() === 'active';
+
+    const atRisk: NeedAttentionEntry[] = [];
+    const pinks: NeedAttentionEntry[] = [];
+    const goneQ: NeedAttentionEntry[] = [];
+
+    for (const cl of clients) {
+      if (!isActive(cl)) continue;
+      const inf = (cl.inferred_stage ?? '').trim().toUpperCase();
+      const lc = clientLastContactDate(cl);
+      const days = lc ? daysSinceCalendarLocal(lc) : null;
+      if ((inf === 'C3' || inf === 'C4') && lc && days !== null && days > 14) {
+        atRisk.push({
+          clientId: cl.id,
+          name: cl.name,
+          kind: 'at_risk',
+          stageCode: inf,
+          reasonLine: `No session in ${days} days — C3/C4 needs attention`,
+          discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(cl.id)),
+        });
+      }
+    }
+
+    for (const cl of clients) {
+      if (!isActive(cl)) continue;
+      const pf = cl.pink_flags;
+      if (pf == null || String(pf).trim() === '' || String(pf).trim() === '[]') continue;
+      const n = activePinkFlagCount(pinkFlagsFromClientJson(pf));
+      if (n === 0) continue;
+      pinks.push({
+        clientId: cl.id,
+        name: cl.name,
+        kind: 'pink_flag',
+        stageCode: stagePipelineCodeForAttention(cl),
+        reasonLine: `${n} active pink flags`,
+        discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(cl.id)),
+      });
+    }
+
+    for (const cl of clients) {
+      if (!isActive(cl)) continue;
+      const lc = clientLastContactDate(cl);
+      if (!lc) continue;
+      const days = daysSinceCalendarLocal(lc);
+      if (days === null) continue;
+      const code = stagePipelineCodeForAttention(cl);
+      const th = NEED_ATTENTION_GONE_QUIET_DAYS[code];
+      if (days <= th) continue;
+      goneQ.push({
+        clientId: cl.id,
+        name: cl.name,
+        kind: 'gone_quiet',
+        stageCode: code,
+        reasonLine: `No contact in ${days} days`,
+        discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(cl.id)),
+      });
+    }
+
+    const byName = (a: NeedAttentionEntry, b: NeedAttentionEntry) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    atRisk.sort(byName);
+    pinks.sort(byName);
+    goneQ.sort(byName);
+
+    const used = new Set<string>();
+    const ordered: NeedAttentionEntry[] = [];
+    const push = (e: NeedAttentionEntry) => {
+      if (used.has(e.clientId)) return;
+      used.add(e.clientId);
+      ordered.push(e);
+    };
+    for (const e of atRisk) push(e);
+    for (const e of pinks) push(e);
+    for (const e of goneQ) push(e);
+    return ordered;
+  }, [clients, discLetterByProfileClientId]);
+
   const seekerWeekKey = useMemo(
     () => isoWeekStringLocal(new Date(greetingNow)),
     [greetingNow]
@@ -1063,6 +1229,100 @@ export default function ExecutiveDashboard() {
           </div>
         )}
       </section>
+
+      {needsAttentionOrdered.length > 0 ? (
+        <section className="w-full">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="font-bold" style={{ fontSize: 14, color: '#2D4459' }}>
+              Needs Attention
+            </h2>
+            <span
+              className="rounded-full px-2.5 py-0.5 text-xs font-bold text-white"
+              style={{ background: '#F05F57' }}
+            >
+              {needsAttentionOrdered.length}
+            </span>
+          </div>
+          <div>
+            {needsAttentionOrdered.slice(0, 3).map((entry) => {
+              const border = needAttentionBorderColor(entry.kind);
+              const letter = entry.discLetter;
+              const discFill = letter
+                ? `color-mix(in srgb, ${DISC_LETTER_COLORS[letter]} 20%, transparent)`
+                : 'rgba(122, 143, 149, 0.2)';
+              const discInk = letter ? DISC_LETTER_COLORS[letter] : '#2D4459';
+              return (
+                <div
+                  key={`${entry.kind}:${entry.clientId}`}
+                  className="flex flex-row items-center bg-white"
+                  style={{
+                    border: '1px solid #C8E8E5',
+                    borderRadius: 12,
+                    borderLeft: `4px solid ${border}`,
+                    padding: '14px 18px',
+                    marginBottom: 8,
+                    gap: 14,
+                  }}
+                >
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                    style={{ background: discFill, color: discInk }}
+                  >
+                    {letter ?? '—'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-bold" style={{ fontSize: 14, color: '#2D4459' }}>
+                        {entry.name}
+                      </span>
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                        style={{ background: border }}
+                      >
+                        {needAttentionSignalLabel(entry.kind)}
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <span
+                        className="inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                        style={{ background: '#F4F7F8', color: '#2D4459' }}
+                      >
+                        {entry.stageCode}
+                      </span>
+                    </div>
+                    <p className="mt-1" style={{ fontSize: 12, color: '#7A8F95' }}>
+                      {entry.reasonLine}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 font-bold text-white transition-opacity hover:opacity-90"
+                    style={{
+                      background: '#3BBFBF',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      padding: '6px 14px',
+                    }}
+                    onClick={() => navigateToClientIntelligence(entry.name)}
+                  >
+                    Open Client
+                  </button>
+                </div>
+              );
+            })}
+            {needsAttentionOrdered.length > 3 ? (
+              <button
+                type="button"
+                className="mt-1 text-left text-sm font-semibold underline-offset-2 hover:underline"
+                style={{ color: '#3BBFBF' }}
+                onClick={navigateToCoachingActions}
+              >
+                + {needsAttentionOrdered.length - 3} more in Coaching Actions →
+              </button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       <section
         className="w-full bg-white"
