@@ -17,6 +17,7 @@ import {
   ClipboardList,
   Clock,
   Calendar,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -54,6 +55,11 @@ import {
   type Recommendation,
   type StageReadiness,
 } from '@/services/stageReadinessService';
+import {
+  generateVisionStatement,
+  saveVisionStatement,
+  approveVisionStatement,
+} from '../services/visionGenerationService';
 import { getDiscProfilesMap } from '@/services/dashboardService';
 import { cn } from '@/lib/utils';
 
@@ -205,6 +211,8 @@ type DisplayClient = ReturnType<typeof clientToDisplay> & {
   gone_quiet_days?: number;
   /** From getAllStageReadiness — overrides legacy client.recommendation (PUSH/NURTURE) for badges */
   recommendationFromReadiness?: Recommendation;
+  vision_approved?: number | null;
+  vision_approved_date?: string | null;
 };
 
 function shouldShowGoneQuietBadge(client: {
@@ -278,6 +286,18 @@ function territoryCheckStorageKey(clientId: string): string {
 
 const TERRITORY_CHECK_TEXTAREA_PLACEHOLDER =
   'Paste your territory check results here. This information will be included when generating the vision statement PowerPoint.';
+
+function formatVisionApprovedDateLabel(raw: string | null | undefined): string {
+  const t = (raw ?? '').trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return t;
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
 
 function formatLastContactDisplay(raw: string): string {
   const d = new Date(raw);
@@ -493,11 +513,13 @@ function ClientDetailModal({
   isOpen,
   onClose,
   onInactivate,
+  onVisionUpdated,
 }: {
   client: DisplayClient | null;
   isOpen: boolean;
   onClose: () => void;
   onInactivate?: (id: string) => void;
+  onVisionUpdated?: () => void;
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null);
   const [you2Vision, setYou2Vision] = useState('No statement yet');
@@ -633,6 +655,20 @@ function ClientDetailModal({
   >(null);
   const [territoryCheckDraft, setTerritoryCheckDraft] = useState('');
   const [territoryCheckSavedMsg, setTerritoryCheckSavedMsg] = useState(false);
+  const [visionGenerating, setVisionGenerating] = useState(false);
+  const [visionGenError, setVisionGenError] = useState<string | null>(null);
+  const [visionDraftMode, setVisionDraftMode] = useState(false);
+  const [visionEditText, setVisionEditText] = useState('');
+  const [visionApproveMsg, setVisionApproveMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!client?.id || !isOpen) return;
+    setVisionGenerating(false);
+    setVisionGenError(null);
+    setVisionApproveMsg(null);
+    setVisionDraftMode(false);
+    setVisionEditText((client.visionStatement.paragraph ?? '').trim());
+  }, [client?.id, isOpen]);
 
   useEffect(() => {
     if (isOpen && client?.id) {
@@ -988,6 +1024,9 @@ function ClientDetailModal({
       : getStageDisplayName(client.inferred_stage?.trim() ?? '');
   const stageCompartmentSubtitle =
     stageCardCompartmentSubtitle(resolvedPipelineCode);
+
+  const persistedVisionText = (client.visionStatement.paragraph ?? '').trim();
+  const visionIsApproved = client.vision_approved === 1;
 
   const allPinkParsed = parseClientPinkFlagsJson(localPinkFlagsJson);
   const { activeFlags: activePinkFlags, resolvedFlags: resolvedPinkFlags } =
@@ -1513,6 +1552,55 @@ function ClientDetailModal({
       setTerritoryCheckSavedMsg(true);
     } catch (e) {
       console.error('territory check localStorage save failed:', e);
+    }
+  };
+
+  const handleGenerateVision = async () => {
+    if (!client?.id) return;
+    setVisionGenError(null);
+    setVisionApproveMsg(null);
+    setVisionGenerating(true);
+    try {
+      const result = await generateVisionStatement(client.id);
+      await saveVisionStatement(client.id, result);
+      setVisionEditText(result.trim());
+      setVisionDraftMode(true);
+      onVisionUpdated?.();
+    } catch {
+      setVisionGenError('Generation failed. Is Ollama running?');
+    } finally {
+      setVisionGenerating(false);
+    }
+  };
+
+  const handleRegenerateVision = async () => {
+    if (!client?.id) return;
+    setVisionGenError(null);
+    setVisionApproveMsg(null);
+    setVisionGenerating(true);
+    try {
+      const result = await generateVisionStatement(client.id);
+      setVisionEditText(result.trim());
+      await saveVisionStatement(client.id, result.trim());
+      onVisionUpdated?.();
+    } catch {
+      setVisionGenError('Generation failed. Is Ollama running?');
+    } finally {
+      setVisionGenerating(false);
+    }
+  };
+
+  const handleApproveVision = async () => {
+    if (!client?.id) return;
+    setVisionGenError(null);
+    try {
+      await approveVisionStatement(client.id, visionEditText.trim());
+      setVisionDraftMode(false);
+      setVisionApproveMsg('Vision statement approved and saved');
+      onVisionUpdated?.();
+    } catch (e) {
+      console.error(e);
+      setVisionGenError('Could not approve vision. Try again.');
     }
   };
 
@@ -2692,16 +2780,93 @@ function ClientDetailModal({
 
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
             <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Vision Statement</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600">
-                  {client.visionStatement.paragraph || 'No vision yet.'}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-semibold text-slate-900">
+                  Current Vision Statement
+                </h3>
+                {visionIsApproved ? (
+                  <Badge className="border-green-200 bg-green-100 text-green-800 hover:bg-green-100">
+                    Approved
+                  </Badge>
+                ) : null}
+              </div>
+              {visionIsApproved &&
+              formatVisionApprovedDateLabel(client.vision_approved_date) ? (
+                <p className="text-xs text-slate-500">
+                  {formatVisionApprovedDateLabel(client.vision_approved_date)}
                 </p>
-              </CardContent>
-            </Card>
+              ) : null}
+              {!persistedVisionText ? (
+                <p className="text-sm text-slate-500">
+                  No vision statement yet.
+                  <br />
+                  Click Generate to create one from this client&apos;s DISC, You 2.0, and
+                  Fathom data.
+                </p>
+              ) : (
+                <div
+                  className="rounded-lg border border-[#e2e8f0] text-[14px] leading-[1.7] text-slate-800 whitespace-pre-wrap"
+                  style={{ background: '#f8fafc', padding: '16px 20px', borderRadius: 8 }}
+                >
+                  {persistedVisionText}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold text-slate-900">
+                Generate / Edit
+              </h3>
+              <Button
+                type="button"
+                onClick={() => void handleGenerateVision()}
+                disabled={visionGenerating || !client.id}
+              >
+                {visionGenerating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  'Generate Vision Statement'
+                )}
+              </Button>
+              {visionGenError ? (
+                <p className="text-sm text-red-600">{visionGenError}</p>
+              ) : null}
+              {visionApproveMsg ? (
+                <p className="text-sm font-medium text-green-600">{visionApproveMsg}</p>
+              ) : null}
+              {visionDraftMode ? (
+                <div className="space-y-3">
+                  <Textarea
+                    rows={12}
+                    className="w-full min-h-0 resize-y font-sans text-sm leading-relaxed"
+                    value={visionEditText}
+                    onChange={(e) => setVisionEditText(e.target.value)}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      className="bg-green-600 text-white hover:bg-green-700"
+                      onClick={() => void handleApproveVision()}
+                      disabled={visionGenerating}
+                    >
+                      Approve Vision
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void handleRegenerateVision()}
+                      disabled={visionGenerating}
+                    >
+                      Regenerate
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
 
             <Card>
               <CardHeader>
@@ -4025,6 +4190,10 @@ export default function ClientIntelligence() {
     () =>
       filteredClients.map((client) => {
         const gq = goneQuietById.get(client.id);
+        const rawVision = client as Client & {
+          vision_approved?: number | null;
+          vision_approved_date?: string | null;
+        };
         return {
           ...clientToDisplay(client, {
             disc: discDerivedMap.get(client.id) ?? discProfiles.get(client.id),
@@ -4033,6 +4202,8 @@ export default function ClientIntelligence() {
           gone_quiet: gq?.gone_quiet,
           gone_quiet_days: gq?.gone_quiet_days,
           recommendationFromReadiness: recommendationById.get(client.id),
+          vision_approved: rawVision.vision_approved ?? null,
+          vision_approved_date: rawVision.vision_approved_date ?? null,
         } satisfies DisplayClient;
       }),
     [
@@ -4047,6 +4218,10 @@ export default function ClientIntelligence() {
   const selectedDisplay: DisplayClient | null = selectedClient
     ? (() => {
         const gq = goneQuietById.get(selectedClient.id);
+        const rawVision = selectedClient as Client & {
+          vision_approved?: number | null;
+          vision_approved_date?: string | null;
+        };
         return {
           ...clientToDisplay(selectedClient, {
             disc:
@@ -4057,6 +4232,8 @@ export default function ClientIntelligence() {
           gone_quiet: gq?.gone_quiet,
           gone_quiet_days: gq?.gone_quiet_days,
           recommendationFromReadiness: recommendationById.get(selectedClient.id),
+          vision_approved: rawVision.vision_approved ?? null,
+          vision_approved_date: rawVision.vision_approved_date ?? null,
         };
       })()
     : null;
@@ -4296,6 +4473,7 @@ export default function ClientIntelligence() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onInactivate={handleInactivateClient}
+        onVisionUpdated={loadClients}
       />
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
