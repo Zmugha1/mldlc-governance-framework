@@ -47,8 +47,35 @@ const DISC_LETTER_COLORS: Record<'D' | 'I' | 'S' | 'C', string> = {
   C: '#3B82F6',
 };
 
-/** Last session before this is shown with stale warning (uploaded Fathom dates). */
-const STALE_SESSION_INSTANT = Date.UTC(2024, 0, 1);
+/** Last contact must be after this date (ISO day) to display; older/null → muted placeholders. */
+const GLANCE_LAST_CONTACT_MIN_DAY = '2024-01-01';
+
+/** Gone-quiet thresholds by compartment display label (matches CoachingActions). */
+const GLANCE_GONE_QUIET_DAYS_BY_COMPARTMENT: Record<string, number> = {
+  'Initial Contact': 14,
+  'Seeker Connection': 21,
+  'Seeker Clarification': 14,
+  Possibilities: 14,
+  'Coach Client Collaboration': 14,
+  'Client Career 2.0': 60,
+  'Business Purchase': 60,
+};
+
+function goneQuietThresholdDaysForCompartment(compartment: string): number {
+  return GLANCE_GONE_QUIET_DAYS_BY_COMPARTMENT[compartment] ?? 14;
+}
+
+function isValidGlanceLastContact(raw: string | null | undefined): boolean {
+  if (raw == null || String(raw).trim() === '') return false;
+  const day = String(raw).trim().slice(0, 10);
+  return day > GLANCE_LAST_CONTACT_MIN_DAY;
+}
+
+function clientLastContactDateField(cl: Client): string | null {
+  const raw = (cl as Client & { last_contact_date?: string | null }).last_contact_date;
+  if (raw == null || String(raw).trim() === '') return null;
+  return String(raw).trim();
+}
 
 const GLANCE_REC_FILTERS = [
   'all',
@@ -136,13 +163,6 @@ function formatSessionDate(iso: string | null | undefined): string {
     month: 'short',
     day: 'numeric',
   });
-}
-
-function isStaleFathomSessionDate(iso: string | null | undefined): boolean {
-  if (iso == null || String(iso).trim() === '') return false;
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return false;
-  return t < STALE_SESSION_INSTANT;
 }
 
 function salutationForLocalHour(hour: number): string {
@@ -828,7 +848,7 @@ export default function ExecutiveDashboard() {
       recommendation: 'VALIDATE' | 'GATHER' | 'PAUSE';
       discLetter: 'D' | 'I' | 'S' | 'C' | null;
       sessionCount: number;
-      lastSessionDate: string | null;
+      lastContactDate: string | null;
       pinkCount: number;
       goneQuiet: boolean;
     };
@@ -842,7 +862,7 @@ export default function ExecutiveDashboard() {
       if (rec !== 'VALIDATE' && rec !== 'GATHER' && rec !== 'PAUSE') continue;
       const sess = sessionStatsByClient.get(r.client_id);
       const sessionCount = sess?.count ?? 0;
-      const lastSessionDate = sess?.lastDate ?? null;
+      const lastContactDate = clientLastContactDateField(cl);
       list.push({
         id: r.client_id,
         name: r.client_name,
@@ -851,7 +871,7 @@ export default function ExecutiveDashboard() {
         recommendation: rec,
         discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(r.client_id)),
         sessionCount,
-        lastSessionDate,
+        lastContactDate,
         pinkCount: activePinkFlagCount(pinkFlagsFromClientJson(cl.pink_flags)),
         goneQuiet: Boolean(r.gone_quiet),
       });
@@ -1642,20 +1662,6 @@ per week puts you on track for 11 placements.`}
               </select>
             </label>
           </div>
-          <p
-            className="text-xs rounded-md px-3 py-2 mt-2"
-            style={{
-              color: '#2D4459',
-              background: '#F4F7F8',
-              border: '1px solid #C8E8E5',
-            }}
-          >
-            <span className="inline-flex items-center gap-1">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              Last Contact dates are based on uploaded Fathom sessions. Upload new call transcripts to
-              keep dates current.
-            </span>
-          </p>
         </CardHeader>
         <CardContent className="w-full max-w-none space-y-0">
           <div className={cn('w-full max-w-none', tableShellClass)}>
@@ -1685,10 +1691,18 @@ per week puts you on track for 11 placements.`}
               <TableBody>
                 {filteredGlanceRows.map((row) => {
                   const recStyle = recommendationStyleMap[row.recommendation];
-                  const stale =
-                    row.sessionCount > 0 &&
-                    row.lastSessionDate != null &&
-                    isStaleFathomSessionDate(row.lastSessionDate);
+                  const lcEmpty =
+                    row.lastContactDate == null || String(row.lastContactDate).trim() === '';
+                  const showNoSessionsYet = row.sessionCount === 0 && lcEmpty;
+                  const showValidDate = isValidGlanceLastContact(row.lastContactDate);
+                  const daysSinceLc = showValidDate
+                    ? daysSinceCalendarLocal(row.lastContactDate)
+                    : null;
+                  const gqThreshold = goneQuietThresholdDaysForCompartment(row.compartment);
+                  const showGoneQuietDot =
+                    showValidDate &&
+                    daysSinceLc !== null &&
+                    daysSinceLc > gqThreshold;
                   return (
                     <TableRow key={row.id} className={tableBodyRowClass}>
                       <TableCell
@@ -1755,38 +1769,35 @@ per week puts you on track for 11 placements.`}
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        {row.sessionCount === 0 ? (
+                        {showNoSessionsYet ? (
                           <span className="text-sm" style={{ color: '#7A8F95' }}>
                             No sessions yet
                           </span>
-                        ) : row.lastSessionDate ? (
-                          <span className="inline-flex flex-wrap items-center gap-1">
-                            <span
-                              className={cn(stale && 'font-medium')}
-                              style={stale ? { color: '#2D4459' } : { color: '#2D4459' }}
-                            >
-                              {formatSessionDate(row.lastSessionDate)}
+                        ) : showValidDate ? (
+                          showGoneQuietDot ? (
+                            <UiTooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex cursor-default items-center gap-1.5 text-sm">
+                                  <span className="text-sm leading-none" style={{ color: '#F59E0B' }}>
+                                    ●
+                                  </span>
+                                  <span style={{ color: '#2D4459' }}>
+                                    {formatSessionDate(row.lastContactDate)}
+                                  </span>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-xs text-xs">
+                                Gone quiet — {daysSinceLc} days since last contact
+                              </TooltipContent>
+                            </UiTooltip>
+                          ) : (
+                            <span className="text-sm" style={{ color: '#2D4459' }}>
+                              {formatSessionDate(row.lastContactDate)}
                             </span>
-                            {stale ? (
-                              <UiTooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="inline-flex rounded p-0.5 hover:bg-[#F4F7F8]"
-                                    aria-label="Last contact may be outdated"
-                                  >
-                                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-xs text-xs">
-                                  May not reflect most recent call. Upload latest Fathom to update.
-                                </TooltipContent>
-                              </UiTooltip>
-                            ) : null}
-                          </span>
+                          )
                         ) : (
                           <span className="text-sm" style={{ color: '#7A8F95' }}>
-                            —
+                            Not yet contacted
                           </span>
                         )}
                       </TableCell>
