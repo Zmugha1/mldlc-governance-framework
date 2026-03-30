@@ -22,7 +22,7 @@ import { getAllStageReadiness } from '@/services/stageReadinessService';
 import type { Client, DashboardStats } from '@/types';
 import { normalizeDisplayStage } from '@/services/clientAdapter';
 import { deriveDominantStyle } from '@/config/discCoachingTips';
-import { dbSelect } from '@/services/db';
+import { dbSelect, dbExecute } from '@/services/db';
 import { cn } from '@/lib/utils';
 
 const recommendationStyleMap: Record<
@@ -189,6 +189,67 @@ function formatLocalYyyyMmDd(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** ISO week label e.g. 2026-W13 (local calendar). */
+function isoWeekStringLocal(d: Date): string {
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
+  const dayNr = (target.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+  }
+  const week = 1 + Math.round((firstThursday - target.valueOf()) / 604800000);
+  const y = target.getFullYear();
+  return `${y}-W${pad2(week)}`;
+}
+
+type WeeklySeekerEntry = {
+  week: string;
+  contacted?: number;
+  responded?: number;
+  /** Legacy / field-1 shape from spec */
+  count?: number;
+};
+
+function parseWeeklySeekerContactsJson(raw: string | null | undefined): WeeklySeekerEntry[] {
+  try {
+    if (raw == null || String(raw).trim() === '') return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x) => x && typeof x === 'object') as WeeklySeekerEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function entryContacted(e: WeeklySeekerEntry | undefined): number | undefined {
+  if (!e) return undefined;
+  if (typeof e.contacted === 'number' && !Number.isNaN(e.contacted)) return e.contacted;
+  if (typeof e.count === 'number' && !Number.isNaN(e.count)) return e.count;
+  return undefined;
+}
+
+function entryResponded(e: WeeklySeekerEntry | undefined): number | undefined {
+  if (!e || typeof e.responded !== 'number' || Number.isNaN(e.responded)) return undefined;
+  return e.responded;
+}
+
+function upsertWeeklySeekerEntry(
+  arr: WeeklySeekerEntry[],
+  week: string,
+  patch: Partial<Pick<WeeklySeekerEntry, 'contacted' | 'responded' | 'count'>>
+): WeeklySeekerEntry[] {
+  const next = arr.map((e) => ({ ...e }));
+  const i = next.findIndex((e) => e.week === week);
+  if (i === -1) {
+    next.push({ week, ...patch });
+    return next;
+  }
+  next[i] = { ...next[i], ...patch };
+  return next;
+}
+
 /** Monday 00:00 local calendar date (week starts Monday). */
 function startOfWeekMondayLocal(ref: Date): Date {
   const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
@@ -282,11 +343,27 @@ export default function ExecutiveDashboard() {
   const [c3WeekCount, setC3WeekCount] = useState(0);
   const [glanceRecFilter, setGlanceRecFilter] = useState<GlanceRecFilter>('all');
   const [glanceStageFilter, setGlanceStageFilter] = useState<GlanceStageFilter>('all');
+  const [anchorSeekerLogClientId, setAnchorSeekerLogClientId] = useState<string | null>(null);
+  const [weeklySeekerEntries, setWeeklySeekerEntries] = useState<WeeklySeekerEntry[]>([]);
+  const [seekerWeeklyEditMode, setSeekerWeeklyEditMode] = useState(true);
+  const [seekerContactedInput, setSeekerContactedInput] = useState('');
+  const [seekerRespondedInput, setSeekerRespondedInput] = useState('');
+  const [seekerLogOkContacted, setSeekerLogOkContacted] = useState(false);
+  const [seekerLogOkResponded, setSeekerLogOkResponded] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setGreetingNow(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!seekerLogOkContacted && !seekerLogOkResponded) return;
+    const t = window.setTimeout(() => {
+      setSeekerLogOkContacted(false);
+      setSeekerLogOkResponded(false);
+    }, 3000);
+    return () => window.clearTimeout(t);
+  }, [seekerLogOkContacted, seekerLogOkResponded]);
 
   const greetingSalutation = useMemo(() => {
     const d = new Date(greetingNow);
@@ -311,7 +388,7 @@ export default function ExecutiveDashboard() {
       const weekStartStr = formatLocalYyyyMmDd(weekStartLocal);
       const todayStr = formatLocalYyyyMmDd(now);
 
-      const [s, c, readiness, sessionRows, discProfileRows, placementRows, c3WeekRows] =
+      const [s, c, readiness, sessionRows, discProfileRows, placementRows, c3WeekRows, anchorSeekerRows] =
         await Promise.all([
           getDashboardStats(),
           getAllClients(),
@@ -356,6 +433,10 @@ export default function ExecutiveDashboard() {
                AND date(session_date) <= date($2)`,
             [weekStartStr, todayStr]
           ),
+          dbSelect<{ id: string; weekly_seeker_contacts: string | null }>(
+            `SELECT id, weekly_seeker_contacts FROM clients ORDER BY datetime(created_at) ASC LIMIT 1`,
+            []
+          ),
         ]);
       setStats(s);
       setClients(c);
@@ -381,6 +462,28 @@ export default function ExecutiveDashboard() {
       setDiscLetterByProfileClientId(discFromProfiles);
       setPlacementTrackerCount(Number(placementRows[0]?.count ?? 0));
       setC3WeekCount(Number(c3WeekRows[0]?.count ?? 0));
+
+      const anchorRow = anchorSeekerRows[0];
+      if (anchorRow) {
+        setAnchorSeekerLogClientId(anchorRow.id);
+        const parsed = parseWeeklySeekerContactsJson(anchorRow.weekly_seeker_contacts);
+        setWeeklySeekerEntries(parsed);
+        const wk = isoWeekStringLocal(new Date());
+        const cur = parsed.find((e) => e.week === wk);
+        const contactedN = entryContacted(cur);
+        const respondedN = entryResponded(cur);
+        setSeekerContactedInput(contactedN !== undefined ? String(contactedN) : '');
+        setSeekerRespondedInput(respondedN !== undefined ? String(respondedN) : '');
+        const weekComplete =
+          contactedN !== undefined && respondedN !== undefined;
+        setSeekerWeeklyEditMode(!weekComplete);
+      } else {
+        setAnchorSeekerLogClientId(null);
+        setWeeklySeekerEntries([]);
+        setSeekerContactedInput('');
+        setSeekerRespondedInput('');
+        setSeekerWeeklyEditMode(true);
+      }
 
       setLastUpdated(new Date());
     } catch (err) {
@@ -530,6 +633,85 @@ export default function ExecutiveDashboard() {
     });
   }, [clientsAtAGlanceRows, glanceRecFilter, glanceStageFilter]);
 
+  const seekerWeekKey = useMemo(
+    () => isoWeekStringLocal(new Date(greetingNow)),
+    [greetingNow]
+  );
+
+  const currentSeekerWeekEntry = useMemo(
+    () => weeklySeekerEntries.find((e) => e.week === seekerWeekKey),
+    [weeklySeekerEntries, seekerWeekKey]
+  );
+
+  const contactedLogged = entryContacted(currentSeekerWeekEntry);
+  const respondedLogged = entryResponded(currentSeekerWeekEntry);
+  const seekerWeekLoggedComplete =
+    contactedLogged !== undefined && respondedLogged !== undefined;
+
+  const draftContactedNum = Math.max(0, Math.floor(Number(seekerContactedInput) || 0));
+  const draftRespondedNum = Math.max(0, Math.floor(Number(seekerRespondedInput) || 0));
+  const engagementPreviewPct =
+    draftContactedNum > 0
+      ? Math.round((draftRespondedNum / draftContactedNum) * 1000) / 10
+      : null;
+
+  const persistedEngagementPct =
+    contactedLogged != null &&
+    contactedLogged > 0 &&
+    respondedLogged !== undefined
+      ? Math.round((respondedLogged / contactedLogged) * 1000) / 10
+      : null;
+
+  const persistWeeklySeekerEntries = useCallback(async (next: WeeklySeekerEntry[]) => {
+    if (!anchorSeekerLogClientId) return;
+    const json = JSON.stringify(next);
+    const now = new Date().toISOString();
+    await dbExecute(
+      `UPDATE clients SET weekly_seeker_contacts = $1, updated_at = $2 WHERE id = $3`,
+      [json, now, anchorSeekerLogClientId]
+    );
+    setWeeklySeekerEntries(next);
+  }, [anchorSeekerLogClientId]);
+
+  const handleLogSeekerContacted = useCallback(async () => {
+    if (!anchorSeekerLogClientId) return;
+    const n = Math.max(0, Math.floor(Number(seekerContactedInput) || 0));
+    const week = isoWeekStringLocal(new Date());
+    const next = upsertWeeklySeekerEntry(weeklySeekerEntries, week, {
+      count: n,
+      contacted: n,
+    });
+    await persistWeeklySeekerEntries(next);
+    setSeekerLogOkContacted(true);
+    const merged = next.find((e) => e.week === week);
+    if (entryContacted(merged) !== undefined && entryResponded(merged) !== undefined) {
+      setSeekerWeeklyEditMode(false);
+    }
+  }, [
+    anchorSeekerLogClientId,
+    weeklySeekerEntries,
+    seekerContactedInput,
+    persistWeeklySeekerEntries,
+  ]);
+
+  const handleLogSeekerResponded = useCallback(async () => {
+    if (!anchorSeekerLogClientId) return;
+    const n = Math.max(0, Math.floor(Number(seekerRespondedInput) || 0));
+    const week = isoWeekStringLocal(new Date());
+    const next = upsertWeeklySeekerEntry(weeklySeekerEntries, week, { responded: n });
+    await persistWeeklySeekerEntries(next);
+    setSeekerLogOkResponded(true);
+    const merged = next.find((e) => e.week === week);
+    if (entryContacted(merged) !== undefined && entryResponded(merged) !== undefined) {
+      setSeekerWeeklyEditMode(false);
+    }
+  }, [
+    anchorSeekerLogClientId,
+    weeklySeekerEntries,
+    seekerRespondedInput,
+    persistWeeklySeekerEntries,
+  ]);
+
   const tableShellClass = 'overflow-x-auto rounded-lg border border-[#C8E8E5]';
   const tableHeaderRowClass = 'border-b border-[#C8E8E5] hover:bg-transparent';
   const tableHeadClass =
@@ -617,6 +799,144 @@ export default function ExecutiveDashboard() {
         <p className="mt-2" style={{ fontSize: 12, color: '#C8E8E5' }}>
           {greetingSummaryLine}
         </p>
+      </section>
+
+      <section
+        className="w-full bg-white"
+        style={{
+          border: '1px solid #C8E8E5',
+          borderLeft: '4px solid #C8613F',
+          borderRadius: 12,
+          padding: '16px 20px',
+          marginBottom: 20,
+        }}
+      >
+        <h2 className="font-bold" style={{ fontSize: 14, color: '#2D4459' }}>
+          {"This Week's Inputs"}
+        </h2>
+        <p className="mt-1 text-[12px] leading-snug" style={{ color: '#7A8F95' }}>
+          Coach Bot needs your input to calculate these KPIs accurately.
+        </p>
+
+        {!anchorSeekerLogClientId ? (
+          <p className="mt-3 text-sm" style={{ color: '#7A8F95' }}>
+            Add at least one client to your database to save weekly seeker logs.
+          </p>
+        ) : seekerWeekLoggedComplete && !seekerWeeklyEditMode ? (
+          <div className="mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm" style={{ color: '#2D4459' }}>
+            <span>
+              <span className="font-semibold" style={{ color: '#22c55e' }}>
+                Week logged ✓
+              </span>
+              {` — contacted ${contactedLogged}, responded ${respondedLogged}`}
+              {persistedEngagementPct !== null ? (
+                <>
+                  {' ('}
+                  <span
+                    className="font-semibold"
+                    style={{
+                      color: persistedEngagementPct >= 65 ? '#22c55e' : '#dc2626',
+                    }}
+                  >
+                    {persistedEngagementPct}% engagement
+                  </span>
+                  {')'}
+                </>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              className="text-sm font-medium text-[#3BBFBF] underline-offset-2 hover:underline"
+              onClick={() => setSeekerWeeklyEditMode(true)}
+            >
+              Edit
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="block text-sm font-bold" style={{ color: '#2D4459' }} htmlFor="seeker-contacted-week">
+                Seekers contacted this week
+              </label>
+              <input
+                id="seeker-contacted-week"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="0"
+                value={seekerContactedInput}
+                onChange={(e) => setSeekerContactedInput(e.target.value)}
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
+                style={{ borderColor: '#C8E8E5' }}
+              />
+              <p className="text-[12px]" style={{ color: '#7A8F95' }}>
+                target: 22 per week
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleLogSeekerContacted()}
+                  disabled={!anchorSeekerLogClientId}
+                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                  style={{ background: '#3BBFBF' }}
+                >
+                  Log
+                </button>
+                {seekerLogOkContacted ? (
+                  <span className="text-sm font-semibold" style={{ color: '#22c55e' }}>
+                    Logged ✓
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-bold" style={{ color: '#2D4459' }} htmlFor="seeker-responded-week">
+                Seekers who responded
+              </label>
+              <input
+                id="seeker-responded-week"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="0"
+                value={seekerRespondedInput}
+                onChange={(e) => setSeekerRespondedInput(e.target.value)}
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
+                style={{ borderColor: '#C8E8E5' }}
+              />
+              <p className="text-[12px]" style={{ color: '#7A8F95' }}>
+                target: 65% engagement rate
+              </p>
+              {engagementPreviewPct !== null ? (
+                <p
+                  className="text-sm font-semibold"
+                  style={{
+                    color: engagementPreviewPct >= 65 ? '#22c55e' : '#dc2626',
+                  }}
+                >
+                  This week: {engagementPreviewPct}% engagement
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleLogSeekerResponded()}
+                  disabled={!anchorSeekerLogClientId}
+                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                  style={{ background: '#3BBFBF' }}
+                >
+                  Log
+                </button>
+                {seekerLogOkResponded ? (
+                  <span className="text-sm font-semibold" style={{ color: '#22c55e' }}>
+                    Logged ✓
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
