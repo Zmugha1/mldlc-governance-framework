@@ -69,3 +69,26 @@ pub fn migration_56() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 57: `document_embeddings` for RAG (Sequence 12).
+///
+/// Application-level `chunk_type`: `disc` (DISC profile), `you2` (You 2.0), `tumay` (TUMAY),
+/// `fathom` (session notes), `vision` (vision statement), `aha` (aha moment).
+pub fn migration_57() -> Migration {
+    Migration {
+        version: 57,
+        description: "create_document_embeddings",
+        sql: "CREATE TABLE IF NOT EXISTS document_embeddings (
+                id TEXT PRIMARY KEY,
+                client_id TEXT NOT NULL,
+                chunk_text TEXT NOT NULL,
+                chunk_type TEXT NOT NULL,
+                embedding TEXT NOT NULL,
+                model_used TEXT DEFAULT 'nomic-embed-text',
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (client_id)
+                  REFERENCES clients(id)
+              );",
+        kind: MigrationKind::Up,
+    }
+}
