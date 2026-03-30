@@ -250,6 +250,33 @@ function upsertWeeklySeekerEntry(
   return next;
 }
 
+/** Whole calendar days since `isoOrDate` (local midnight), or null if missing/invalid. */
+function daysSinceCalendarLocal(isoOrDate: string | null | undefined): number | null {
+  if (isoOrDate == null || String(isoOrDate).trim() === '') return null;
+  const d = new Date(isoOrDate);
+  if (Number.isNaN(d.getTime())) return null;
+  const today = new Date();
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const t1 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.floor((t0.getTime() - t1.getTime()) / 86_400_000);
+}
+
+/** Switch to Coaching Actions (sidebar); also dispatches a custom event for future listeners. */
+function navigateToCoachingActions(): void {
+  window.dispatchEvent(
+    new CustomEvent('coachbot:navigate-module', {
+      bubbles: true,
+      detail: { module: 'coaching' as const },
+    })
+  );
+  const rail = document.querySelector('.fixed.inset-y-0.left-0');
+  const nav = rail?.querySelector('nav .space-y-1');
+  const btns = nav?.querySelectorAll(':scope > button');
+  if (btns && btns.length >= 4) {
+    (btns[3] as HTMLButtonElement).click();
+  }
+}
+
 /** Monday 00:00 local calendar date (week starts Monday). */
 function startOfWeekMondayLocal(ref: Date): Date {
   const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
@@ -435,6 +462,10 @@ export default function ExecutiveDashboard() {
   const [seekerRespondedInput, setSeekerRespondedInput] = useState('');
   const [seekerLogOkContacted, setSeekerLogOkContacted] = useState(false);
   const [seekerLogOkResponded, setSeekerLogOkResponded] = useState(false);
+  const [goneQuietAttentionCount, setGoneQuietAttentionCount] = useState(0);
+  const [pinkNeedResponseCount, setPinkNeedResponseCount] = useState(0);
+  const [highPriorityStaleCount, setHighPriorityStaleCount] = useState(0);
+  const [sessionsScheduledNullCount, setSessionsScheduledNullCount] = useState(0);
 
   useEffect(() => {
     const id = window.setInterval(() => setGreetingNow(Date.now()), 60_000);
@@ -490,6 +521,8 @@ export default function ExecutiveDashboard() {
         c3M,
         c3Q,
         c3Y,
+        pinkFlagWeekClients,
+        sessionsNullSchedRows,
         anchorSeekerRows,
       ] = await Promise.all([
         getDashboardStats(),
@@ -526,6 +559,21 @@ export default function ExecutiveDashboard() {
         dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [monthStartStr, todayStr]),
         dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [quarterStartStr, todayStr]),
         dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [yearStartStr, todayStr]),
+        dbSelect<{ client_id: string }>(
+          `SELECT DISTINCT client_id FROM intervention_logs
+           WHERE signal_type = 'pink_flag'
+             AND date(COALESCE(created_at, signal_date)) >= date($1)
+             AND date(COALESCE(created_at, signal_date)) <= date($2)`,
+          [weekStartStr, todayStr]
+        ),
+        dbSelect<{ count: number }>(
+          `SELECT COUNT(*) as count FROM coaching_sessions
+           WHERE session_date IS NOT NULL AND TRIM(session_date) != ''
+             AND date(session_date) >= date($1)
+             AND date(session_date) <= date($2)
+             AND session_scheduled IS NULL`,
+          [weekStartStr, todayStr]
+        ),
         dbSelect<{ id: string; weekly_seeker_contacts: string | null }>(
           `SELECT id, weekly_seeker_contacts FROM clients ORDER BY datetime(created_at) ASC LIMIT 1`,
           []
@@ -542,6 +590,41 @@ export default function ExecutiveDashboard() {
         });
       }
       setSessionStatsByClient(sessMap);
+
+      let goneQuietN = 0;
+      for (const r of readiness) {
+        if ((r.outcome_bucket ?? '').toLowerCase() !== 'active') continue;
+        if (r.gone_quiet) goneQuietN += 1;
+      }
+      setGoneQuietAttentionCount(goneQuietN);
+
+      const pinkWeekSet = new Set(
+        pinkFlagWeekClients.map((row) => row.client_id).filter(Boolean)
+      );
+      let pinkNeed = 0;
+      for (const cl of c) {
+        if ((cl.outcome_bucket ?? '').toLowerCase() !== 'active') continue;
+        const n = activePinkFlagCount(pinkFlagsFromClientJson(cl.pink_flags));
+        if (n === 0) continue;
+        if (pinkWeekSet.has(cl.id)) continue;
+        pinkNeed += n;
+      }
+      setPinkNeedResponseCount(pinkNeed);
+
+      let hpStale = 0;
+      for (const cl of c) {
+        if ((cl.outcome_bucket ?? '').toLowerCase() !== 'active') continue;
+        const code = (cl.inferred_stage ?? '').trim().toUpperCase();
+        if (code !== 'C3' && code !== 'C4') continue;
+        const lastSess = sessMap.get(cl.id)?.lastDate ?? null;
+        const trimmed = lastSess != null ? String(lastSess).trim() : '';
+        const days = daysSinceCalendarLocal(trimmed || null);
+        if (!trimmed || days === null || days > 14) hpStale += 1;
+      }
+      setHighPriorityStaleCount(hpStale);
+
+      setSessionsScheduledNullCount(Number(sessionsNullSchedRows[0]?.count ?? 0));
+
       const discFromProfiles = new Map<string, 'D' | 'I' | 'S' | 'C'>();
       for (const row of discProfileRows) {
         const d = Number(row.natural_d ?? 0);
@@ -601,24 +684,6 @@ export default function ExecutiveDashboard() {
   useEffect(() => {
     void loadDashboardData(true);
   }, [loadDashboardData]);
-
-  const clientsNeedingAttentionCount = useMemo(() => {
-    const byId = new Map(clients.map((cl) => [cl.id, cl]));
-    const ids = new Set<string>();
-    for (const r of readinessRows) {
-      if ((r.outcome_bucket ?? '').toLowerCase() !== 'active') continue;
-      const cl = byId.get(r.client_id);
-      if (!cl) continue;
-      const pink = activePinkFlagCount(pinkFlagsFromClientJson(cl.pink_flags)) > 0;
-      if (r.gone_quiet || pink) ids.add(r.client_id);
-    }
-    return ids.size;
-  }, [readinessRows, clients]);
-
-  const greetingSummaryLine =
-    clientsNeedingAttentionCount === 0
-      ? 'Your pipeline is in good shape today.'
-      : `You have ${clientsNeedingAttentionCount} clients needing attention today.`;
 
   const kpiFunnelCounts = useMemo(() => {
     let validate = 0;
@@ -750,6 +815,47 @@ export default function ExecutiveDashboard() {
   const respondedLogged = entryResponded(currentSeekerWeekEntry);
   const seekerWeekLoggedComplete =
     contactedLogged !== undefined && respondedLogged !== undefined;
+
+  const morningAttentionBulletStrings = useMemo(() => {
+    const lines: string[] = [];
+    if (anchorSeekerLogClientId && !seekerWeekLoggedComplete) {
+      lines.push('Weekly seeker contacts not logged yet');
+    }
+    if (goneQuietAttentionCount > 0) {
+      lines.push(
+        `${goneQuietAttentionCount} client${goneQuietAttentionCount === 1 ? '' : 's'} have gone quiet`
+      );
+    }
+    if (pinkNeedResponseCount > 0) {
+      lines.push(
+        pinkNeedResponseCount === 1
+          ? '1 pink flag needs a response'
+          : `${pinkNeedResponseCount} pink flags need a response`
+      );
+    }
+    if (highPriorityStaleCount > 0) {
+      lines.push(
+        highPriorityStaleCount === 1
+          ? '1 high-priority client needs a session scheduled'
+          : `${highPriorityStaleCount} high-priority clients need a session scheduled`
+      );
+    }
+    if (sessionsScheduledNullCount > 0) {
+      lines.push(
+        sessionsScheduledNullCount === 1
+          ? '1 recent session needs scheduled status confirmed'
+          : `${sessionsScheduledNullCount} recent sessions need scheduled status confirmed`
+      );
+    }
+    return lines;
+  }, [
+    anchorSeekerLogClientId,
+    seekerWeekLoggedComplete,
+    goneQuietAttentionCount,
+    pinkNeedResponseCount,
+    highPriorityStaleCount,
+    sessionsScheduledNullCount,
+  ]);
 
   const draftContactedNum = Math.max(0, Math.floor(Number(seekerContactedInput) || 0));
   const draftRespondedNum = Math.max(0, Math.floor(Number(seekerRespondedInput) || 0));
@@ -933,9 +1039,29 @@ export default function ExecutiveDashboard() {
         <p className="mt-1" style={{ fontSize: 14, color: '#C8E8E5' }}>
           {greetingDateLine}
         </p>
-        <p className="mt-2" style={{ fontSize: 12, color: '#C8E8E5' }}>
-          {greetingSummaryLine}
-        </p>
+        {morningAttentionBulletStrings.length === 0 ? (
+          <p className="mt-2 whitespace-pre-line" style={{ fontSize: 12, color: '#C8E8E5' }}>
+            Your pipeline is in good shape.{`\n`}Nothing urgent today.
+          </p>
+        ) : (
+          <div className="mt-2 space-y-1">
+            {morningAttentionBulletStrings.slice(0, 3).map((line, i) => (
+              <p key={i} style={{ fontSize: 12, color: '#C8E8E5' }}>
+                • {line}
+              </p>
+            ))}
+            {morningAttentionBulletStrings.length > 3 ? (
+              <button
+                type="button"
+                onClick={navigateToCoachingActions}
+                className="mt-1 block text-left text-[12px] font-medium underline-offset-2 hover:underline"
+                style={{ color: '#C8E8E5' }}
+              >
+                + {morningAttentionBulletStrings.length - 3} more in Coaching Actions
+              </button>
+            ) : null}
+          </div>
+        )}
       </section>
 
       <section
@@ -948,8 +1074,17 @@ export default function ExecutiveDashboard() {
           marginBottom: 20,
         }}
       >
-        <h2 className="font-bold" style={{ fontSize: 14, color: '#2D4459' }}>
-          {"This Week's Inputs"}
+        <h2 className="flex flex-wrap items-center gap-1.5 font-bold" style={{ fontSize: 14, color: '#2D4459' }}>
+          <span>{"This Week's Inputs"}</span>
+          {seekerWeekLoggedComplete ? (
+            <span style={{ color: '#22c55e' }} aria-hidden>
+              ✓
+            </span>
+          ) : (
+            <span style={{ color: '#F59E0B' }} aria-hidden>
+              ●
+            </span>
+          )}
         </h2>
         <p className="mt-1 text-[12px] leading-snug" style={{ color: '#7A8F95' }}>
           Coach Bot needs your input to calculate these KPIs accurately.
