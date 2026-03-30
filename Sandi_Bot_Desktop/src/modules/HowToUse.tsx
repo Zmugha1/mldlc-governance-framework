@@ -21,6 +21,8 @@ import {
   ClipboardList,
   Settings,
   Navigation,
+  Target,
+  Zap,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -102,6 +104,8 @@ export default function HowToUse() {
     },
     { label: 'UAT Checklist', icon: <ListChecks className="h-4 w-4" />, section: 'uat-checklist' },
     { label: 'Morning Brief', icon: <Sun className="h-4 w-4" />, section: 'morning-brief' },
+    { label: 'Business Goals', icon: <Target className="h-4 w-4" />, section: 'business-goals' },
+    { label: 'Coaching Actions', icon: <Zap className="h-4 w-4" />, section: 'coaching-actions' },
     {
       label: 'Pipeline Visualizer',
       icon: <Layers className="h-4 w-4" />,
@@ -635,6 +639,180 @@ export default function HowToUse() {
                     <li>
                       Rate Morning Brief 1-5: 1 = not useful at all, 5 = I will open this every
                       morning
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            </CollapsibleSection>
+          </div>
+
+          <div id="business-goals">
+            <CollapsibleSection
+              title="Business Goals"
+              icon={<Target className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
+                <h2 className="text-lg font-bold text-[#333333]">Business Goals</h2>
+                <p className="text-[#6B6B6B]">
+                  This page shows your $300,000 year in real numbers. Open it weekly to see where you
+                  stand against your business plan targets.
+                </p>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Six KPI Cards</h3>
+                  <div className="space-y-4 text-[#6B6B6B]">
+                    <p>
+                      <span className="font-semibold text-[#333333]">Placements</span> — X of 11 toward
+                      your annual target. Updates when you mark a client as Business Purchase on their
+                      client card. Revenue shown below: $X of $300,000.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">C3 This Week</span> — your north star
+                      metric. Target: 2.5 C3 presentations per week. If you hit this number every week you
+                      will hit 11 placements. The star icon marks this as your most important weekly
+                      activity.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">C1 Show Rate</span> — % of scheduled
+                      C1 sessions that actually happen. Target: 75%. Updates when you mark sessions as
+                      scheduled on client cards. Shows — until you have scheduled session data.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">C4 Conversion</span> — % of C4
+                      clients who reach a Point of Clarity. Target: 80%. Updates when you mark POC
+                      reached on C4 client overview tabs. Shows — until POC dates are entered.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">Avg Days in Stage</span> — how long
+                      clients are sitting in their current stage. Updates automatically from session
+                      dates. Lower is better — it means clients are moving forward faster.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">At Risk This Week</span> — C3 and C4
+                      clients with no session in 14 days. These are your highest value clients. Red
+                      means 2 or more need attention now.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Stage Distribution Chart</h3>
+                  <p className="text-[#6B6B6B]">
+                    Shows how many clients are in each compartment right now. A healthy pipeline has
+                    clients spread across multiple stages.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">
+                    Business Plan Targets Table
+                  </h3>
+                  <p className="text-[#6B6B6B]">
+                    Shows your actual conversion rates vs your 2026 business plan targets. Red gaps are
+                    opportunities to improve. These numbers update as you log sessions and move clients
+                    forward.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    UAT Checklist — Business Goals
+                  </h3>
+                  <ol className="list-decimal space-y-3 pl-5 text-[#6B6B6B]">
+                    <li>Does Placements show 3 of 11?</li>
+                    <li>Does the $84,000 of $300,000 progress bar look right?</li>
+                    <li>Is C3 This Week showing correctly?</li>
+                    <li>Does At Risk show clients needing attention?</li>
+                    <li>Does the Business Plan Targets table show red gaps vs your targets?</li>
+                    <li>
+                      Rate this page 1-5: 1 = not useful, 5 = I check this every week
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            </CollapsibleSection>
+          </div>
+
+          <div id="coaching-actions">
+            <CollapsibleSection
+              title="Coaching Actions"
+              icon={<Zap className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
+                <h2 className="text-lg font-bold text-[#333333]">Coaching Actions</h2>
+                <p className="text-[#6B6B6B]">
+                  This is your decision log. Every signal Coach Bot detects — gone quiet, pink flags, at
+                  risk clients — appears here waiting for your response.
+                </p>
+                <p className="text-[#6B6B6B]">
+                  This page closes the loop: Signal → Your Response → Logged → Outcome.
+                </p>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">
+                    Signals Needing Response
+                  </h3>
+                  <p className="mb-3 font-medium text-[#333333]">Three types of signals appear here:</p>
+                  <div className="space-y-3 text-[#6B6B6B]">
+                    <p>
+                      <span className="font-semibold text-[#333333]">At Risk (navy border)</span> — C3 or
+                      C4 clients with no session in 14 days. These are your highest priority clients.
+                      Respond first.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">Pink Flags (red border)</span> —
+                      active concerns detected from session notes. Needs your attention before the next
+                      call.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-[#333333]">Gone Quiet (amber border)</span> —
+                      clients who have not been contacted within their stage threshold.
+                    </p>
+                  </div>
+                  <p className="mt-3 font-medium text-[#333333]">For each signal:</p>
+                  <ol className="mt-2 list-decimal space-y-2 pl-5 text-[#6B6B6B]">
+                    <li>Read the client name and signal type</li>
+                    <li>Select your response from the dropdown</li>
+                    <li>Coach Bot logs your response with today&apos;s date</li>
+                    <li>The card disappears from the list</li>
+                    <li>Your response appears in Decision History</li>
+                  </ol>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Golden Rules</h3>
+                  <p className="text-[#6B6B6B]">
+                    For each converted client — capture what made them convert. These notes accumulate
+                    into your coaching playbook over time. They surface in My Practice as your most
+                    valuable patterns.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Decision History</h3>
+                  <p className="text-[#6B6B6B]">
+                    Every response you have ever logged to a signal appears here. Date, client, signal
+                    type, what you did. This is your coaching decision audit trail.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    UAT Checklist — Coaching Actions
+                  </h3>
+                  <ol className="list-decimal space-y-3 pl-5 text-[#6B6B6B]">
+                    <li>Do you see signal cards for clients needing attention?</li>
+                    <li>
+                      Select &quot;Sent email&quot; on one signal. Does &quot;Response logged ✓&quot;
+                      appear? Does the card disappear?
+                    </li>
+                    <li>Open Decision History. Does your response appear?</li>
+                    <li>
+                      Find a converted client in Golden Rules. Type what made them convert. Click outside
+                      the field. Does it save without error?
+                    </li>
+                    <li>
+                      Rate this page 1-5: 1 = I would never use this, 5 = I will log every decision here
                     </li>
                   </ol>
                 </div>
