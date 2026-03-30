@@ -2,7 +2,10 @@ import { dbSelect, dbExecute, getDb } from './db';
 import { logEntry as logAuditEntry } from './auditService';
 import type { Client } from '../types';
 import { getRecommendation } from './recommendationService';
-import { getAllStageReadiness } from './stageReadinessService';
+import {
+  getAllStageReadiness,
+  type PipelineStage,
+} from './stageReadinessService';
 import type { DashboardStats } from '../types';
 
 export async function getAllClients(): Promise<Client[]> {
@@ -139,6 +142,118 @@ export async function updateClient(
 
   const result = await getRecommendation(updated);
   return { ...updated, recommendation: result.recommendation };
+}
+
+export interface ClientStageLogRow {
+  id: string;
+  client_id: string;
+  from_stage: string | null;
+  to_stage: string;
+  moved_at: string;
+  moved_by: string | null;
+  notes: string | null;
+}
+
+function normalizeStageCode(s: string | null | undefined): string {
+  return String(s ?? '').trim();
+}
+
+/**
+ * Updates `inferred_stage` when Sandi moves a client, logs `client_stage_log`,
+ * and writes `audit_log` (action_type `stage_transition`).
+ */
+export async function moveClientStage(
+  clientId: string,
+  newStage: PipelineStage,
+  _reason: string,
+  _movedBy: string
+): Promise<boolean> {
+  try {
+    const current = await dbSelect<{ inferred_stage: string | null }>(
+      `SELECT inferred_stage FROM clients WHERE id = $1`,
+      [clientId]
+    );
+    if (current.length === 0) return false;
+
+    const fromStage = current[0].inferred_stage ?? null;
+    const toStage = normalizeStageCode(newStage);
+    if (normalizeStageCode(fromStage) === toStage) return true;
+
+    await dbExecute(
+      `UPDATE clients SET
+         inferred_stage = $1,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [toStage, clientId]
+    );
+
+    const logId = crypto.randomUUID();
+    const movedAt = new Date().toISOString();
+
+    await dbExecute(
+      `INSERT INTO client_stage_log
+         (id, client_id, from_stage, to_stage, moved_at, moved_by, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [logId, clientId, fromStage, toStage, movedAt, 'sandi', null]
+    );
+
+    const detail = `${fromStage ?? ''} → ${toStage}`;
+    await logAuditEntry(
+      'stage_transition',
+      clientId,
+      fromStage,
+      toStage,
+      detail,
+      'deterministic'
+    );
+
+    return true;
+  } catch (error) {
+    console.error('moveClientStage failed:', error);
+    return false;
+  }
+}
+
+export async function getStageTransitions(
+  clientId: string
+): Promise<ClientStageLogRow[]> {
+  return dbSelect<ClientStageLogRow>(
+    `SELECT id, client_id, from_stage, to_stage, moved_at, moved_by, notes
+     FROM client_stage_log
+     WHERE client_id = $1
+     ORDER BY moved_at DESC`,
+    [clientId]
+  );
+}
+
+export async function getConversionRate(
+  fromStage: string,
+  toStage: string
+): Promise<number> {
+  const numRows = await dbSelect<{ n: number }>(
+    `SELECT COUNT(DISTINCT client_id) AS n
+     FROM client_stage_log
+     WHERE to_stage = $1`,
+    [toStage]
+  );
+  const numerator = Number(numRows[0]?.n ?? 0);
+
+  const denomRows = await dbSelect<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM (
+       SELECT DISTINCT client_id AS cid
+       FROM client_stage_log
+       WHERE to_stage = $1
+       UNION
+       SELECT DISTINCT id AS cid
+       FROM clients
+       WHERE inferred_stage = $1
+     ) AS d`,
+    [fromStage]
+  );
+  const denominator = Number(denomRows[0]?.n ?? 0);
+
+  if (denominator === 0) return 0;
+  return (numerator / denominator) * 100;
 }
 
 export async function inactivateClient(
