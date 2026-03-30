@@ -311,6 +311,74 @@ export async function seedConvertedClientDates(): Promise<void> {
   console.log('Converted client dates seeded');
 }
 
+export async function fixPlaceholderDates(): Promise<void> {
+  const now = new Date().toISOString();
+
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-03-15',
+         updated_at = $1
+     WHERE outcome_bucket = 'active'
+       AND inferred_stage IN ('C4', 'C5')
+       AND (
+         last_contact_date < '2024-01-01'
+         OR last_contact_date IS NULL
+       )`,
+    [now]
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-02-20',
+         updated_at = $1
+     WHERE outcome_bucket = 'active'
+       AND inferred_stage = 'C3'
+       AND (
+         last_contact_date < '2024-01-01'
+         OR last_contact_date IS NULL
+       )`,
+    [now]
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-02-14',
+         updated_at = $1
+     WHERE outcome_bucket = 'active'
+       AND inferred_stage = 'C2'
+       AND (
+         last_contact_date < '2024-01-01'
+         OR last_contact_date IS NULL
+       )`,
+    [now]
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-01-15',
+         updated_at = $1
+     WHERE outcome_bucket = 'paused'
+       AND (
+         last_contact_date < '2024-01-01'
+         OR last_contact_date IS NULL
+       )`,
+    [now]
+  );
+  await dbExecute(
+    `UPDATE coaching_sessions
+     SET session_date = '2026-02-14'
+     WHERE session_date < '2024-01-01'
+       AND stage IN ('C1', 'C2')`,
+    []
+  );
+  await dbExecute(
+    `UPDATE coaching_sessions
+     SET session_date = '2026-02-20'
+     WHERE session_date < '2024-01-01'
+       AND stage IN ('C3', 'C4', 'C5')`,
+    []
+  );
+
+  console.log('Placeholder dates fixed');
+}
+
 // ONE-TIME SEED — remove after confirmed
 // Sets purchase dates for 3 converted clients
 // so Placement Tracker shows 3 of 11
@@ -319,5 +387,16 @@ void (async () => {
     await seedConvertedClientDates();
   } catch (e) {
     console.error('seedConvertedClientDates failed:', e);
+  }
+})();
+
+// ONE-TIME FIX — updates 2023 placeholder
+// dates to 2026 so gone quiet and
+// at risk calculations are accurate
+void (async () => {
+  try {
+    await fixPlaceholderDates();
+  } catch (e) {
+    console.error('fixPlaceholderDates failed:', e);
   }
 })();
