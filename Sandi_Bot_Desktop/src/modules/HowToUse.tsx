@@ -20,6 +20,7 @@ import {
   MessageSquare,
   ClipboardList,
   Settings,
+  Navigation,
 } from 'lucide-react';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -88,6 +89,11 @@ export default function HowToUse() {
 
   const navItems = [
     { label: 'What is Coach Bot?', icon: <BookOpen className="h-4 w-4" />, section: 'what-is-coach-bot' },
+    {
+      label: 'Coach Bot Navigation',
+      icon: <Navigation className="h-4 w-4" />,
+      section: 'coach-bot-navigation',
+    },
     { label: 'What is coming next', icon: <Sparkles className="h-4 w-4" />, section: 'coming-next' },
     {
       label: 'Important data notes',
@@ -95,7 +101,7 @@ export default function HowToUse() {
       section: 'important-data-notes',
     },
     { label: 'UAT Checklist', icon: <ListChecks className="h-4 w-4" />, section: 'uat-checklist' },
-    { label: 'Morning routine', icon: <Sun className="h-4 w-4" />, section: 'morning-routine' },
+    { label: 'Morning Brief', icon: <Sun className="h-4 w-4" />, section: 'morning-brief' },
     {
       label: 'Pipeline Visualizer',
       icon: <Layers className="h-4 w-4" />,
@@ -188,6 +194,56 @@ export default function HowToUse() {
                   <li>Analyzes your Fathom calls automatically</li>
                   <li>Tells you what to focus on before every call</li>
                 </ul>
+              </div>
+            </CollapsibleSection>
+          </div>
+
+          <div id="coach-bot-navigation">
+            <CollapsibleSection
+              title="Coach Bot Navigation"
+              icon={<Navigation className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
+                <h2 className="text-lg font-bold text-[#333333]">Coach Bot Navigation</h2>
+                <p className="text-[#6B6B6B]">
+                  Coach Bot has five main pages accessible from the left sidebar:
+                </p>
+                <ol className="list-decimal space-y-4 pl-5 text-[#6B6B6B]">
+                  <li>
+                    <span className="font-medium text-[#333333]">Morning Brief</span> — your daily
+                    starting point. KPIs, client signals, seeker inputs.
+                  </li>
+                  <li>
+                    <span className="font-medium text-[#333333]">Business Goals</span> — your $300K
+                    year. Conversion rates, placement tracker, pipeline targets.
+                  </li>
+                  <li>
+                    <span className="font-medium text-[#333333]">Client Intelligence</span> — your
+                    client profiles. Search, filter, view all client data, generate vision
+                    statements.
+                  </li>
+                  <li>
+                    <span className="font-medium text-[#333333]">Coaching Actions</span> — your
+                    decision log. Respond to signals, capture golden rules, log what you did and why.
+                  </li>
+                  <li>
+                    <span className="font-medium text-[#333333]">My Practice</span> — your coaching
+                    intelligence. Aha moments, CLEAR trends, DISC patterns, profile completeness.
+                  </li>
+                </ol>
+                <div className="space-y-3 border-t border-[#E5E7EB] pt-6 text-[#6B6B6B]">
+                  <p>
+                    <span className="font-semibold text-[#333333]">Settings (gear icon)</span> — Admin
+                    Streamliner, activity logs, import tools, feedback.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#333333]">Help (? icon)</span> — this guide.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#333333]">Audit (shield icon)</span> — full
+                    audit trail.
+                  </p>
+                </div>
               </div>
             </CollapsibleSection>
           </div>
@@ -450,235 +506,148 @@ export default function HowToUse() {
             </CollapsibleSection>
           </div>
 
-          <div id="morning-routine">
+          <div id="morning-brief">
             <CollapsibleSection
-              title="Your morning routine"
+              title="Morning Brief"
               icon={<Sun className="h-5 w-5 text-[#C4B7D9]" />}
             >
-              <div className="space-y-3">
-                <div className="flex gap-3">
-                  <StepNumber number={1} />
-                  <p className="text-sm text-[#333333]">Open Coach Bot</p>
-                </div>
-                <div className="flex gap-3">
-                  <StepNumber number={2} />
-                  <p className="text-sm text-[#333333]">
-                    Check the Dashboard — see who needs attention today
-                  </p>
-                </div>
-                <div className="flex gap-3">
-                  <StepNumber number={3} />
-                  <p className="text-sm text-[#333333]">
-                    Look for Gone Quiet badges — clients you have not spoken to in a while
-                  </p>
-                </div>
-                <div className="flex gap-3">
-                  <StepNumber number={4} />
-                  <p className="text-sm text-[#333333]">
-                    Check your pink flags — anything that needs addressing before a call
-                  </p>
-                </div>
-                <div className="flex gap-3">
-                  <StepNumber number={5} />
-                  <p className="text-sm text-[#333333]">
-                    Open a client card before your first call and review their DISC tab and last
-                    Fathom
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]">
-                <h2 className="text-lg font-bold text-[#333333]">Your Executive Dashboard</h2>
-                <p>
-                  This is your home screen. Open it every morning. It shows you everything you need to
-                  know in 60 seconds.
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
+                <h2 className="text-lg font-bold text-[#333333]">Morning Brief</h2>
+                <p className="text-[#6B6B6B]">
+                  This is your home base. Open Coach Bot every morning and start here.
                 </p>
 
                 <div>
-                  <h3 className="mb-3 text-base font-semibold text-[#333333]">The 6 KPI Cards</h3>
-                  <div className="space-y-4 text-[#6B6B6B]">
-                    <div>
-                      <p className="font-semibold text-[#333333]">Total Clients (16)</p>
-                      <p>Everyone in your pipeline right now. Inactive clients are not counted.</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-[#333333]">Clients with Sessions (7)</p>
-                      <p>
-                        Clients where you have uploaded at least one Fathom call. As you upload more
-                        calls this number grows.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-[#333333]">Profile Completeness</p>
-                      <p>
-                        Share of active clients who have all four files (DISC, You 2.0, TUMAY, at
-                        least one Fathom). See{' '}
-                        <span className="font-medium text-[#333333]">
-                          Profile Completeness on the Dashboard
-                        </span>{' '}
-                        below for the full definition.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-[#333333]">Conversion Rate (0%)</p>
-                      <p>
-                        How many clients have moved all the way from Initial Contact to Business
-                        Purchase. This grows as clients complete their journey.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-[#333333]">Calls This Week (0)</p>
-                      <p>
-                        Fathom sessions you have uploaded this week. Upload a call transcript and
-                        this updates.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-[#333333]">Time Saved (18.5 hrs)</p>
-                      <p>
-                        Hours saved by Coach Bot processing your sessions, profiles, and DISC reports
-                        automatically instead of manually.
-                      </p>
-                    </div>
-                  </div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">The Greeting Card</h3>
+                  <p className="text-[#6B6B6B]">
+                    Shows good morning/afternoon/evening based on time of day.
+                  </p>
+                  <p className="mt-2 font-medium text-[#333333]">Lists what needs your attention:</p>
+                  <ul className="mt-2 list-inside list-disc space-y-1 text-[#6B6B6B]">
+                    <li>Whether your weekly seeker log is missing</li>
+                    <li>How many clients have gone quiet</li>
+                    <li>How many pink flags need a response</li>
+                    <li>High priority clients needing a session</li>
+                  </ul>
                 </div>
 
-                <div className="space-y-4 border-t border-[#E5E7EB] pt-6">
-                  <h2 className="text-lg font-bold text-[#333333]">
-                    What Does Readiness Score Mean?
-                  </h2>
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">This Week&apos;s Inputs</h3>
                   <p className="text-[#6B6B6B]">
-                    The Readiness Score on each client card shows how complete their file is in
-                    Coach Bot across 4 dimensions:
+                    Coach Bot cannot calculate seeker engagement without your help.
                   </p>
-                  <ul className="list-none space-y-4 text-[#6B6B6B]">
-                    <li>
-                      <p className="font-semibold text-[#333333]">Identity (25 points)</p>
-                      <p>
-                        Does this client have a clear You 2.0 vision statement? The longer and more
-                        detailed their vision, the higher this score.
-                      </p>
-                    </li>
-                    <li>
-                      <p className="font-semibold text-[#333333]">Commitment (25 points)</p>
-                      <p>
-                        Have they set a launch timeline? Is their spouse or partner on calls? Both
-                        signal serious commitment.
-                      </p>
-                    </li>
-                    <li>
-                      <p className="font-semibold text-[#333333]">Financial (25 points)</p>
-                      <p>
-                        Do we have their credit score and net worth range from their TUMAY form? This
-                        tells you if they are financially ready to invest.
-                      </p>
-                    </li>
-                    <li>
-                      <p className="font-semibold text-[#333333]">Execution (25 points)</p>
-                      <p>
-                        Do they have a DISC report, You 2.0, and at least one Fathom session? This
-                        measures how much coaching work has been done.
-                      </p>
-                    </li>
+                  <p className="mt-2 font-medium text-[#333333]">Every Monday enter:</p>
+                  <ul className="mt-2 list-inside list-disc space-y-1 text-[#6B6B6B]">
+                    <li>How many seekers you contacted this week</li>
+                    <li>How many seekers responded</li>
                   </ul>
-                  <p className="font-semibold text-[#333333]">
-                    IMPORTANT: Readiness Score does NOT mean the client is ready to buy a franchise.
-                    YOU decide when a client moves between compartments. Coach Bot just shows you how
-                    complete their file is so you know what information you have going into each call.
-                  </p>
-                  <p className="text-[#6B6B6B]">
-                    A client can have a low readiness score and still be close to a decision. A
-                    client can have a high readiness score and still need more coaching time. Trust
-                    your coaching judgment first.
-                  </p>
-                </div>
-
-                <div className="space-y-4 border-t border-[#E5E7EB] pt-6">
-                  <h2 className="text-lg font-bold text-[#333333]">
-                    Profile Completeness on the Dashboard
-                  </h2>
-                  <p className="text-[#6B6B6B]">
-                    The Profile Completeness percentage (94%) on your Executive Dashboard shows what
-                    percentage of your active clients have ALL FOUR of these:
-                  </p>
-                  <ul className="list-inside list-disc space-y-2 text-[#6B6B6B]">
-                    <li>DISC report uploaded</li>
-                    <li>You 2.0 profile uploaded</li>
-                    <li>TUMAY form uploaded</li>
-                    <li>At least one Fathom session</li>
-                  </ul>
-                  <p className="text-[#6B6B6B]">
-                    If this is below 100%, it means some clients are missing files. Open their card
-                    and check which tab is empty.
+                  <p className="mt-2 text-[#6B6B6B]">
+                    Coach Bot calculates your engagement rate and compares it to your 65% target.
                   </p>
                 </div>
 
                 <div>
-                  <h3 className="mb-2 text-base font-semibold text-[#333333]">
-                    AI Recommendations Donut
-                  </h3>
-                  <p className="mb-2 text-[#6B6B6B]">Shows how your pipeline is balanced:</p>
-                  <ul className="list-inside list-disc space-y-2 text-[#6B6B6B]">
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Period Toggle</h3>
+                  <p className="text-[#6B6B6B]">
+                    Switch between Weekly, Monthly, Quarterly, and YTD.
+                  </p>
+                  <p className="mt-1 text-[#6B6B6B]">Affects the KPI cards below.</p>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">KPI Cards</h3>
+                  <ul className="list-none space-y-3 text-[#6B6B6B]">
                     <li>
-                      Green = VALIDATE (2) — clients in compartments 4 and 5, exploring businesses
+                      <span className="font-semibold text-[#333333]">Total Clients</span> — everyone in
+                      your pipeline.
                     </li>
                     <li>
-                      Orange = GATHER (7) — clients in compartments 1 through 3, still learning
+                      <span className="font-semibold text-[#333333]">VALIDATE</span> — clients in C4 or
+                      C5. These clients are ready to move forward.
                     </li>
-                    <li>Gray = PAUSE (4) — clients on hold</li>
+                    <li>
+                      <span className="font-semibold text-[#333333]">GATHER</span> — clients in IC through
+                      C3. These clients are still discovering.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-[#333333]">PAUSE</span> — clients on hold.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-[#333333]">Time Saved</span> — hours saved vs
+                      manual admin. Resets weekly. Compounds over time.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-[#333333]">Placement Tracker</span> —
+                      placements toward your 11 placement annual target.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-[#333333]">C3 Sessions</span> — presentations
+                      this period vs your 2.5 per week north star.
+                    </li>
                   </ul>
                 </div>
 
                 <div>
                   <h3 className="mb-2 text-base font-semibold text-[#333333]">
-                    Pipeline Distribution
+                    Pipeline Progress Table
                   </h3>
                   <p className="text-[#6B6B6B]">
-                    Bar chart showing how many clients are in each compartment. Tall bar at Seeker
-                    Clarification means most of your clients are in early discovery phase.
+                    Shows how many clients are in each stage vs your weekly business plan targets.
+                  </p>
+                  <p className="mt-2 text-[#6B6B6B]">
+                    C3 is your north star — 2.5 presentations per week puts you on track for 11
+                    placements.
                   </p>
                 </div>
 
                 <div>
-                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Validate Clients</h3>
+                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Clients at a Glance</h3>
+                  <p className="text-[#6B6B6B]">Your full pipeline in one scrollable view.</p>
+                  <p className="mt-2 font-medium text-[#333333]">Filter by status:</p>
                   <p className="text-[#6B6B6B]">
-                    Your two most important clients right now. These are in compartment 4 or 5 and
-                    need your attention to move toward a decision.
+                    VALIDATE, GATHER, PAUSE, Gone Quiet, Pink Flags.
+                  </p>
+                  <p className="mt-2 font-medium text-[#333333]">Filter by stage:</p>
+                  <p className="text-[#6B6B6B]">IC through C5.</p>
+                  <p className="mt-2 text-[#6B6B6B]">
+                    Click any client name to open their profile in Client Intelligence.
                   </p>
                 </div>
 
                 <div>
-                  <h3 className="mb-2 text-base font-semibold text-[#333333]">
-                    5-Compartment Coaching Journey
+                  <h3 className="mb-3 text-base font-semibold text-[#333333]">
+                    UAT Checklist — Morning Brief
                   </h3>
-                  <p className="text-[#6B6B6B]">
-                    A snapshot of your entire pipeline. The number on each compartment card is how
-                    many clients are currently there.
-                  </p>
-                </div>
-
-                <div>
-                  <h3 className="mb-2 text-base font-semibold text-[#333333]">Weekly Activity</h3>
-                  <p className="text-[#6B6B6B]">
-                    Will show your call and email activity once Google Calendar is connected. Coming
-                    soon.
-                  </p>
-                </div>
-
-                <div>
-                  <h3 className="mb-2 text-base font-semibold text-[#333333]">DISC Distribution</h3>
-                  <p className="text-[#6B6B6B]">
-                    Shows the personality breakdown of all your clients. High I (7) means most of
-                    your clients are Influencing style — enthusiastic, story-driven, people-oriented.
-                  </p>
+                  <ol className="list-decimal space-y-3 pl-5 text-[#6B6B6B]">
+                    <li>Does the greeting say your name correctly?</li>
+                    <li>Are the attention prompts accurate?</li>
+                    <li>
+                      Enter 5 in Seekers contacted this week. Enter 3 in Seekers who responded. Click
+                      Log on both. Does the engagement rate show 60%?
+                    </li>
+                    <li>Click Weekly on the period toggle. Do the KPI cards update?</li>
+                    <li>
+                      Does the Pipeline Progress table match your known client counts?
+                    </li>
+                    <li>
+                      Use the View filter — select VALIDATE. Do only Alex Raiyn and Jeff Dayton show?
+                    </li>
+                    <li>
+                      Rate Morning Brief 1-5: 1 = not useful at all, 5 = I will open this every
+                      morning
+                    </li>
+                  </ol>
                 </div>
               </div>
+            </CollapsibleSection>
+          </div>
 
-              <div
-                id="pipeline-visualizer"
-                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
-              >
-                <h2 className="text-lg font-bold text-[#333333]">Pipeline Visualizer</h2>
+          <div id="pipeline-visualizer">
+            <CollapsibleSection
+              title="Pipeline Visualizer"
+              icon={<Layers className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
                 <p className="text-[#6B6B6B]">
                   This page shows your entire client pipeline organized by compartment. Use it to move
                   clients between stages and see who is where in their journey.
@@ -815,12 +784,15 @@ export default function HowToUse() {
                   </div>
                 </div>
               </div>
+            </CollapsibleSection>
+          </div>
 
-              <div
-                id="live-coaching-assistant"
-                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
-              >
-                <h2 className="text-lg font-bold text-[#333333]">Live Coaching Assistant</h2>
+          <div id="live-coaching-assistant">
+            <CollapsibleSection
+              title="Live Coaching Assistant"
+              icon={<MessageSquare className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
                 <p className="text-[#6B6B6B]">
                   This page is your AI coaching partner. Use it before or during a call to get instant
                   guidance based on your client&apos;s full profile.
@@ -943,12 +915,15 @@ export default function HowToUse() {
                   </div>
                 </div>
               </div>
+            </CollapsibleSection>
+          </div>
 
-              <div
-                id="post-call-analysis"
-                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
-              >
-                <h2 className="text-lg font-bold text-[#333333]">Post-Call Analysis</h2>
+          <div id="post-call-analysis">
+            <CollapsibleSection
+              title="Post-Call Analysis"
+              icon={<ClipboardList className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
                 <p className="text-[#6B6B6B]">
                   Use this page after every coaching call to score yourself on the CLEAR framework and track
                   your coaching quality over time.
@@ -1106,12 +1081,15 @@ export default function HowToUse() {
                   </div>
                 </div>
               </div>
+            </CollapsibleSection>
+          </div>
 
-              <div
-                id="admin-streamliner"
-                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
-              >
-                <h2 className="text-lg font-bold text-[#333333]">Admin Streamliner</h2>
+          <div id="admin-streamliner">
+            <CollapsibleSection
+              title="Admin Streamliner"
+              icon={<Settings className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
                 <p className="text-[#6B6B6B]">
                   This is your back-office control center. Use it to import client files, check system health,
                   and manage your settings.
@@ -1255,14 +1233,15 @@ export default function HowToUse() {
                   </div>
                 </div>
               </div>
+            </CollapsibleSection>
+          </div>
 
-              <div
-                id="coach-bot-decisions"
-                className="mt-8 space-y-6 border-t border-[#E5E7EB] pt-6 text-sm leading-relaxed text-[#333333]"
-              >
-                <h2 className="text-lg font-bold text-[#333333]">
-                  How Coach Bot Makes Decisions
-                </h2>
+          <div id="coach-bot-decisions">
+            <CollapsibleSection
+              title="How Coach Bot makes decisions"
+              icon={<Brain className="h-5 w-5 text-[#C4B7D9]" />}
+            >
+              <div className="space-y-6 text-sm leading-relaxed text-[#333333]">
                 <div>
                   <h3 className="mb-3 text-base font-semibold text-[#333333]">
                     VALIDATE, GATHER, and PAUSE
