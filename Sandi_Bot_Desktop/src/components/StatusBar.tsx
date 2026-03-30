@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getDb } from '@/services/db';
 import { createBackup, getLastBackup } from '@/services/backupService';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 type BackupState = {
   backup_count: number;
@@ -28,6 +41,8 @@ export default function StatusBar() {
   const [ollamaOnline, setOllamaOnline] = useState(false);
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupMessage, setBackupMessage] = useState('');
+  const [ollamaHelpOpen, setOllamaHelpOpen] = useState(false);
+  const [ollamaModalChecking, setOllamaModalChecking] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     const db = await getDb();
@@ -78,6 +93,15 @@ export default function StatusBar() {
     };
   }, [backup.ever_succeeded, backup.last_backup]);
 
+  const handleOllamaModalRefresh = useCallback(async () => {
+    setOllamaModalChecking(true);
+    try {
+      await refreshStatus();
+    } finally {
+      setOllamaModalChecking(false);
+    }
+  }, [refreshStatus]);
+
   const handleBackupClick = async () => {
     setBackupRunning(true);
     setBackupMessage('Backing up...');
@@ -88,8 +112,51 @@ export default function StatusBar() {
     window.setTimeout(() => setBackupMessage(''), 2000);
   };
 
+  const ollamaOfflineTooltip =
+    "Ollama is not running.\nTo start: open a terminal and type\n'ollama serve'\nThen restart Coach Bot.";
+
   return (
     <div className="h-8 bg-slate-900 text-slate-200 text-xs px-4 flex items-center justify-between border-t border-slate-800">
+      <Dialog open={ollamaHelpOpen} onOpenChange={setOllamaHelpOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>AI is Offline</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-slate-600">
+            <p>
+              Coach Bot uses a local AI model called Ollama to generate insights.
+            </p>
+            <div>
+              <p className="font-medium text-slate-800">To turn it on:</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5">
+                <li>Open PowerShell or Terminal</li>
+                <li>Type: ollama serve</li>
+                <li>Press Enter</li>
+                <li>Wait 10 seconds</li>
+                <li>Click Refresh below</li>
+              </ol>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 pt-2">
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              disabled={ollamaModalChecking}
+              onClick={() => void handleOllamaModalRefresh()}
+            >
+              {ollamaModalChecking ? 'Checking…' : 'Refresh Status'}
+            </Button>
+            <button
+              type="button"
+              className="text-left text-sm text-slate-500 underline underline-offset-2 hover:text-slate-800"
+              onClick={() => setOllamaHelpOpen(false)}
+            >
+              Close
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <button
         type="button"
         onClick={handleBackupClick}
@@ -102,10 +169,33 @@ export default function StatusBar() {
 
       <div className="inline-flex items-center gap-4">
         <span>{clientCount} clients</span>
-        <span className="inline-flex items-center gap-2">
-          <Dot color={ollamaOnline ? 'green' : 'gray'} />
-          {ollamaOnline ? 'Ollama running' : 'Ollama offline'}
-        </span>
+        {ollamaOnline ? (
+          <span className="inline-flex items-center gap-2">
+            <Dot color="green" />
+            AI Ready
+          </span>
+        ) : (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setOllamaHelpOpen(true)}
+                  className="inline-flex items-center gap-2 hover:text-white transition-colors"
+                >
+                  <Dot color="red" />
+                  AI Offline
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                className="max-w-xs border-slate-700 bg-slate-800 text-slate-100 text-xs"
+              >
+                <p className="whitespace-pre-line">{ollamaOfflineTooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         {backupMessage && <span className="text-slate-300">{backupMessage}</span>}
       </div>
     </div>
