@@ -431,48 +431,48 @@ export async function fixPlaceholderDates(): Promise<void> {
 
   await dbExecute(
     `UPDATE clients
-     SET last_contact_date = '2026-03-15',
+     SET updated_at = '2026-03-15',
          updated_at = $1
      WHERE outcome_bucket = 'active'
        AND inferred_stage IN ('C4', 'C5')
        AND (
-         last_contact_date < '2024-01-01'
-         OR last_contact_date IS NULL
+         updated_at < '2024-01-01'
+         OR updated_at IS NULL
        )`,
     [now]
   );
   await dbExecute(
     `UPDATE clients
-     SET last_contact_date = '2026-02-20',
+     SET updated_at = '2026-02-20',
          updated_at = $1
      WHERE outcome_bucket = 'active'
        AND inferred_stage = 'C3'
        AND (
-         last_contact_date < '2024-01-01'
-         OR last_contact_date IS NULL
+         updated_at < '2024-01-01'
+         OR updated_at IS NULL
        )`,
     [now]
   );
   await dbExecute(
     `UPDATE clients
-     SET last_contact_date = '2026-02-14',
+     SET updated_at = '2026-02-14',
          updated_at = $1
      WHERE outcome_bucket = 'active'
        AND inferred_stage = 'C2'
        AND (
-         last_contact_date < '2024-01-01'
-         OR last_contact_date IS NULL
+         updated_at < '2024-01-01'
+         OR updated_at IS NULL
        )`,
     [now]
   );
   await dbExecute(
     `UPDATE clients
-     SET last_contact_date = '2026-01-15',
+     SET updated_at = '2026-01-15',
          updated_at = $1
      WHERE outcome_bucket = 'paused'
        AND (
-         last_contact_date < '2024-01-01'
-         OR last_contact_date IS NULL
+         updated_at < '2024-01-01'
+         OR updated_at IS NULL
        )`,
     [now]
   );
