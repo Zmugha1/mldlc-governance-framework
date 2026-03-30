@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -458,6 +458,19 @@ function weeksSinceInstallRounded(ref: Date, installDate: Date): number {
   return roundTo1Decimal(diffDays / 7);
 }
 
+/** Unrounded weeks (for first-week Time Saved floor). */
+function rawWeeksSinceInstall(ref: Date, installDate: Date): number {
+  const end = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  const start = new Date(
+    installDate.getFullYear(),
+    installDate.getMonth(),
+    installDate.getDate()
+  );
+  if (end < start) return 0;
+  const diffDays = (end.getTime() - start.getTime()) / 86_400_000;
+  return diffDays / 7;
+}
+
 function timeSavedForPeriod(
   period: KpiPeriod,
   ref: Date,
@@ -510,19 +523,9 @@ const PLACEMENT_COUNT_SQL = `SELECT COUNT(*) as count
                AND date(business_purchase_date) >= date($1)
                AND date(business_purchase_date) <= date($2)`;
 
-const C3_SESSION_COUNT_SQL = `SELECT COUNT(*) as count
-             FROM coaching_sessions
-             WHERE stage = 'C3'
-               AND session_date IS NOT NULL
-               AND TRIM(session_date) != ''
-               AND date(session_date) >= date($1)
-               AND date(session_date) <= date($2)`;
-
 function formatUsdWhole(n: number): string {
   return `$${Math.round(n).toLocaleString('en-US')}`;
 }
-
-const C3_WEEKLY_TARGET = 2.5;
 
 const PLACEMENT_TARGET_COUNT = 11;
 const GREETING_REVENUE_GOAL = 300_000;
@@ -533,27 +536,6 @@ function parseGreetingPlacementRevenue(raw: string | null | undefined): number {
   const n = Number(String(raw).replace(/[$,\s]/g, ''));
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_GREETING_PLACEMENT_REVENUE;
 }
-
-/** Display stage label → pipeline code for active-client counts (Sandi plan table). */
-const PIPELINE_YTD_CODE_FROM_DISPLAY: Record<
-  string,
-  'IC' | 'C1' | 'C2' | 'C3' | 'C4'
-> = {
-  'Initial Contact': 'IC',
-  'Seeker Connection': 'C1',
-  'Seeker Clarification': 'C2',
-  Possibilities: 'C3',
-  'Client Career 2.0': 'C4',
-};
-
-const PIPELINE_YTD_ROW_DEF = [
-  { stage: 'IC', weeklyTarget: '22/wk', ytdTarget: 'n/a', c5: false },
-  { stage: 'C1', weeklyTarget: '6/wk', ytdTarget: 'n/a', c5: false },
-  { stage: 'C2', weeklyTarget: '2.81/wk', ytdTarget: 'n/a', c5: false },
-  { stage: 'C3', weeklyTarget: '2.33/wk', ytdTarget: 'n/a', c5: false },
-  { stage: 'C4', weeklyTarget: '1.68/wk', ytdTarget: 'n/a', c5: false },
-  { stage: 'C5', weeklyTarget: '0.21/wk', ytdTarget: '11', c5: true },
-] as const;
 
 const GATHER_DISPLAY_STAGES = new Set([
   'Initial Contact',
@@ -629,12 +611,6 @@ export default function ExecutiveDashboard() {
     quarterly: 0,
     ytd: 0,
   });
-  const [c3ByPeriod, setC3ByPeriod] = useState({
-    weekly: 0,
-    monthly: 0,
-    quarterly: 0,
-    ytd: 0,
-  });
   const [glanceRecFilter, setGlanceRecFilter] = useState<GlanceRecFilter>('all');
   const [glanceStageFilter, setGlanceStageFilter] = useState<GlanceStageFilter>('all');
   const [anchorSeekerLogClientId, setAnchorSeekerLogClientId] = useState<string | null>(null);
@@ -642,8 +618,7 @@ export default function ExecutiveDashboard() {
   const [seekerWeeklyEditMode, setSeekerWeeklyEditMode] = useState(true);
   const [seekerContactedInput, setSeekerContactedInput] = useState('');
   const [seekerRespondedInput, setSeekerRespondedInput] = useState('');
-  const [seekerLogOkContacted, setSeekerLogOkContacted] = useState(false);
-  const [seekerLogOkResponded, setSeekerLogOkResponded] = useState(false);
+  const [seekerWeekSaveOk, setSeekerWeekSaveOk] = useState(false);
   const [goneQuietAttentionCount, setGoneQuietAttentionCount] = useState(0);
   const [pinkNeedResponseCount, setPinkNeedResponseCount] = useState(0);
   const [highPriorityStaleCount, setHighPriorityStaleCount] = useState(0);
@@ -661,13 +636,10 @@ export default function ExecutiveDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!seekerLogOkContacted && !seekerLogOkResponded) return;
-    const t = window.setTimeout(() => {
-      setSeekerLogOkContacted(false);
-      setSeekerLogOkResponded(false);
-    }, 3000);
+    if (!seekerWeekSaveOk) return;
+    const t = window.setTimeout(() => setSeekerWeekSaveOk(false), 3000);
     return () => window.clearTimeout(t);
-  }, [seekerLogOkContacted, seekerLogOkResponded]);
+  }, [seekerWeekSaveOk]);
 
   const greetingSalutation = useMemo(() => {
     const d = new Date(greetingNow);
@@ -705,10 +677,6 @@ export default function ExecutiveDashboard() {
         placementM,
         placementQ,
         placementY,
-        c3W,
-        c3M,
-        c3Q,
-        c3Y,
         pinkFlagWeekClients,
         sessionsNullSchedRows,
         anchorSeekerRows,
@@ -744,10 +712,6 @@ export default function ExecutiveDashboard() {
         dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [monthStartStr, todayStr]),
         dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [quarterStartStr, todayStr]),
         dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [yearStartStr, todayStr]),
-        dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [weekStartStr, todayStr]),
-        dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [monthStartStr, todayStr]),
-        dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [quarterStartStr, todayStr]),
-        dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [yearStartStr, todayStr]),
         dbSelect<{ client_id: string }>(
           `SELECT DISTINCT client_id FROM intervention_logs
            WHERE signal_type = 'pink_flag'
@@ -841,13 +805,6 @@ export default function ExecutiveDashboard() {
         quarterly: Number(placementQ[0]?.count ?? 0),
         ytd: Number(placementY[0]?.count ?? 0),
       });
-      setC3ByPeriod({
-        weekly: Number(c3W[0]?.count ?? 0),
-        monthly: Number(c3M[0]?.count ?? 0),
-        quarterly: Number(c3Q[0]?.count ?? 0),
-        ytd: Number(c3Y[0]?.count ?? 0),
-      });
-
       const prefRow = userPrefsRows[0];
       const parsedInstall = parseUserPrefsInstallDate(prefRow?.install_date ?? null);
       const hourlyRate =
@@ -919,35 +876,6 @@ export default function ExecutiveDashboard() {
     () => clients.filter((cl) => (cl.outcome_bucket ?? '').toLowerCase() === 'paused').length,
     [clients]
   );
-
-  const pipelineYtdProgressRows = useMemo(() => {
-    const stageCounts: Record<'IC' | 'C1' | 'C2' | 'C3' | 'C4', number> = {
-      IC: 0,
-      C1: 0,
-      C2: 0,
-      C3: 0,
-      C4: 0,
-    };
-    for (const cl of clients) {
-      if ((cl.outcome_bucket ?? '').toLowerCase() !== 'active') continue;
-      const display = normalizeDisplayStage(cl.inferred_stage ?? cl.stage);
-      const code = PIPELINE_YTD_CODE_FROM_DISPLAY[display];
-      if (code) stageCounts[code] += 1;
-    }
-    const convertedTotal = clients.filter(
-      (cl) => (cl.outcome_bucket ?? '').toLowerCase() === 'converted'
-    ).length;
-
-    return PIPELINE_YTD_ROW_DEF.map((def) => ({
-      stage: def.stage,
-      weeklyTarget: def.weeklyTarget,
-      ytdTarget: def.ytdTarget,
-      c5: def.c5,
-      clientCount: def.c5
-        ? convertedTotal
-        : stageCounts[def.stage as keyof typeof stageCounts],
-    }));
-  }, [clients]);
 
   const clientsAtAGlanceRows = useMemo(() => {
     const byId = new Map(clients.map((cl) => [cl.id, cl]));
@@ -1205,16 +1133,18 @@ export default function ExecutiveDashboard() {
     setWeeklySeekerEntries(next);
   }, [anchorSeekerLogClientId]);
 
-  const handleLogSeekerContacted = useCallback(async () => {
+  const handleSaveSeekerWeek = useCallback(async () => {
     if (!anchorSeekerLogClientId) return;
-    const n = Math.max(0, Math.floor(Number(seekerContactedInput) || 0));
+    const contactedN = Math.max(0, Math.floor(Number(seekerContactedInput) || 0));
+    const respondedN = Math.max(0, Math.floor(Number(seekerRespondedInput) || 0));
     const week = isoWeekStringLocal(new Date());
     const next = upsertWeeklySeekerEntry(weeklySeekerEntries, week, {
-      count: n,
-      contacted: n,
+      count: contactedN,
+      contacted: contactedN,
+      responded: respondedN,
     });
     await persistWeeklySeekerEntries(next);
-    setSeekerLogOkContacted(true);
+    setSeekerWeekSaveOk(true);
     const merged = next.find((e) => e.week === week);
     if (entryContacted(merged) !== undefined && entryResponded(merged) !== undefined) {
       setSeekerWeeklyEditMode(false);
@@ -1223,23 +1153,6 @@ export default function ExecutiveDashboard() {
     anchorSeekerLogClientId,
     weeklySeekerEntries,
     seekerContactedInput,
-    persistWeeklySeekerEntries,
-  ]);
-
-  const handleLogSeekerResponded = useCallback(async () => {
-    if (!anchorSeekerLogClientId) return;
-    const n = Math.max(0, Math.floor(Number(seekerRespondedInput) || 0));
-    const week = isoWeekStringLocal(new Date());
-    const next = upsertWeeklySeekerEntry(weeklySeekerEntries, week, { responded: n });
-    await persistWeeklySeekerEntries(next);
-    setSeekerLogOkResponded(true);
-    const merged = next.find((e) => e.week === week);
-    if (entryContacted(merged) !== undefined && entryResponded(merged) !== undefined) {
-      setSeekerWeeklyEditMode(false);
-    }
-  }, [
-    anchorSeekerLogClientId,
-    weeklySeekerEntries,
     seekerRespondedInput,
     persistWeeklySeekerEntries,
   ]);
@@ -1615,21 +1528,17 @@ export default function ExecutiveDashboard() {
                 Week logged ✓
               </span>
               {` — contacted ${contactedLogged}, responded ${respondedLogged}`}
-              {persistedEngagementPct !== null ? (
-                <>
-                  {' ('}
-                  <span
-                    className="font-semibold"
-                    style={{
-                      color: persistedEngagementPct >= 65 ? '#22c55e' : '#dc2626',
-                    }}
-                  >
-                    {persistedEngagementPct}% engagement
-                  </span>
-                  {')'}
-                </>
-              ) : null}
             </span>
+            {persistedEngagementPct !== null ? (
+              <span
+                className="w-full font-semibold sm:w-auto"
+                style={{
+                  color: persistedEngagementPct >= 65 ? '#22C55E' : '#F05F57',
+                }}
+              >
+                This week: {persistedEngagementPct}% engagement rate
+              </span>
+            ) : null}
             <button
               type="button"
               className="text-sm font-medium text-[#3BBFBF] underline-offset-2 hover:underline"
@@ -1639,88 +1548,71 @@ export default function ExecutiveDashboard() {
             </button>
           </div>
         ) : (
-          <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="block text-sm font-bold" style={{ color: '#2D4459' }} htmlFor="seeker-contacted-week">
-                Seekers contacted this week
-              </label>
-              <input
-                id="seeker-contacted-week"
-                type="number"
-                min={0}
-                step={1}
-                placeholder="0"
-                value={seekerContactedInput}
-                onChange={(e) => setSeekerContactedInput(e.target.value)}
-                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
-                style={{ borderColor: '#C8E8E5' }}
-              />
-              <p className="text-[12px]" style={{ color: '#7A8F95' }}>
-                target: 22 per week
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleLogSeekerContacted()}
-                  disabled={!anchorSeekerLogClientId}
-                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-white transition-opacity disabled:opacity-50"
-                  style={{ background: '#3BBFBF' }}
-                >
-                  Log
-                </button>
-                {seekerLogOkContacted ? (
-                  <span className="text-sm font-semibold" style={{ color: '#22c55e' }}>
-                    Logged ✓
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-bold" style={{ color: '#2D4459' }} htmlFor="seeker-responded-week">
-                Seekers who responded
-              </label>
-              <input
-                id="seeker-responded-week"
-                type="number"
-                min={0}
-                step={1}
-                placeholder="0"
-                value={seekerRespondedInput}
-                onChange={(e) => setSeekerRespondedInput(e.target.value)}
-                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
-                style={{ borderColor: '#C8E8E5' }}
-              />
-              <p className="text-[12px]" style={{ color: '#7A8F95' }}>
-                target: 65% engagement rate
-              </p>
-              {engagementPreviewPct !== null ? (
-                <p
-                  className="text-sm font-semibold"
-                  style={{
-                    color: engagementPreviewPct >= 65 ? '#22c55e' : '#dc2626',
-                  }}
-                >
-                  This week: {engagementPreviewPct}% engagement
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
+              <div className="space-y-2">
+                <label className="block text-sm font-bold" style={{ color: '#2D4459' }} htmlFor="seeker-contacted-week">
+                  Seekers contacted
+                </label>
+                <input
+                  id="seeker-contacted-week"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="0"
+                  value={seekerContactedInput}
+                  onChange={(e) => setSeekerContactedInput(e.target.value)}
+                  className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
+                  style={{ borderColor: '#C8E8E5' }}
+                />
+                <p className="text-[12px]" style={{ color: '#7A8F95' }}>
+                  target: 22 per week
                 </p>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleLogSeekerResponded()}
-                  disabled={!anchorSeekerLogClientId}
-                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-white transition-opacity disabled:opacity-50"
-                  style={{ background: '#3BBFBF' }}
-                >
-                  Log
-                </button>
-                {seekerLogOkResponded ? (
-                  <span className="text-sm font-semibold" style={{ color: '#22c55e' }}>
-                    Logged ✓
-                  </span>
-                ) : null}
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-bold" style={{ color: '#2D4459' }} htmlFor="seeker-responded-week">
+                  Seekers who replied or booked
+                </label>
+                <input
+                  id="seeker-responded-week"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="0"
+                  value={seekerRespondedInput}
+                  onChange={(e) => setSeekerRespondedInput(e.target.value)}
+                  className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
+                  style={{ borderColor: '#C8E8E5' }}
+                />
+                <p className="text-[12px]" style={{ color: '#7A8F95' }}>
+                  target: 65% engagement
+                </p>
               </div>
             </div>
+            {engagementPreviewPct !== null ? (
+              <p
+                className="text-sm font-semibold"
+                style={{
+                  color: engagementPreviewPct >= 65 ? '#22C55E' : '#F05F57',
+                }}
+              >
+                This week: {engagementPreviewPct}% engagement rate
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void handleSaveSeekerWeek()}
+              disabled={!anchorSeekerLogClientId}
+              className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-opacity disabled:opacity-50"
+              style={{ background: '#3BBFBF' }}
+            >
+              Save This Week&apos;s Numbers
+            </button>
+            {seekerWeekSaveOk ? (
+              <p className="text-sm font-semibold" style={{ color: '#22c55e' }}>
+                Saved ✓
+              </p>
+            ) : null}
           </div>
         )}
       </section>
@@ -1763,19 +1655,30 @@ export default function ExecutiveDashboard() {
           sub="All records in your database"
         />
         <MorningBriefKpiCard
-          label="Validate"
+          label="VALIDATE"
           value={kpiFunnelCounts.validate}
           sub="Active clients in C4 / C5"
+          infoTooltip={
+            'Clients in C4 or C5 actively exploring business ownership.\nThese are your closest to placement.'
+          }
         />
         <MorningBriefKpiCard
-          label="Gather"
+          label="GATHER"
           value={kpiFunnelCounts.gather}
           sub="Active clients in IC through C3"
+          infoTooltip={
+            'Clients in IC through C3 still\nin the discovery phase. Focus on\nmoving them toward C3 presentations.'
+          }
         />
         <MorningBriefKpiCard
-          label="Pause"
+          label="PAUSE"
           value={pauseClientCount}
           sub="Clients currently paused"
+        />
+        <MorningBriefKpiCard
+          label="Placement Tracker"
+          value={placementKpiValue}
+          sub={placementKpiSub[kpiPeriod]}
         />
         <MorningBriefKpiCard
           label="TIME SAVED"
@@ -1784,74 +1687,7 @@ export default function ExecutiveDashboard() {
           valueColor="#3BBFBF"
           footnote={timeSavedInstallFootnote}
         />
-        <MorningBriefKpiCard
-          label="Placement Tracker"
-          value={placementKpiValue}
-          sub={placementKpiSub[kpiPeriod]}
-        />
-        <MorningBriefKpiCard
-          label={c3KpiLabel}
-          value={c3KpiValue}
-          sub={c3KpiSub[kpiPeriod]}
-        />
       </section>
-
-      <Card className="border-[#C8E8E5] shadow-none">
-        <CardHeader>
-          <CardTitle className="text-lg" style={{ color: '#2D4459' }}>
-            Pipeline Progress — Year to Date
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className={tableShellClass}>
-            <Table>
-              <TableHeader>
-                <TableRow className={tableHeaderRowClass}>
-                  <TableHead className={tableHeadClass}>Stage</TableHead>
-                  <TableHead className={tableHeadClass}>Clients</TableHead>
-                  <TableHead className={tableHeadClass}>Weekly Target</TableHead>
-                  <TableHead className={tableHeadClass}>YTD Target</TableHead>
-                  <TableHead className={tableHeadClass}>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pipelineYtdProgressRows.map((row) => (
-                  <TableRow key={row.stage} className={tableBodyRowClass}>
-                    <TableCell className="font-medium" style={{ color: '#2D4459' }}>
-                      {row.stage}
-                    </TableCell>
-                    <TableCell style={{ color: '#2D4459' }}>{row.clientCount}</TableCell>
-                    <TableCell style={{ color: '#2D4459' }}>{row.weeklyTarget}</TableCell>
-                    <TableCell style={{ color: '#2D4459' }}>{row.ytdTarget}</TableCell>
-                    <TableCell>
-                      {row.c5 ? (
-                        <span style={{ color: '#2D4459' }}>
-                          {placementByPeriod.ytd} of {PLACEMENT_TARGET_COUNT}
-                        </span>
-                      ) : row.clientCount > 0 ? (
-                        <span className="font-medium" style={{ color: '#3BBFBF' }}>
-                          Active
-                        </span>
-                      ) : (
-                        <span className="font-medium" style={{ color: '#F05F57' }}>
-                          Empty
-                        </span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <p
-            className="mt-4 text-xs italic leading-relaxed whitespace-pre-line"
-            style={{ color: '#7A8F95' }}
-          >
-            {`C3 is your north star. 2.5 presentations
-per week puts you on track for 11 placements.`}
-          </p>
-        </CardContent>
-      </Card>
 
       <Card className="w-full max-w-none border-[#C8E8E5] shadow-none">
         <CardHeader>
