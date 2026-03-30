@@ -1,10 +1,83 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getDb } from '../services/db';
 
 const HEADER = '#2D4459';
 const MUTED = '#7A8F95';
 const BORDER = '#C8E8E5';
 const TEAL = '#3BBFBF';
+const CORAL = '#C8613F';
+
+type AhaMomentType =
+  | 'client_specific'
+  | 'pattern'
+  | 'disc_insight'
+  | 'stage_insight'
+  | 'general';
+
+type AhaMomentRow = {
+  id: string;
+  client_id: string | null;
+  moment_text: string;
+  moment_type: string | null;
+  disc_style: string | null;
+  stage: string | null;
+  created_at: string | null;
+  client_name: string | null;
+};
+
+type AhaFilter =
+  | 'all'
+  | 'client_specific'
+  | 'pattern'
+  | 'disc_insight'
+  | 'stage_insight'
+  | 'general';
+
+const AHA_FILTER_PILLS: { key: AhaFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'client_specific', label: 'Client Insights' },
+  { key: 'pattern', label: 'Patterns' },
+  { key: 'disc_insight', label: 'DISC Insights' },
+  { key: 'stage_insight', label: 'Stage Insights' },
+  { key: 'general', label: 'General' },
+];
+
+const AHA_TYPE_LEFT_BORDER: Record<string, string> = {
+  client_specific: '#3BBFBF',
+  pattern: '#F05F57',
+  disc_insight: '#C8613F',
+  stage_insight: '#2D4459',
+  general: '#7A8F95',
+};
+
+const AHA_TYPE_BADGE_LABEL: Record<string, string> = {
+  client_specific: 'Client insight',
+  pattern: 'Pattern',
+  disc_insight: 'DISC insight',
+  stage_insight: 'Stage insight',
+  general: 'General',
+};
+
+function formatAhaMomentDate(iso: string | null | undefined): string {
+  if (iso == null || String(iso).trim() === '') return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function normalizeAhaType(raw: string | null | undefined): AhaMomentType {
+  const t = (raw ?? '').trim();
+  if (
+    t === 'client_specific' ||
+    t === 'pattern' ||
+    t === 'disc_insight' ||
+    t === 'stage_insight' ||
+    t === 'general'
+  ) {
+    return t;
+  }
+  return 'general';
+}
 
 type GoldenRuleRow = {
   name: string;
@@ -93,6 +166,8 @@ export default function MyPractice() {
   const [clearAgg, setClearAgg] = useState<ClearAgg | null>(null);
   const [discAgg, setDiscAgg] = useState<DiscAgg | null>(null);
   const [clientsComplete, setClientsComplete] = useState<ClientCompletenessRow[]>([]);
+  const [ahaMoments, setAhaMoments] = useState<AhaMomentRow[]>([]);
+  const [ahaFilter, setAhaFilter] = useState<AhaFilter>('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -171,11 +246,20 @@ export default function MyPractice() {
           []
         );
 
+        const ahas = await db.select<AhaMomentRow>(
+          `SELECT a.*, c.name as client_name
+           FROM aha_moments a
+           LEFT JOIN clients c ON c.id = a.client_id
+           ORDER BY a.created_at DESC`,
+          []
+        );
+
         if (!cancelled) {
           setGoldenRules(rules);
           setClearAgg(clear[0] ?? null);
           setDiscAgg(disc[0] ?? null);
           setClientsComplete(activeClients);
+          setAhaMoments(ahas);
         }
       } catch (e) {
         if (!cancelled) {
@@ -223,6 +307,24 @@ export default function MyPractice() {
   const completeCount = clientsComplete.filter((row) => you2CompletenessPct(row) >= 100).length;
   const totalActive = clientsComplete.length;
 
+  const filteredAhaMoments = useMemo(() => {
+    if (ahaFilter === 'all') return ahaMoments;
+    return ahaMoments.filter((row) => normalizeAhaType(row.moment_type) === ahaFilter);
+  }, [ahaMoments, ahaFilter]);
+
+  const ahaCountsByType = useMemo(() => {
+    let pattern = 0;
+    let disc = 0;
+    let stage = 0;
+    for (const row of ahaMoments) {
+      const t = normalizeAhaType(row.moment_type);
+      if (t === 'pattern') pattern += 1;
+      if (t === 'disc_insight') disc += 1;
+      if (t === 'stage_insight') stage += 1;
+    }
+    return { pattern, disc, stage };
+  }, [ahaMoments]);
+
   if (loading) {
     return (
       <div className="p-6 text-sm" style={{ color: MUTED }}>
@@ -250,6 +352,127 @@ export default function MyPractice() {
           about your coaching.
         </p>
       </header>
+
+      <section
+        style={{
+          background: 'rgba(250, 238, 218, 0.3)',
+          border: '1px solid rgba(200, 97, 63, 0.3)',
+          borderRadius: 12,
+          padding: '20px 24px',
+          marginBottom: 24,
+        }}
+      >
+        <div className="relative flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold" style={{ fontSize: 16, color: CORAL }}>
+              💡 Aha Moments
+            </h2>
+            <p className="mt-1 max-w-xl text-[12px] leading-snug" style={{ color: MUTED }}>
+              Your coaching intelligence — insights captured in the moment.
+            </p>
+          </div>
+          <span
+            className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold text-white"
+            style={{ background: CORAL }}
+          >
+            {ahaMoments.length}
+          </span>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {AHA_FILTER_PILLS.map(({ key, label }) => {
+            const active = ahaFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setAhaFilter(key)}
+                className="rounded-full px-3 py-1 text-[11px] font-semibold transition-colors"
+                style={{
+                  border: `1px solid ${active ? CORAL : BORDER}`,
+                  background: active ? 'rgba(200, 97, 63, 0.12)' : 'white',
+                  color: active ? CORAL : HEADER,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-4">
+          {ahaMoments.length === 0 ? (
+            <div
+              className="rounded-[10px] border bg-white px-4 py-5"
+              style={{
+                borderColor: BORDER,
+                borderLeft: `4px solid ${CORAL}`,
+              }}
+            >
+              <p className="text-[13px] font-medium" style={{ color: MUTED }}>
+                💡 No aha moments yet.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed" style={{ color: MUTED }}>
+                Tap the Aha Moment button on any client card to capture insights as they happen.
+              </p>
+            </div>
+          ) : (
+            filteredAhaMoments.map((row) => {
+              const mt = normalizeAhaType(row.moment_type);
+              const leftColor = AHA_TYPE_LEFT_BORDER[mt] ?? MUTED;
+              const badgeLabel = AHA_TYPE_BADGE_LABEL[mt] ?? mt;
+              return (
+                <div
+                  key={row.id}
+                  className="mb-2 bg-white last:mb-0"
+                  style={{
+                    border: `1px solid ${BORDER}`,
+                    borderLeft: `4px solid ${leftColor}`,
+                    borderRadius: 10,
+                    padding: '12px 16px',
+                  }}
+                >
+                  <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
+                    {row.moment_text}
+                  </p>
+                  <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+                    <span className="text-[11px] font-semibold" style={{ color: leftColor }}>
+                      {badgeLabel}
+                    </span>
+                    <span className="min-w-0 text-center text-[11px]" style={{ color: MUTED }}>
+                      {mt === 'client_specific' && row.client_name?.trim()
+                        ? `— ${row.client_name.trim()}`
+                        : ''}
+                    </span>
+                    <span className="text-right text-[10px] tabular-nums" style={{ color: MUTED }}>
+                      {formatAhaMomentDate(row.created_at)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {ahaMoments.length >= 5 ? (
+          <div className="mt-5 border-t pt-4" style={{ borderColor: 'rgba(200, 97, 63, 0.2)' }}>
+            <p className="text-[13px] font-bold" style={{ color: HEADER }}>
+              Emerging Patterns
+            </p>
+            <ul className="mt-2 space-y-1 text-[12px]" style={{ color: MUTED }}>
+              <li>Pattern insights: {ahaCountsByType.pattern}</li>
+              <li>DISC insights: {ahaCountsByType.disc}</li>
+              <li>Stage insights: {ahaCountsByType.stage}</li>
+            </ul>
+            {ahaCountsByType.pattern >= 3 ? (
+              <p className="mt-3 text-[12px] leading-relaxed" style={{ color: CORAL }}>
+                You have {ahaCountsByType.pattern} pattern insights. These may reveal your coaching
+                signature. Review in Sequence 12.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
 
       <section>
         <div className="flex items-center gap-2">
