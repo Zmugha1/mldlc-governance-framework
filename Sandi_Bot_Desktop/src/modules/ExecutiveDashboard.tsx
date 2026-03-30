@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   Zap,
   RefreshCw,
+  Loader2,
   AlertTriangle,
   Award,
   Compass,
@@ -187,6 +188,27 @@ function formatExecutiveDashboardDate(d: Date): string {
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
+}
+
+function formatLastUpdatedDisplay(d: Date): string {
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const timeStr = d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  if (sameDay) {
+    return `today at ${timeStr}`;
+  }
+  return `${d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })} at ${timeStr}`;
 }
 
 function formatLocalYyyyMmDd(d: Date): string {
@@ -422,6 +444,7 @@ export default function ExecutiveDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [readinessRows, setReadinessRows] = useState<Awaited<ReturnType<typeof getAllStageReadiness>>>([]);
   const [activeConversationCount, setActiveConversationCount] = useState(0);
   const [dashboardKpis, setDashboardKpis] = useState<Awaited<ReturnType<typeof getDashboardKPIs>> | null>(null);
@@ -596,20 +619,18 @@ export default function ExecutiveDashboard() {
           };
         });
       setPriorityClients(validateClients);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Dashboard load:', err);
       setError(String((err as { message?: string })?.message ?? err ?? 'Failed to load dashboard'));
     } finally {
-      if (isManualRefresh) {
-        setRefreshing(false);
-      } else {
-        setLoading(false);
-      }
+      setRefreshing(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadDashboardData();
+    void loadDashboardData(true);
   }, [loadDashboardData]);
 
   const recommendationData = useMemo(() => {
@@ -784,14 +805,23 @@ export default function ExecutiveDashboard() {
         </h1>
         <p className="text-sm text-slate-500">{greetingDateLine}</p>
       </div>
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {lastUpdated ? (
+          <span className="text-[11px] text-slate-500">
+            Last updated: {formatLastUpdatedDisplay(lastUpdated)}
+          </span>
+        ) : null}
         <button
           type="button"
           onClick={() => { void loadDashboardData(true); }}
           disabled={refreshing}
           className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
         >
-          <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+          {refreshing ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <RefreshCw className="h-4 w-4" aria-hidden />
+          )}
           {refreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
