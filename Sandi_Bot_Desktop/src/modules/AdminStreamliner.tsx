@@ -29,6 +29,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Progress } from '@/components/ui/progress';
@@ -48,6 +56,64 @@ import { cn } from '@/lib/utils';
 import FeedbackButton from '../components/FeedbackButton';
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
+
+type UserFeedbackRow = {
+  id: string;
+  page_name: string;
+  feedback_type: string;
+  rating: string | null;
+  feedback_text: string | null;
+  feature_name: string | null;
+  thumbs_up: number | null;
+  session_date: string | null;
+  created_at: string;
+};
+
+function localCalendarDateYyyyMmDd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatFeedbackTableDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function truncateFeedbackText(s: string | null | undefined, maxLen: number): string {
+  const t = (s ?? '').trim();
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, maxLen)}…`;
+}
+
+function feedbackTypeBadgeClass(feedbackType: string): string {
+  const normalized = feedbackType.trim().toLowerCase();
+  if (normalized === 'daily_reflection') {
+    return 'bg-purple-100 text-purple-900 border-purple-200';
+  }
+  if (normalized === 'broken') {
+    return 'bg-red-100 text-red-900 border-red-200';
+  }
+  if (normalized === 'confusing') {
+    return 'bg-amber-100 text-amber-900 border-amber-200';
+  }
+  if (normalized === 'missing something' || normalized === 'missing') {
+    return 'bg-blue-100 text-blue-900 border-blue-200';
+  }
+  if (normalized === 'working well' || normalized === 'working_well') {
+    return 'bg-green-100 text-green-900 border-green-200';
+  }
+  return 'bg-slate-100 text-slate-800 border-slate-200';
+}
+
+function csvEscapeCell(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
 
 interface You2CompletenessAuditRow {
   name: string;
@@ -163,6 +229,13 @@ function StatCard({ title, value, change, icon: Icon, color }: {
 }
 
 export default function AdminStreamliner() {
+  const [adminTab, setAdminTab] = useState('activity');
+  const [feedbackTotal, setFeedbackTotal] = useState(0);
+  const [feedbackTopPage, setFeedbackTopPage] = useState<string>('—');
+  const [feedbackDailyCount, setFeedbackDailyCount] = useState(0);
+  const [feedbackRows, setFeedbackRows] = useState<UserFeedbackRow[]>([]);
+  const [feedbackTabLoading, setFeedbackTabLoading] = useState(false);
+  const [feedbackTabLoaded, setFeedbackTabLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [clients, setClients] = useState<DisplayClient[]>([]);
@@ -242,6 +315,85 @@ export default function AdminStreamliner() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (adminTab !== 'feedback' || loading) return;
+    let cancelled = false;
+    setFeedbackTabLoading(true);
+    void (async () => {
+      try {
+        const [totalRow, topPageRows, dailyRow, rows] = await Promise.all([
+          dbSelect<{ c: number }>('SELECT COUNT(*) as c FROM user_feedback', []),
+          dbSelect<{ page_name: string; c: number }>(
+            `SELECT page_name, COUNT(*) as c FROM user_feedback
+             GROUP BY page_name ORDER BY c DESC, page_name ASC LIMIT 1`,
+            []
+          ),
+          dbSelect<{ c: number }>(
+            `SELECT COUNT(*) as c FROM user_feedback WHERE feedback_type = 'daily_reflection'`,
+            []
+          ),
+          dbSelect<UserFeedbackRow>(
+            'SELECT * FROM user_feedback ORDER BY created_at DESC LIMIT 100',
+            []
+          ),
+        ]);
+        if (cancelled) return;
+        setFeedbackTotal(Number(totalRow[0]?.c ?? 0));
+        setFeedbackTopPage(
+          topPageRows[0]?.page_name != null && topPageRows[0].page_name !== ''
+            ? topPageRows[0].page_name
+            : '—'
+        );
+        setFeedbackDailyCount(Number(dailyRow[0]?.c ?? 0));
+        setFeedbackRows(rows);
+        setFeedbackTabLoaded(true);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setFeedbackTotal(0);
+          setFeedbackTopPage('—');
+          setFeedbackDailyCount(0);
+          setFeedbackRows([]);
+          setFeedbackTabLoaded(true);
+        }
+      } finally {
+        if (!cancelled) setFeedbackTabLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminTab, loading]);
+
+  const handleExportFeedbackCsv = async () => {
+    const all = await dbSelect<UserFeedbackRow>(
+      'SELECT * FROM user_feedback ORDER BY created_at DESC',
+      []
+    );
+    const header = ['date', 'page', 'type', 'feedback', 'session_date'];
+    const lines = [
+      header.join(','),
+      ...all.map((row) =>
+        [
+          row.created_at ?? '',
+          row.page_name ?? '',
+          row.feedback_type ?? '',
+          row.feedback_text ?? '',
+          row.session_date ?? '',
+        ]
+          .map((v) => csvEscapeCell(String(v)))
+          .join(',')
+      ),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `coach_bot_feedback_${localCalendarDateYyyyMmDd()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const loadBackupData = async () => {
     const [summary, rows] = await Promise.all([
@@ -657,7 +809,7 @@ ${workingText}`;
   return (
     <div className="space-y-6">
       <FeedbackButton pageName="Admin Streamliner" />
-      <Tabs defaultValue="activity">
+      <Tabs value={adminTab} onValueChange={setAdminTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="activity">
             <Activity className="h-4 w-4 mr-2" />
@@ -678,6 +830,10 @@ ${workingText}`;
           <TabsTrigger value="settings">
             <Settings className="h-4 w-4 mr-2" />
             Settings
+          </TabsTrigger>
+          <TabsTrigger value="feedback">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Feedback
           </TabsTrigger>
         </TabsList>
 
@@ -1571,6 +1727,106 @@ ${workingText}`;
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="feedback">
+          {feedbackTabLoading && !feedbackTabLoaded ? (
+            <div className="space-y-4 py-8">
+              <SkeletonCard lines={2} lineHeight={16} />
+              <SkeletonCard lines={4} lineHeight={14} />
+            </div>
+          ) : feedbackTabLoaded && feedbackTotal === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center text-slate-500">
+              <MessageSquare className="h-14 w-14 mb-4 opacity-30" />
+              <p className="text-base max-w-md">
+                No feedback collected yet.
+                <br />
+                Feedback from every page will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <StatCard
+                  title="Total feedback items"
+                  value={feedbackTotal}
+                  icon={MessageSquare}
+                  color="#6366F1"
+                />
+                <StatCard
+                  title="Most active page"
+                  value={feedbackTopPage}
+                  icon={Target}
+                  color="#8B5CF6"
+                />
+                <StatCard
+                  title="Daily reflections"
+                  value={feedbackDailyCount}
+                  icon={Heart}
+                  color="#A855F7"
+                />
+              </div>
+
+              <Card>
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 space-y-0">
+                  <div>
+                    <CardTitle className="text-lg">All Feedback</CardTitle>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleExportFeedbackCsv()}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export to CSV
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[120px]">Date</TableHead>
+                        <TableHead>Page</TableHead>
+                        <TableHead className="w-[140px]">Type</TableHead>
+                        <TableHead>Feedback</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {feedbackRows.map((row) => {
+                        const full = (row.feedback_text ?? '').trim();
+                        const truncated = truncateFeedbackText(row.feedback_text, 80);
+                        return (
+                          <TableRow key={row.id}>
+                            <TableCell className="whitespace-nowrap text-slate-600">
+                              {formatFeedbackTableDate(row.created_at)}
+                            </TableCell>
+                            <TableCell className="text-slate-800">{row.page_name}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={cn('text-xs font-normal', feedbackTypeBadgeClass(row.feedback_type))}
+                              >
+                                {row.feedback_type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-md">
+                              <span
+                                className="block truncate text-slate-700"
+                                title={full.length > 80 ? full : undefined}
+                              >
+                                {truncated || '—'}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
