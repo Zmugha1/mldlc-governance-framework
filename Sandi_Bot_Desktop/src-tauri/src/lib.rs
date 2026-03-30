@@ -5,6 +5,7 @@ mod text_extractor;
 mod disc_parser;
 mod you2_parser;
 mod tumay_parser;
+mod migrations;
 
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -972,6 +973,7 @@ pub fn run() {
                   ALTER TABLE clients ADD COLUMN golden_rules_notes TEXT;",
             kind: MigrationKind::Up,
         },
+        migrations::migration_54(),
     ];
 
     tauri::Builder::default()
