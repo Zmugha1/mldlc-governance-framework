@@ -259,6 +259,68 @@ function startOfWeekMondayLocal(ref: Date): Date {
   return d;
 }
 
+function startOfMonthLocal(ref: Date): Date {
+  return new Date(ref.getFullYear(), ref.getMonth(), 1);
+}
+
+function startOfQuarterLocal(ref: Date): Date {
+  const q = Math.floor(ref.getMonth() / 3) * 3;
+  return new Date(ref.getFullYear(), q, 1);
+}
+
+function startOfYearLocal(ref: Date): Date {
+  return new Date(ref.getFullYear(), 0, 1);
+}
+
+type KpiPeriod = 'weekly' | 'monthly' | 'quarterly' | 'ytd';
+
+const COACH_BOT_INSTALL_LOCAL = new Date(2026, 2, 27);
+
+const PLACEMENT_COUNT_SQL = `SELECT COUNT(*) as count
+             FROM clients
+             WHERE business_purchase_date IS NOT NULL
+               AND outcome_bucket = 'converted'
+               AND date(business_purchase_date) >= date($1)
+               AND date(business_purchase_date) <= date($2)`;
+
+const C3_SESSION_COUNT_SQL = `SELECT COUNT(*) as count
+             FROM coaching_sessions
+             WHERE stage = 'C3'
+               AND session_date IS NOT NULL
+               AND TRIM(session_date) != ''
+               AND date(session_date) >= date($1)
+               AND date(session_date) <= date($2)`;
+
+function formatUsdWhole(n: number): string {
+  return `$${Math.round(n).toLocaleString('en-US')}`;
+}
+
+function timeSavedForPeriod(period: KpiPeriod, ref: Date): { hours: number; dollars: number } {
+  switch (period) {
+    case 'weekly':
+      return { hours: 2, dollars: 300 };
+    case 'monthly':
+      return { hours: 8, dollars: 1200 };
+    case 'quarterly':
+      return { hours: 26, dollars: 3900 };
+    case 'ytd': {
+      const end = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+      const start = new Date(
+        COACH_BOT_INSTALL_LOCAL.getFullYear(),
+        COACH_BOT_INSTALL_LOCAL.getMonth(),
+        COACH_BOT_INSTALL_LOCAL.getDate()
+      );
+      if (end < start) return { hours: 0, dollars: 0 };
+      const msPerDay = 86400000;
+      const diffDays = Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1;
+      const weeks = Math.max(1, Math.ceil(diffDays / 7));
+      return { hours: weeks * 2, dollars: weeks * 300 };
+    }
+    default:
+      return { hours: 0, dollars: 0 };
+  }
+}
+
 const C3_WEEKLY_TARGET = 2.5;
 
 const PLACEMENT_TARGET_COUNT = 11;
@@ -295,10 +357,14 @@ function MorningBriefKpiCard({
   label,
   value,
   sub,
+  valueColor,
+  footnote,
 }: {
   label: string;
   value: string | number;
   sub: string;
+  valueColor?: string;
+  footnote?: string;
 }) {
   return (
     <div
@@ -314,12 +380,20 @@ function MorningBriefKpiCard({
       >
         {label}
       </p>
-      <p className="mt-1 font-bold tabular-nums" style={{ fontSize: 28, color: '#2D4459' }}>
+      <p
+        className="mt-1 font-bold tabular-nums"
+        style={{ fontSize: 28, color: valueColor ?? '#2D4459' }}
+      >
         {value}
       </p>
       <p className="mt-1" style={{ fontSize: 12, color: '#7A8F95' }}>
         {sub}
       </p>
+      {footnote ? (
+        <p className="mt-1.5" style={{ fontSize: 10, color: '#7A8F95' }}>
+          {footnote}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -339,8 +413,19 @@ export default function ExecutiveDashboard() {
     Map<string, 'D' | 'I' | 'S' | 'C'>
   >(() => new Map());
   const [greetingNow, setGreetingNow] = useState(() => Date.now());
-  const [placementTrackerCount, setPlacementTrackerCount] = useState(0);
-  const [c3WeekCount, setC3WeekCount] = useState(0);
+  const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod>('ytd');
+  const [placementByPeriod, setPlacementByPeriod] = useState({
+    weekly: 0,
+    monthly: 0,
+    quarterly: 0,
+    ytd: 0,
+  });
+  const [c3ByPeriod, setC3ByPeriod] = useState({
+    weekly: 0,
+    monthly: 0,
+    quarterly: 0,
+    ytd: 0,
+  });
   const [glanceRecFilter, setGlanceRecFilter] = useState<GlanceRecFilter>('all');
   const [glanceStageFilter, setGlanceStageFilter] = useState<GlanceStageFilter>('all');
   const [anchorSeekerLogClientId, setAnchorSeekerLogClientId] = useState<string | null>(null);
@@ -387,57 +472,65 @@ export default function ExecutiveDashboard() {
       const weekStartLocal = startOfWeekMondayLocal(now);
       const weekStartStr = formatLocalYyyyMmDd(weekStartLocal);
       const todayStr = formatLocalYyyyMmDd(now);
+      const monthStartStr = formatLocalYyyyMmDd(startOfMonthLocal(now));
+      const quarterStartStr = formatLocalYyyyMmDd(startOfQuarterLocal(now));
+      const yearStartStr = formatLocalYyyyMmDd(startOfYearLocal(now));
 
-      const [s, c, readiness, sessionRows, discProfileRows, placementRows, c3WeekRows, anchorSeekerRows] =
-        await Promise.all([
-          getDashboardStats(),
-          getAllClients(),
-          getAllStageReadiness(),
-          dbSelect<{
-            client_id: string;
-            session_count: number;
-            last_session_date: string | null;
-          }>(
-            `SELECT client_id,
-                    COUNT(*) as session_count,
-                    MAX(session_date) as last_session_date
-             FROM coaching_sessions
-             GROUP BY client_id`,
-            []
-          ),
-          dbSelect<{
-            client_id: string;
-            natural_d: number | null;
-            natural_i: number | null;
-            natural_s: number | null;
-            natural_c: number | null;
-          }>(
-            `SELECT client_id, natural_d, natural_i, natural_s, natural_c
-             FROM client_disc_profiles`,
-            []
-          ),
-          dbSelect<{ count: number }>(
-            `SELECT COUNT(*) as count
-             FROM clients
-             WHERE business_purchase_date IS NOT NULL
-               AND outcome_bucket = 'converted'`,
-            []
-          ),
-          dbSelect<{ count: number }>(
-            `SELECT COUNT(*) as count
-             FROM coaching_sessions
-             WHERE stage = 'C3'
-               AND session_date IS NOT NULL
-               AND TRIM(session_date) != ''
-               AND date(session_date) >= date($1)
-               AND date(session_date) <= date($2)`,
-            [weekStartStr, todayStr]
-          ),
-          dbSelect<{ id: string; weekly_seeker_contacts: string | null }>(
-            `SELECT id, weekly_seeker_contacts FROM clients ORDER BY datetime(created_at) ASC LIMIT 1`,
-            []
-          ),
-        ]);
+      const [
+        s,
+        c,
+        readiness,
+        sessionRows,
+        discProfileRows,
+        placementW,
+        placementM,
+        placementQ,
+        placementY,
+        c3W,
+        c3M,
+        c3Q,
+        c3Y,
+        anchorSeekerRows,
+      ] = await Promise.all([
+        getDashboardStats(),
+        getAllClients(),
+        getAllStageReadiness(),
+        dbSelect<{
+          client_id: string;
+          session_count: number;
+          last_session_date: string | null;
+        }>(
+          `SELECT client_id,
+                  COUNT(*) as session_count,
+                  MAX(session_date) as last_session_date
+           FROM coaching_sessions
+           GROUP BY client_id`,
+          []
+        ),
+        dbSelect<{
+          client_id: string;
+          natural_d: number | null;
+          natural_i: number | null;
+          natural_s: number | null;
+          natural_c: number | null;
+        }>(
+          `SELECT client_id, natural_d, natural_i, natural_s, natural_c
+           FROM client_disc_profiles`,
+          []
+        ),
+        dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [weekStartStr, todayStr]),
+        dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [monthStartStr, todayStr]),
+        dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [quarterStartStr, todayStr]),
+        dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [yearStartStr, todayStr]),
+        dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [weekStartStr, todayStr]),
+        dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [monthStartStr, todayStr]),
+        dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [quarterStartStr, todayStr]),
+        dbSelect<{ count: number }>(C3_SESSION_COUNT_SQL, [yearStartStr, todayStr]),
+        dbSelect<{ id: string; weekly_seeker_contacts: string | null }>(
+          `SELECT id, weekly_seeker_contacts FROM clients ORDER BY datetime(created_at) ASC LIMIT 1`,
+          []
+        ),
+      ]);
       setStats(s);
       setClients(c);
       setReadinessRows(readiness);
@@ -460,8 +553,18 @@ export default function ExecutiveDashboard() {
         if (letter) discFromProfiles.set(row.client_id, letter);
       }
       setDiscLetterByProfileClientId(discFromProfiles);
-      setPlacementTrackerCount(Number(placementRows[0]?.count ?? 0));
-      setC3WeekCount(Number(c3WeekRows[0]?.count ?? 0));
+      setPlacementByPeriod({
+        weekly: Number(placementW[0]?.count ?? 0),
+        monthly: Number(placementM[0]?.count ?? 0),
+        quarterly: Number(placementQ[0]?.count ?? 0),
+        ytd: Number(placementY[0]?.count ?? 0),
+      });
+      setC3ByPeriod({
+        weekly: Number(c3W[0]?.count ?? 0),
+        monthly: Number(c3M[0]?.count ?? 0),
+        quarterly: Number(c3Q[0]?.count ?? 0),
+        ytd: Number(c3Y[0]?.count ?? 0),
+      });
 
       const anchorRow = anchorSeekerRows[0];
       if (anchorRow) {
@@ -718,6 +821,40 @@ export default function ExecutiveDashboard() {
     'font-semibold border-[#C8E8E5] text-[#2D4459] bg-[#F4F7F8]';
   const tableBodyRowClass = 'border-b border-[#C8E8E5]';
 
+  const timeSavedDisplay = useMemo(
+    () => timeSavedForPeriod(kpiPeriod, new Date(greetingNow)),
+    [kpiPeriod, greetingNow]
+  );
+
+  const selectedPlacementCount = placementByPeriod[kpiPeriod];
+  const selectedC3Count = c3ByPeriod[kpiPeriod];
+
+  const placementKpiValue =
+    kpiPeriod === 'ytd'
+      ? `${selectedPlacementCount} of ${PLACEMENT_TARGET_COUNT}`
+      : selectedPlacementCount;
+
+  const placementKpiSub: Record<KpiPeriod, string> = {
+    weekly: 'Placements this week',
+    monthly: 'Placements this month',
+    quarterly: 'Placements this quarter',
+    ytd: 'Placements this year vs annual target',
+  };
+
+  const c3KpiLabel = kpiPeriod === 'weekly' ? 'C3 This Week' : 'C3 SESSIONS';
+
+  const c3KpiValue =
+    kpiPeriod === 'weekly'
+      ? `${selectedC3Count} / ${C3_WEEKLY_TARGET}`
+      : String(selectedC3Count);
+
+  const c3KpiSub: Record<KpiPeriod, string> = {
+    weekly: 'C3 sessions this week vs weekly target',
+    monthly: 'C3 sessions this month',
+    quarterly: 'C3 sessions this quarter',
+    ytd: 'C3 sessions this year',
+  };
+
   if (loading) {
     return (
       <div className="p-6 space-y-4">
@@ -939,6 +1076,37 @@ export default function ExecutiveDashboard() {
         )}
       </section>
 
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#7A8F95' }}>
+          Period
+        </span>
+        {(
+          [
+            { key: 'weekly' as const, label: 'Weekly' },
+            { key: 'monthly' as const, label: 'Monthly' },
+            { key: 'quarterly' as const, label: 'Quarterly' },
+            { key: 'ytd' as const, label: 'YTD' },
+          ] as const
+        ).map(({ key, label }) => {
+          const active = kpiPeriod === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setKpiPeriod(key)}
+              className="rounded-full px-3 py-1 text-xs font-semibold transition-colors"
+              style={{
+                border: '1px solid #C8E8E5',
+                background: active ? '#C8E8E5' : 'white',
+                color: '#2D4459',
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <MorningBriefKpiCard
           label="Total Clients"
@@ -961,14 +1129,21 @@ export default function ExecutiveDashboard() {
           sub="Clients currently paused"
         />
         <MorningBriefKpiCard
-          label="Placement Tracker"
-          value={`${placementTrackerCount} of ${PLACEMENT_TARGET_COUNT}`}
-          sub="Converted with business purchase date"
+          label="TIME SAVED"
+          value={`${timeSavedDisplay.hours} hours`}
+          sub={`${formatUsdWhole(timeSavedDisplay.dollars)} in coaching time`}
+          valueColor="#3BBFBF"
+          footnote="vs manual admin baseline"
         />
         <MorningBriefKpiCard
-          label="C3 This Week"
-          value={`${c3WeekCount.toFixed(1)} / ${C3_WEEKLY_TARGET}`}
-          sub="C3 sessions this week vs weekly target"
+          label="Placement Tracker"
+          value={placementKpiValue}
+          sub={placementKpiSub[kpiPeriod]}
+        />
+        <MorningBriefKpiCard
+          label={c3KpiLabel}
+          value={c3KpiValue}
+          sub={c3KpiSub[kpiPeriod]}
         />
       </section>
 
@@ -1002,7 +1177,7 @@ export default function ExecutiveDashboard() {
                     <TableCell>
                       {row.c5 ? (
                         <span style={{ color: '#2D4459' }}>
-                          {placementTrackerCount} of {PLACEMENT_TARGET_COUNT}
+                          {placementByPeriod.ytd} of {PLACEMENT_TARGET_COUNT}
                         </span>
                       ) : row.clientCount > 0 ? (
                         <span className="font-medium" style={{ color: '#3BBFBF' }}>
