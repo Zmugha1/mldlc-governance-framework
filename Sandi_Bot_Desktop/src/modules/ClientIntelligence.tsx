@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
 import { stageConfig, discColors } from '@/data/sampleClients';
@@ -606,6 +607,7 @@ function ClientDetailModal({
     block_reflection_block: string | null;
     block_coach_assessment: string | null;
     blocks_complete: number | null;
+    session_scheduled: number | null;
     updated_at: string | null;
   }>>([]);
   const [fathomSessionCount, setFathomSessionCount] = useState<number>(0);
@@ -640,6 +642,8 @@ function ClientDetailModal({
   );
   const [manualSessionNotes, setManualSessionNotes] = useState('');
   const [manualSessionSaving, setManualSessionSaving] = useState(false);
+  const [manualSessionScheduledInAdvance, setManualSessionScheduledInAdvance] =
+    useState(true);
   const [manualSessionConfirm, setManualSessionConfirm] = useState<string | null>(
     null
   );
@@ -745,6 +749,7 @@ function ClientDetailModal({
     if (!client) return;
     setManualSessionDate(localCalendarDateYyyyMmDd());
     setManualSessionNotes('');
+    setManualSessionScheduledInAdvance(true);
     setManualSessionConfirm(null);
   }, [client?.id]);
 
@@ -951,6 +956,7 @@ function ClientDetailModal({
         block_reflection_block: string | null;
         block_coach_assessment: string | null;
         blocks_complete: number | null;
+        session_scheduled: number | null;
         updated_at: string | null;
       }>(
         `SELECT
@@ -973,6 +979,7 @@ function ClientDetailModal({
          block_reflection_block,
          block_coach_assessment,
          blocks_complete,
+         session_scheduled,
          updated_at
          FROM coaching_sessions
          WHERE client_id = ?
@@ -1043,6 +1050,20 @@ function ClientDetailModal({
   const stageCompartmentSubtitle =
     stageCardCompartmentSubtitle(resolvedPipelineCode);
 
+  const c1ShowRateLine = useMemo(() => {
+    if (resolvedPipelineCode !== 'C1') return null;
+    const c1Sessions = fathomSessions.filter((s) => (s.stage ?? '').trim() === 'C1');
+    const scheduled = c1Sessions.filter((s) => Number(s.session_scheduled ?? 0) === 1)
+      .length;
+    const held = c1Sessions.length;
+    if (scheduled === 0) return null;
+    const pct = Math.round((held / scheduled) * 1000) / 10;
+    let color = '#dc2626';
+    if (pct >= 75) color = '#22c55e';
+    else if (pct >= 50) color = '#D97706';
+    return { scheduled, held, pct, color };
+  }, [resolvedPipelineCode, fathomSessions]);
+
   const persistedVisionText = (client.visionStatement.paragraph ?? '').trim();
   const visionIsApproved = client.vision_approved === 1;
 
@@ -1082,6 +1103,7 @@ function ClientDetailModal({
       block_reflection_block: string | null;
       block_coach_assessment: string | null;
       blocks_complete: number | null;
+      session_scheduled: number | null;
       updated_at: string | null;
     }>(
       `SELECT
@@ -1104,6 +1126,7 @@ function ClientDetailModal({
        block_reflection_block,
        block_coach_assessment,
        blocks_complete,
+       session_scheduled,
        updated_at
        FROM coaching_sessions
        WHERE client_id = ?
@@ -1219,8 +1242,8 @@ function ClientDetailModal({
       const now = new Date().toISOString();
       await dbExecute(
         `INSERT INTO coaching_sessions
-         (client_id, session_date, session_number, stage, notes, next_actions, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (client_id, session_date, session_number, stage, notes, next_actions, updated_at, session_scheduled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           client.id,
           dateStr,
@@ -1229,6 +1252,7 @@ function ClientDetailModal({
           notesVal,
           null,
           now,
+          manualSessionScheduledInAdvance ? 1 : 0,
         ]
       );
       await dbExecute(
@@ -1249,6 +1273,7 @@ function ClientDetailModal({
       setManualSessionConfirm(friendly || dateStr);
       setManualSessionDate(localCalendarDateYyyyMmDd());
       setManualSessionNotes('');
+      setManualSessionScheduledInAdvance(true);
     } catch (e) {
       console.error('manual session add failed:', e);
     } finally {
@@ -3039,6 +3064,15 @@ function ClientDetailModal({
 
           <TabsContent value="fathom" className="h-full min-h-0 mt-0">
             <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
+            {c1ShowRateLine ? (
+              <p
+                className="text-xs font-semibold"
+                style={{ color: c1ShowRateLine.color }}
+              >
+                C1 Show Rate: {c1ShowRateLine.pct}% ({c1ShowRateLine.held} held of{' '}
+                {c1ShowRateLine.scheduled} scheduled)
+              </p>
+            ) : null}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Add Session Manually</CardTitle>
@@ -3072,6 +3106,22 @@ function ClientDetailModal({
                       setManualSessionConfirm(null);
                     }}
                   />
+                </div>
+                <div className="flex items-start gap-2 pt-1">
+                  <Checkbox
+                    id="manual-session-scheduled"
+                    checked={manualSessionScheduledInAdvance}
+                    onCheckedChange={(v) =>
+                      setManualSessionScheduledInAdvance(v === true)
+                    }
+                    className="mt-0.5"
+                  />
+                  <Label
+                    htmlFor="manual-session-scheduled"
+                    className="cursor-pointer text-sm font-normal leading-snug text-slate-700"
+                  >
+                    This session was scheduled in advance (not a walk-in or same-day)
+                  </Label>
                 </div>
                 <Button
                   type="button"
