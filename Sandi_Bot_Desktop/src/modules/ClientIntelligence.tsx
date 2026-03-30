@@ -1,23 +1,19 @@
 import { useState, useMemo, useEffect, useRef, type ChangeEvent } from 'react';
 import {
   Search,
-  Filter,
   Briefcase,
   Mail,
   Phone,
   TrendingUp,
-  ChevronRight,
   AlertCircle,
   AlertTriangle,
-  Upload,
-  FolderOpen,
-  FileText,
   Plus,
   Check,
   ClipboardList,
   Clock,
   Calendar,
   Loader2,
+  Users,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,16 +23,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { FileUploadZone, type UploadedFile } from '@/components/FileUploadZone';
-import { LocalFileWatcher } from '@/components/LocalFileWatcher';
-import { parseDocument, generateClientFromDocuments } from '@/utils/documentParser';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
 import { getAllClients, createClient, inactivateClient } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
-import { calculateReadinessScore } from '@/services/coachingService';
 import { dbExecute, dbSelect } from '@/services/db';
 import { logEntry } from '@/services/auditService';
 import {
@@ -64,6 +56,16 @@ import { getDiscProfilesMap } from '@/services/dashboardService';
 import { cn } from '@/lib/utils';
 
 const CONFIRMED_BY = 'Zubia';
+
+/** Client Intelligence sidebar / header — DISC ring colors (solid + ~20% fill). */
+const CI_DISC_STYLE: Record<'D' | 'I' | 'S' | 'C', { solid: string; muted: string }> = {
+  D: { solid: '#F05F57', muted: 'rgba(240, 95, 87, 0.2)' },
+  I: { solid: '#C8613F', muted: 'rgba(200, 97, 63, 0.2)' },
+  S: { solid: '#3BBFBF', muted: 'rgba(59, 191, 191, 0.2)' },
+  C: { solid: '#7A8F95', muted: 'rgba(122, 143, 149, 0.2)' },
+};
+
+type SidebarRecFilter = 'all' | 'VALIDATE' | 'GATHER' | 'PAUSE' | 'gone_quiet';
 
 const STAGE_DISPLAY_NAMES: Record<string, string> = {
   IC: 'Initial Contact',
@@ -204,6 +206,11 @@ function splitPinkFlags(allFlags: string[]): {
     .filter((f) => f.startsWith('resolved:'))
     .map((f) => f.replace(/^resolved:/, ''));
   return { activeFlags, resolvedFlags };
+}
+
+function countActivePinkFlagsOnClient(client: Client): number {
+  const { activeFlags } = splitPinkFlags(parseClientPinkFlagsJson(client.pink_flags));
+  return activeFlags.length;
 }
 
 type DisplayClient = ReturnType<typeof clientToDisplay> & {
@@ -510,14 +517,10 @@ function parseListField(
 
 function ClientDetailModal({
   client,
-  isOpen,
-  onClose,
   onInactivate,
   onVisionUpdated,
 }: {
-  client: DisplayClient | null;
-  isOpen: boolean;
-  onClose: () => void;
+  client: DisplayClient;
   onInactivate?: (id: string) => void;
   onVisionUpdated?: () => void;
 }) {
@@ -596,6 +599,7 @@ function ClientDetailModal({
   }>>([]);
   const [fathomSessionCount, setFathomSessionCount] = useState<number>(0);
   const [showInactivateConfirm, setShowInactivateConfirm] = useState(false);
+  const [detailTab, setDetailTab] = useState('overview');
   const [localPinkFlagsJson, setLocalPinkFlagsJson] = useState<string>('[]');
   const [resolvingPinkFlag, setResolvingPinkFlag] = useState<string | null>(
     null
@@ -662,16 +666,21 @@ function ClientDetailModal({
   const [visionApproveMsg, setVisionApproveMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!client?.id || !isOpen) return;
+    if (!client?.id) return;
     setVisionGenerating(false);
     setVisionGenError(null);
     setVisionApproveMsg(null);
     setVisionDraftMode(false);
     setVisionEditText((client.visionStatement.paragraph ?? '').trim());
-  }, [client?.id, isOpen]);
+  }, [client?.id]);
 
   useEffect(() => {
-    if (isOpen && client?.id) {
+    setDetailTab('overview');
+    setShowInactivateConfirm(false);
+  }, [client?.id]);
+
+  useEffect(() => {
+    if (client?.id) {
       setGoneQuietResponseValue('');
       setGoneQuietResponseLogged(false);
       if (goneQuietResponseResetTimerRef.current) {
@@ -684,7 +693,7 @@ function ClientDetailModal({
       setPinkFlagResponseLogged({});
       setPinkFlagResponseSaving({});
     }
-  }, [isOpen, client?.id]);
+  }, [client?.id]);
 
   useEffect(() => {
     return () => {
@@ -697,7 +706,7 @@ function ClientDetailModal({
   }, []);
 
   useEffect(() => {
-    if (!client || !isOpen) return;
+    if (!client) return;
     const ob = (client.outcome_bucket ?? '').toLowerCase();
     if (ob !== 'converted') {
       setGoldenRulesDraft('');
@@ -719,17 +728,17 @@ function ClientDetailModal({
         setGoldenRulesDraft('');
         setGoldenRulesHasPersisted(false);
       });
-  }, [client?.id, client?.outcome_bucket, isOpen]);
+  }, [client?.id, client?.outcome_bucket]);
 
   useEffect(() => {
-    if (!client || !isOpen) return;
+    if (!client) return;
     setManualSessionDate(localCalendarDateYyyyMmDd());
     setManualSessionNotes('');
     setManualSessionConfirm(null);
-  }, [client?.id, isOpen]);
+  }, [client?.id]);
 
   useEffect(() => {
-    if (!client?.id || !isOpen) return;
+    if (!client?.id) return;
     if (!shouldShowPlacementMilestones(client)) {
       setPlacementPocReached(null);
       setPlacementTriggerSubmitted(null);
@@ -769,10 +778,10 @@ function ClientDetailModal({
         setPlacementBusinessPurchase(null);
         setPlacementRevenueStored(null);
       });
-  }, [client?.id, client?.inferred_stage, client?.outcome_bucket, isOpen]);
+  }, [client?.id, client?.inferred_stage, client?.outcome_bucket]);
 
   useEffect(() => {
-    if (client && isOpen) {
+    if (client) {
       const stageForDraft =
         parsePipelineStageCode(client.inferred_stage) ?? 'IC';
       setNoteDraft((prev) => ({ ...prev, stage: stageForDraft }));
@@ -997,7 +1006,7 @@ function ClientDetailModal({
       setIsEditingLastContact(false);
       setLastContactDraft('');
     }
-  }, [client?.id, isOpen]);
+  }, [client?.id]);
 
   const mostRecentSessionDate = useMemo(() => {
     for (const s of fathomSessions) {
@@ -1014,8 +1023,6 @@ function ClientDetailModal({
       return formatLastContactDisplay(mostRecentSessionDate);
     return 'Not set';
   }, [lastContactDateDb, mostRecentSessionDate]);
-
-  if (!client) return null;
 
   const resolvedPipelineCode = resolvePipelineStageCode(client.inferred_stage);
   const stageLabel =
@@ -1658,99 +1665,205 @@ function ClientDetailModal({
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
   };
 
+  const discUi = CI_DISC_STYLE[client.disc.style];
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl w-[90vw] h-[90vh] flex flex-col overflow-hidden p-0">
-        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
-          <DialogTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div
-                className="h-12 w-12 rounded-full flex items-center justify-center text-white font-bold"
-                style={{ backgroundColor: discColors[client.disc.style] }}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {showInactivateConfirm ? (
+        <div
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3"
+          style={{ borderColor: '#C8E8E5', background: '#FEFAF5' }}
+        >
+          <p className="max-w-xl text-sm" style={{ color: '#2D4459' }}>
+            Inactivate <span className="font-semibold">{client.name}</span>? They will be removed from
+            your active pipeline but all data is preserved. You can reactivate them at any time.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setShowInactivateConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-slate-600 text-white hover:bg-slate-700"
+              onClick={handleInactivate}
+            >
+              Inactivate
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        className="mb-5 flex min-w-0 flex-wrap items-start justify-between gap-4"
+        style={{ marginBottom: 20 }}
+      >
+        <div className="flex min-w-0 flex-1 items-start gap-4">
+          <div
+            className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full text-sm font-bold"
+            style={{ backgroundColor: discUi.muted, color: discUi.solid }}
+          >
+            {client.avatar}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold" style={{ fontSize: 24, color: '#2D4459' }}>
+              {client.name}
+            </h2>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium" style={{ color: '#7A8F95' }}>
+                {discStyleLabel}
+              </span>
+              <Badge
+                className="border-0 text-xs font-semibold text-slate-800"
+                style={{
+                  backgroundColor: getStageBadgeColor(client.inferred_stage?.trim() ?? ''),
+                }}
               >
-                {client.avatar}
+                {getStageDisplayName(client.inferred_stage?.trim() ?? '')}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {getBucketDisplayName(client.outcome_bucket)}
+              </Badge>
+              {activePinkFlags.length > 0 ? (
+                <Badge
+                  className="min-h-6 min-w-6 shrink-0 border-0 bg-red-600 px-2 text-xs font-bold text-white hover:bg-red-600"
+                  title={`${activePinkFlags.length} active pink flag(s)`}
+                >
+                  {activePinkFlags.length}
+                </Badge>
+              ) : null}
+            </div>
+            <div className="mt-1 text-xs" style={{ color: '#7A8F95' }}>
+              {[contact.email, contact.phone].filter(Boolean).join(' · ') || '—'}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {onInactivate ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-[#2D4459] hover:bg-[#C8E8E5]/30"
+              onClick={() => setShowInactivateConfirm(true)}
+            >
+              Inactivate
+            </Button>
+          ) : null}
+          {isEditingLastContact ? (
+            <div className="flex flex-col items-end gap-2">
+              <Input
+                type="date"
+                value={lastContactDraft}
+                onChange={(e) => setLastContactDraft(e.target.value)}
+                className="w-[11rem]"
+              />
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-[#3BBFBF] text-white hover:bg-[#3BBFBF]/90"
+                  onClick={() => {
+                    void handleSaveLastContact();
+                  }}
+                  disabled={isSavingLastContact || !lastContactDraft.trim()}
+                >
+                  {isSavingLastContact ? 'Saving...' : 'Save'}
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditingLastContact(false)}>
+                  Cancel
+                </Button>
               </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-bold">{client.name}</h2>
-                  {activePinkFlags.length > 0 && (
-                    <Badge
-                      className="min-h-6 min-w-6 shrink-0 rounded-full border-0 bg-red-600 px-2 text-xs font-bold text-white hover:bg-red-600"
-                      title={`${activePinkFlags.length} active pink flag(s)`}
-                    >
-                      {activePinkFlags.length}
-                    </Badge>
-                  )}
-                  <Badge
-                    className="text-slate-800 text-xs font-semibold border-0"
-                    style={{
-                      backgroundColor: getStageBadgeColor(
-                        client.inferred_stage?.trim() ?? ''
-                      ),
-                    }}
-                  >
-                    {getStageDisplayName(client.inferred_stage?.trim() ?? '')}
-                  </Badge>
-                </div>
-                <p className="text-sm text-slate-500 font-normal">
-                  {discStyleLabel} • {contact.company || '—'}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-right">
+              <div>
+                <p className="text-[11px] font-medium" style={{ color: '#7A8F95' }}>
+                  Last contacted
+                </p>
+                <p className="text-sm" style={{ color: '#2D4459' }}>
+                  {lastContactedDisplay}
                 </p>
               </div>
-            </div>
-            {onInactivate && (
               <Button
-                variant="outline"
+                type="button"
+                variant="ghost"
                 size="sm"
-                className="border-slate-300 text-slate-700 hover:bg-slate-100"
-                onClick={() => setShowInactivateConfirm(true)}
+                className="shrink-0 text-[#3BBFBF] hover:text-[#3BBFBF]"
+                onClick={() => {
+                  const db = lastContactDateDb?.trim();
+                  setLastContactDraft(
+                    db
+                      ? toDateInputValue(db)
+                      : mostRecentSessionDate
+                        ? toDateInputValue(mostRecentSessionDate)
+                        : ''
+                  );
+                  setIsEditingLastContact(true);
+                }}
               >
-                Inactivate
-              </Button>
-            )}
-          </DialogTitle>
-        </DialogHeader>
-
-        <Dialog open={showInactivateConfirm} onOpenChange={setShowInactivateConfirm}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Inactivate {client.name}?</DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-slate-600">
-              They will be removed from your active pipeline
-              but all data is preserved.
-              You can reactivate them at any time.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowInactivateConfirm(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className="bg-slate-600 hover:bg-slate-700 text-white"
-                onClick={handleInactivate}
-              >
-                Inactivate
+                Edit
               </Button>
             </div>
-          </DialogContent>
-        </Dialog>
+          )}
+        </div>
+      </div>
 
-        <Tabs defaultValue="overview" className="px-6 pb-6 flex-1 min-h-0 flex flex-col">
-          <TabsList className="grid grid-cols-7 mb-4 shrink-0">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="disc">DISC</TabsTrigger>
-            <TabsTrigger value="you2">You 2.0</TabsTrigger>
-            <TabsTrigger value="tumay">TUMAY</TabsTrigger>
-            <TabsTrigger value="vision">Vision</TabsTrigger>
-            <TabsTrigger value="fathom">Fathom</TabsTrigger>
-            <TabsTrigger value="reminders">Reminders</TabsTrigger>
+      <Tabs value={detailTab} onValueChange={setDetailTab} className="flex min-h-0 flex-1 flex-col">
+        <div
+          className="shrink-0 border border-b-0 px-1"
+          style={{ background: 'white', borderColor: '#C8E8E5', borderRadius: '12px 12px 0 0' }}
+        >
+          <TabsList className="mb-0 grid h-auto w-full grid-cols-7 gap-0 rounded-none border-0 bg-transparent p-1">
+            <TabsTrigger
+              value="overview"
+              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
+            >
+              Overview
+            </TabsTrigger>
+            <TabsTrigger
+              value="disc"
+              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
+            >
+              DISC
+            </TabsTrigger>
+            <TabsTrigger
+              value="you2"
+              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
+            >
+              You 2.0
+            </TabsTrigger>
+            <TabsTrigger
+              value="tumay"
+              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
+            >
+              TUMAY
+            </TabsTrigger>
+            <TabsTrigger
+              value="vision"
+              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
+            >
+              Vision
+            </TabsTrigger>
+            <TabsTrigger
+              value="fathom"
+              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
+            >
+              Fathom
+            </TabsTrigger>
+            <TabsTrigger
+              value="reminders"
+              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
+            >
+              Reminders
+            </TabsTrigger>
           </TabsList>
+        </div>
 
-          <TabsContent value="overview" className="h-full min-h-0 mt-0">
+        <div
+          className="flex min-h-[400px] min-h-0 flex-1 flex-col overflow-y-auto border border-t-0"
+          style={{ background: 'white', borderColor: '#C8E8E5', borderRadius: '0 0 12px 12px' }}
+        >
+          <TabsContent value="overview" className="h-full min-h-0 mt-0 focus-visible:outline-none">
             <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
@@ -3276,7 +3389,7 @@ function ClientDetailModal({
             </div>
           </TabsContent>
 
-          <TabsContent value="reminders" className="h-full min-h-0 mt-0">
+          <TabsContent value="reminders" className="h-full min-h-0 mt-0 focus-visible:outline-none">
             <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
               <Card>
                 <CardHeader>
@@ -3290,9 +3403,9 @@ function ClientDetailModal({
               </Card>
             </div>
           </TabsContent>
+        </div>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }
 
@@ -4007,14 +4120,12 @@ export default function ClientIntelligence() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStage, setSelectedStage] = useState<string>('all');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [createName, setCreateName] = useState('');
+  const [sidebarRecFilter, setSidebarRecFilter] = useState<SidebarRecFilter>('all');
+  const [showSidebarCreate, setShowSidebarCreate] = useState(false);
   const [reviewClients, setReviewClients] = useState<
     Array<{
       id: string;
@@ -4118,37 +4229,12 @@ export default function ClientIntelligence() {
     if (mainTab === 'review') loadReviewClients();
   }, [mainTab]);
 
-  const handleFilesUploaded = async (files: UploadedFile[]) => {
-    const parsedDocs = files
-      .filter((f) => f.status === 'complete' && f.content)
-      .map((f) => parseDocument(f.content!, f.name));
-
-    if (parsedDocs.length > 0) {
-      const newClientData = generateClientFromDocuments(parsedDocs);
-      try {
-        await createClient({
-          name: newClientData.name || 'Imported Client',
-          stage: 'Initial Contact',
-          ...newClientData,
-        });
-        setUploadMessage(
-          `Successfully imported ${parsedDocs.length} document(s) for ${newClientData.name || 'Imported Client'}`
-        );
-        loadClients();
-      } catch (err) {
-        setUploadMessage(`Import failed: ${String(err)}`);
-      }
-      setTimeout(() => setUploadMessage(null), 5000);
-    }
-    setShowUploadDialog(false);
-  };
-
   const handleCreateClient = async () => {
     if (!createName.trim()) return;
     try {
       await createClient({ name: createName.trim(), stage: 'Initial Contact' });
       setCreateName('');
-      setShowCreateDialog(false);
+      setShowSidebarCreate(false);
       loadClients();
     } catch (err) {
       console.error(err);
@@ -4159,7 +4245,6 @@ export default function ClientIntelligence() {
     try {
       await inactivateClient(id);
       setSelectedClient(null);
-      setIsModalOpen(false);
       loadClients();
     } catch (err) {
       console.error(err);
@@ -4174,16 +4259,21 @@ export default function ClientIntelligence() {
       const matchesSearch =
         client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (client.company?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
-      const inferred = (client.inferred_stage ?? '').trim();
-      const matchesStage =
-        selectedStage === 'all' || inferred === selectedStage;
-      return matchesSearch && matchesStage;
+      const stageCode = resolvePipelineStageCode(client.inferred_stage);
+      const matchesStage = selectedStage === 'all' || stageCode === selectedStage;
+      const rec = recommendationById.get(client.id);
+      let matchesRec = true;
+      if (sidebarRecFilter === 'VALIDATE') matchesRec = rec === 'VALIDATE';
+      else if (sidebarRecFilter === 'GATHER') matchesRec = rec === 'GATHER';
+      else if (sidebarRecFilter === 'PAUSE') matchesRec = rec === 'PAUSE';
+      else if (sidebarRecFilter === 'gone_quiet')
+        matchesRec = Boolean(goneQuietById.get(client.id)?.gone_quiet);
+      return matchesSearch && matchesStage && matchesRec;
     });
-  }, [clients, searchTerm, selectedStage]);
+  }, [clients, searchTerm, selectedStage, sidebarRecFilter, recommendationById, goneQuietById]);
 
   const handleClientClick = (client: Client) => {
     setSelectedClient(client);
-    setIsModalOpen(true);
   };
 
   const displayClients = useMemo(
@@ -4271,288 +4361,221 @@ export default function ClientIntelligence() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="clients" className="space-y-6 mt-0">
-      {uploadMessage && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
-            <Plus className="h-5 w-5 text-white" />
-          </div>
-          <p className="text-green-800 font-medium">{uploadMessage}</p>
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input
-            placeholder="Search clients by name or company..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-slate-400" />
-          <select
-            value={selectedStage}
-            onChange={(e) => setSelectedStage(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Stages</option>
-            {(['IC', 'C1', 'C2', 'C3', 'C4', 'C5'] as const).map(
-              (code) => (
-                <option key={code} value={code}>
-                  {getStageDisplayName(code)}
-                </option>
-              )
-            )}
-          </select>
-          <Button
-            onClick={() => setShowCreateDialog(true)}
-            className="ml-2 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Create Client
-          </Button>
-          <Button
-            onClick={() => setShowUploadDialog(true)}
-            className="ml-2 bg-[#C4B7D9] hover:bg-[#C4B7D9]/90 text-white"
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Import Client
-          </Button>
-        </div>
-      </div>
-
-      <LocalFileWatcher
-        watchPath="./client-files"
-        onFilesImported={(files) => {
-          const mockUploadedFiles: UploadedFile[] = files.map((f) => ({
-            id: f.id,
-            name: f.name,
-            type: 'text/plain',
-            size: 0,
-            content: `[${f.type} Document]`,
-            status: 'complete',
-            progress: 100,
-          }));
-          handleFilesUploaded(mockUploadedFiles);
-        }}
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {displayClients.length === 0 ? (
-          <div className="col-span-full p-12 text-center border-2 border-dashed border-slate-200 rounded-xl">
-            <p className="text-slate-500 mb-4">No clients yet.</p>
-            <Button onClick={() => setShowCreateDialog(true)} className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Create your first client
-            </Button>
-          </div>
-        ) : (
-          displayClients.map((client) => (
-            <Card
-              key={client.id}
-              className="cursor-pointer hover:shadow-lg transition-shadow group"
-              onClick={() => handleClientClick(filteredClients.find((c) => c.id === client.id)!)}
+        <TabsContent value="clients" className="mt-0 flex min-h-0 min-h-[calc(100dvh-200px)] flex-1 flex-col p-0">
+          <div className="flex min-h-0 min-h-[calc(100dvh-200px)] w-full flex-1 overflow-hidden rounded-lg border border-[#C8E8E5] bg-white">
+            <aside
+              className="flex w-[260px] shrink-0 flex-col overflow-y-auto border-r border-[#C8E8E5] bg-white"
+              style={{ maxHeight: 'calc(100dvh - 200px)' }}
             >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="h-12 w-12 rounded-full flex items-center justify-center text-white font-bold"
-                      style={{ backgroundColor: discColors[client.disc.style] }}
-                    >
-                      {client.avatar}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
-                        {client.name}
-                      </h3>
-                      <p className="text-sm text-slate-500">{client.company || '—'}</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-blue-500 transition-colors" />
-                </div>
-
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <Badge
-                    style={{
-                      backgroundColor: getStageBadgeColor(
-                        client.inferred_stage?.trim() ?? ''
-                      ),
-                    }}
-                    className="text-slate-700 text-xs"
-                  >
-                    {getStageDisplayName(
-                      client.inferred_stage?.trim() ?? ''
-                    )}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {client.persona}
-                  </Badge>
-                  <DISCBadge style={client.disc.style} />
-                  <Badge variant="secondary" className="text-xs">
-                    {discDerivedMap.get(client.id)?.label ?? client.disc.description}
-                  </Badge>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Readiness</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full"
-                          style={{
-                            width: `${(client as DisplayClient & { readinessScorePct?: number }).readinessScorePct ?? calculateReadinessScore(client.readiness)}%`,
-                          }}
-                        />
-                      </div>
-                      <span className="text-xs font-medium">
-                        {(client as DisplayClient & { readinessScorePct?: number }).readinessScorePct ?? calculateReadinessScore(client.readiness)}
-                        %
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Confidence</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={cn(
-                            'h-full rounded-full',
-                            client.confidence >= 80
-                              ? 'bg-green-500'
-                              : client.confidence >= 60
-                                ? 'bg-yellow-500'
-                                : 'bg-red-500'
-                          )}
-                          style={{ width: `${client.confidence}%` }}
-                        />
-                      </div>
-                      <span className="text-xs font-medium">{client.confidence}%</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-                  <RecommendationBadge
-                    action={
-                      client.recommendationFromReadiness ?? client.recommendation
+              <div className="shrink-0 space-y-3 p-3">
+                <input
+                  type="search"
+                  placeholder="Search clients..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full rounded-lg border border-[#C8E8E5] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
+                  style={{ background: '#F4F7F8', padding: '8px 12px', borderRadius: 8 }}
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { key: 'all' as const, label: 'All' },
+                      { key: 'VALIDATE' as const, label: 'VALIDATE' },
+                      { key: 'GATHER' as const, label: 'GATHER' },
+                      { key: 'PAUSE' as const, label: 'PAUSE' },
+                      { key: 'gone_quiet' as const, label: 'Gone Quiet' },
+                    ] as const
+                  ).map(({ key, label }) => {
+                    const sel = sidebarRecFilter === key;
+                    const base =
+                      'rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors border';
+                    let cls = base;
+                    if (key === 'all') {
+                      cls += sel
+                        ? ' border-[#3BBFBF] bg-[#C8E8E5]/30 text-[#2D4459]'
+                        : ' border-transparent bg-[#F4F7F8] text-[#7A8F95] hover:bg-[#F4F7F8]/80';
+                    } else if (key === 'VALIDATE') {
+                      cls += sel
+                        ? ' border-[#3BBFBF] bg-[#3BBFBF]/15 text-[#3BBFBF]'
+                        : ' border-transparent bg-[#F4F7F8] text-[#7A8F95] hover:bg-[#3BBFBF]/10';
+                    } else if (key === 'GATHER') {
+                      cls += sel
+                        ? ' border-amber-400 bg-amber-50 text-amber-800'
+                        : ' border-transparent bg-[#F4F7F8] text-[#7A8F95] hover:bg-amber-50/80';
+                    } else if (key === 'PAUSE') {
+                      cls += sel
+                        ? ' border-slate-400 bg-slate-100 text-slate-700'
+                        : ' border-transparent bg-[#F4F7F8] text-[#7A8F95] hover:bg-slate-50';
+                    } else {
+                      cls += sel
+                        ? ' border-[#F05F57] bg-[#F05F57]/12 text-[#F05F57]'
+                        : ' border-transparent bg-[#F4F7F8] text-[#7A8F95] hover:bg-[#F05F57]/10';
                     }
-                    confidence={client.confidence}
-                  />
-                  {shouldShowGoneQuietBadge(client) && (
-                    <div className="flex w-full min-w-[140px] flex-col gap-0.5">
-                      <span
-                        className="inline-flex w-fit items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
-                        title={
-                          client.gone_quiet_days != null && client.gone_quiet_days > 0
-                            ? `Gone quiet ${client.gone_quiet_days}d`
-                            : 'Gone quiet'
-                        }
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className={cls}
+                        onClick={() => setSidebarRecFilter(key)}
                       >
-                        <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                        Quiet
-                      </span>
-                      <p className="text-[10px] italic leading-snug text-slate-500">
-                        {GONE_QUIET_SESSION_DISCLAIMER}
-                      </p>
-                    </div>
-                  )}
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
-
-      <ClientDetailModal
-        client={selectedDisplay}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onInactivate={handleInactivateClient}
-        onVisionUpdated={loadClients}
-      />
-
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Client</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium block mb-2">Name</label>
-              <Input
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="Client name"
-              />
-            </div>
-            <Button onClick={handleCreateClient} disabled={!createName.trim()}>
-              Create
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5 text-[#C4B7D9]" />
-              Import Client Documents
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6">
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-              <h4 className="font-medium text-blue-900 mb-2">Supported Document Types</h4>
-              <div className="grid grid-cols-2 gap-2 text-sm text-blue-800">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  DISC Assessments (.pdf, .txt)
-                </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  You 2.0 Profiles (.txt, .json)
-                </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  TUMAY Questionnaires (.json, .txt)
-                </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Vision Statements (.txt)
-                </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Fathom Notes (.txt)
-                </div>
+                <select
+                  value={selectedStage}
+                  onChange={(e) => setSelectedStage(e.target.value)}
+                  className="w-full rounded-lg border border-[#C8E8E5] bg-white px-2 py-2 text-xs font-medium text-[#2D4459] outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
+                >
+                  <option value="all">All Stages</option>
+                  {(['IC', 'C1', 'C2', 'C3', 'C4', 'C5'] as const).map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-[#C8E8E5] text-[#2D4459]"
+                  onClick={() => setShowSidebarCreate((v) => !v)}
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  {showSidebarCreate ? 'Cancel' : 'New client'}
+                </Button>
+                {showSidebarCreate ? (
+                  <div className="space-y-2 rounded-lg border border-[#C8E8E5] bg-[#F4F7F8] p-2">
+                    <Input
+                      value={createName}
+                      onChange={(e) => setCreateName(e.target.value)}
+                      placeholder="Client name"
+                      className="bg-white text-sm"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full bg-[#3BBFBF] text-white hover:bg-[#3BBFBF]/90"
+                      onClick={() => void handleCreateClient()}
+                      disabled={!createName.trim()}
+                    >
+                      Create
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-            </div>
-            <FileUploadZone
-              onFilesUploaded={handleFilesUploaded}
-              acceptedTypes={['.pdf', '.txt', '.json']}
-              maxFileSize={10}
-            />
-            <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
-              <div className="flex items-start gap-3">
-                <FolderOpen className="h-5 w-5 text-amber-600 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-amber-900">Airgapped Mode</h4>
-                  <p className="text-sm text-amber-800 mt-1">
-                    For offline deployment, drop files in the{' '}
-                    <code className="bg-amber-100 px-1 rounded">./client-files</code> folder next to
-                    the app. The Local File Watcher above will detect and import them automatically.
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {displayClients.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-xs" style={{ color: '#7A8F95' }}>
+                    No clients match filters.
+                  </p>
+                ) : (
+                  displayClients.map((dc) => {
+                    const raw = filteredClients.find((c) => c.id === dc.id);
+                    if (!raw) return null;
+                    const selected = selectedClient?.id === raw.id;
+                    const discSt = dc.disc.style;
+                    const ring = CI_DISC_STYLE[discSt];
+                    const pinkN = countActivePinkFlagsOnClient(raw);
+                    const gq = shouldShowGoneQuietBadge(dc);
+                    const rec = dc.recommendationFromReadiness ?? 'GATHER';
+                    return (
+                      <button
+                        key={raw.id}
+                        type="button"
+                        onClick={() => handleClientClick(raw)}
+                        className={cn(
+                          'flex w-full cursor-pointer items-center gap-2 border-b border-[#F4F7F8] text-left transition-colors',
+                          selected ? 'bg-[#C8E8E5]/20' : 'hover:bg-[#F4F7F8]'
+                        )}
+                        style={{
+                          minHeight: 64,
+                          padding: '10px 14px',
+                          borderLeft: selected ? '3px solid #3BBFBF' : '3px solid transparent',
+                        }}
+                      >
+                        <div
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                          style={{ backgroundColor: ring.muted, color: ring.solid }}
+                        >
+                          {dc.avatar}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-bold" style={{ fontSize: 13, color: '#2D4459' }}>
+                            {dc.name}
+                          </p>
+                          <div className="mt-0.5 flex flex-wrap gap-1">
+                            <span
+                              className="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-800"
+                              style={{
+                                backgroundColor: getStageBadgeColor(dc.inferred_stage?.trim() ?? ''),
+                              }}
+                            >
+                              {resolvePipelineStageCode(dc.inferred_stage) ?? '—'}
+                            </span>
+                            <span className="inline-block rounded border border-[#C8E8E5] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[#7A8F95]">
+                              {getBucketDisplayName(raw.outcome_bucket)}
+                            </span>
+                            {rec === 'VALIDATE' || rec === 'GATHER' || rec === 'PAUSE' ? (
+                              <span
+                                className="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold"
+                                style={{
+                                  backgroundColor:
+                                    rec === 'VALIDATE'
+                                      ? 'rgba(59, 191, 191, 0.15)'
+                                      : rec === 'GATHER'
+                                        ? 'rgba(245, 158, 11, 0.15)'
+                                        : 'rgba(107, 114, 128, 0.15)',
+                                  color:
+                                    rec === 'VALIDATE'
+                                      ? '#3BBFBF'
+                                      : rec === 'GATHER'
+                                        ? '#D97706'
+                                        : '#6B7280',
+                                }}
+                              >
+                                {rec}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          {pinkN > 0 ? (
+                            <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                              {pinkN}
+                            </span>
+                          ) : null}
+                          {gq ? (
+                            <Clock className="h-4 w-4 text-amber-500" aria-hidden title="Gone quiet" />
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </aside>
+            <div
+              className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+              style={{ background: '#FEFAF5', padding: '24px 28px' }}
+            >
+              {selectedDisplay ? (
+                <ClientDetailModal
+                  client={selectedDisplay}
+                  onInactivate={handleInactivateClient}
+                  onVisionUpdated={loadClients}
+                />
+              ) : (
+                <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 text-center">
+                  <Users className="h-16 w-16" style={{ color: '#C8E8E5' }} aria-hidden />
+                  <p className="text-sm" style={{ color: '#7A8F95' }}>
+                    Select a client to view their profile
                   </p>
                 </div>
-              </div>
+              )}
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
         </TabsContent>
 
         <TabsContent value="review" className="mt-0">
