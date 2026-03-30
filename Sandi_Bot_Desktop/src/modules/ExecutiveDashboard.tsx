@@ -408,7 +408,100 @@ function startOfYearLocal(ref: Date): Date {
 
 type KpiPeriod = 'weekly' | 'monthly' | 'quarterly' | 'ytd';
 
-const COACH_BOT_INSTALL_LOCAL = new Date(2026, 2, 27);
+/** Fallback when `user_preferences.install_date` is null (local midnight). */
+const FALLBACK_INSTALL_DATE = new Date(2026, 2, 27);
+
+type TimeSavedPrefs = {
+  installDate: Date;
+  hourlyRate: number;
+  weeklyHoursSaved: number;
+  installDateWasNull: boolean;
+};
+
+function roundTo1Decimal(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function parseUserPrefsInstallDate(
+  raw: string | null | undefined
+): { date: Date; wasNull: boolean } {
+  if (raw == null || String(raw).trim() === '') {
+    return { date: new Date(FALLBACK_INSTALL_DATE), wasNull: true };
+  }
+  const s = String(raw).trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    return { date: new Date(y, mo, d), wasNull: false };
+  }
+  const t = new Date(raw);
+  if (!Number.isNaN(t.getTime())) {
+    return {
+      date: new Date(t.getFullYear(), t.getMonth(), t.getDate()),
+      wasNull: false,
+    };
+  }
+  return { date: new Date(FALLBACK_INSTALL_DATE), wasNull: true };
+}
+
+function weeksSinceInstallRounded(ref: Date, installDate: Date): number {
+  const end = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  const start = new Date(
+    installDate.getFullYear(),
+    installDate.getMonth(),
+    installDate.getDate()
+  );
+  if (end < start) return 0;
+  const diffDays = (end.getTime() - start.getTime()) / 86_400_000;
+  return roundTo1Decimal(diffDays / 7);
+}
+
+function timeSavedForPeriod(
+  period: KpiPeriod,
+  ref: Date,
+  prefs: TimeSavedPrefs
+): { hours: number; dollars: number } {
+  const h = prefs.weeklyHoursSaved;
+  const r = prefs.hourlyRate;
+  const weeks = weeksSinceInstallRounded(ref, prefs.installDate);
+
+  switch (period) {
+    case 'weekly': {
+      const hours = roundTo1Decimal(h);
+      return { hours, dollars: Math.round(h * r) };
+    }
+    case 'monthly': {
+      const hours = roundTo1Decimal(h * 4.33);
+      return { hours, dollars: Math.round(h * 4.33 * r) };
+    }
+    case 'quarterly': {
+      const hours = roundTo1Decimal(h * 13);
+      return { hours, dollars: Math.round(h * 13 * r) };
+    }
+    case 'ytd': {
+      const hours = roundTo1Decimal(weeks * h);
+      return { hours, dollars: Math.round(weeks * h * r) };
+    }
+    default:
+      return { hours: 0, dollars: 0 };
+  }
+}
+
+function formatTimeSavedHours(h: number): string {
+  const x = roundTo1Decimal(h);
+  return Number.isInteger(x) ? String(x) : x.toFixed(1);
+}
+
+function formatTimeSavedInstallFootnote(prefs: TimeSavedPrefs): string {
+  if (prefs.installDateWasNull) {
+    return 'Install date: Mar 27 2026';
+  }
+  const d = prefs.installDate;
+  const month = d.toLocaleDateString('en-US', { month: 'long' });
+  return `since ${month} ${d.getDate()} ${d.getFullYear()}`;
+}
 
 const PLACEMENT_COUNT_SQL = `SELECT COUNT(*) as count
              FROM clients
@@ -427,32 +520,6 @@ const C3_SESSION_COUNT_SQL = `SELECT COUNT(*) as count
 
 function formatUsdWhole(n: number): string {
   return `$${Math.round(n).toLocaleString('en-US')}`;
-}
-
-function timeSavedForPeriod(period: KpiPeriod, ref: Date): { hours: number; dollars: number } {
-  switch (period) {
-    case 'weekly':
-      return { hours: 2, dollars: 300 };
-    case 'monthly':
-      return { hours: 8, dollars: 1200 };
-    case 'quarterly':
-      return { hours: 26, dollars: 3900 };
-    case 'ytd': {
-      const end = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
-      const start = new Date(
-        COACH_BOT_INSTALL_LOCAL.getFullYear(),
-        COACH_BOT_INSTALL_LOCAL.getMonth(),
-        COACH_BOT_INSTALL_LOCAL.getDate()
-      );
-      if (end < start) return { hours: 0, dollars: 0 };
-      const msPerDay = 86400000;
-      const diffDays = Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1;
-      const weeks = Math.max(1, Math.ceil(diffDays / 7));
-      return { hours: weeks * 2, dollars: weeks * 300 };
-    }
-    default:
-      return { hours: 0, dollars: 0 };
-  }
 }
 
 const C3_WEEKLY_TARGET = 2.5;
@@ -581,6 +648,12 @@ export default function ExecutiveDashboard() {
   const [pinkNeedResponseCount, setPinkNeedResponseCount] = useState(0);
   const [highPriorityStaleCount, setHighPriorityStaleCount] = useState(0);
   const [sessionsScheduledNullCount, setSessionsScheduledNullCount] = useState(0);
+  const [timeSavedPrefs, setTimeSavedPrefs] = useState<TimeSavedPrefs>(() => ({
+    installDate: new Date(FALLBACK_INSTALL_DATE),
+    hourlyRate: 150,
+    weeklyHoursSaved: 2,
+    installDateWasNull: true,
+  }));
 
   useEffect(() => {
     const id = window.setInterval(() => setGreetingNow(Date.now()), 60_000);
@@ -639,6 +712,7 @@ export default function ExecutiveDashboard() {
         pinkFlagWeekClients,
         sessionsNullSchedRows,
         anchorSeekerRows,
+        userPrefsRows,
       ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
@@ -691,6 +765,16 @@ export default function ExecutiveDashboard() {
         ),
         dbSelect<{ id: string; weekly_seeker_contacts: string | null }>(
           `SELECT id, weekly_seeker_contacts FROM clients ORDER BY datetime(created_at) ASC LIMIT 1`,
+          []
+        ),
+        dbSelect<{
+          install_date: string | null;
+          coach_hourly_rate: number | null;
+          weekly_hours_saved: number | null;
+        }>(
+          `SELECT install_date, coach_hourly_rate, weekly_hours_saved
+           FROM user_preferences
+           WHERE id = 'singleton'`,
           []
         ),
       ]);
@@ -762,6 +846,25 @@ export default function ExecutiveDashboard() {
         monthly: Number(c3M[0]?.count ?? 0),
         quarterly: Number(c3Q[0]?.count ?? 0),
         ytd: Number(c3Y[0]?.count ?? 0),
+      });
+
+      const prefRow = userPrefsRows[0];
+      const parsedInstall = parseUserPrefsInstallDate(prefRow?.install_date ?? null);
+      const hourlyRate =
+        prefRow?.coach_hourly_rate != null &&
+        Number.isFinite(Number(prefRow.coach_hourly_rate))
+          ? Number(prefRow.coach_hourly_rate)
+          : 150;
+      const weeklyHoursSaved =
+        prefRow?.weekly_hours_saved != null &&
+        Number.isFinite(Number(prefRow.weekly_hours_saved))
+          ? Number(prefRow.weekly_hours_saved)
+          : 2.0;
+      setTimeSavedPrefs({
+        installDate: parsedInstall.date,
+        hourlyRate,
+        weeklyHoursSaved,
+        installDateWasNull: parsedInstall.wasNull,
       });
 
       const anchorRow = anchorSeekerRows[0];
@@ -1148,8 +1251,13 @@ export default function ExecutiveDashboard() {
   const tableBodyRowClass = 'border-b border-[#C8E8E5]';
 
   const timeSavedDisplay = useMemo(
-    () => timeSavedForPeriod(kpiPeriod, new Date(greetingNow)),
-    [kpiPeriod, greetingNow]
+    () => timeSavedForPeriod(kpiPeriod, new Date(greetingNow), timeSavedPrefs),
+    [kpiPeriod, greetingNow, timeSavedPrefs]
+  );
+
+  const timeSavedInstallFootnote = useMemo(
+    () => formatTimeSavedInstallFootnote(timeSavedPrefs),
+    [timeSavedPrefs]
   );
 
   const selectedPlacementCount = placementByPeriod[kpiPeriod];
@@ -1671,10 +1779,10 @@ export default function ExecutiveDashboard() {
         />
         <MorningBriefKpiCard
           label="TIME SAVED"
-          value={`${timeSavedDisplay.hours} hours`}
+          value={`${formatTimeSavedHours(timeSavedDisplay.hours)} hours`}
           sub={`${formatUsdWhole(timeSavedDisplay.dollars)} in coaching time`}
           valueColor="#3BBFBF"
-          footnote="vs manual admin baseline"
+          footnote={timeSavedInstallFootnote}
         />
         <MorningBriefKpiCard
           label="Placement Tracker"
