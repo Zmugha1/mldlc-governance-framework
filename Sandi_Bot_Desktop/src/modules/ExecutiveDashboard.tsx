@@ -1174,7 +1174,6 @@ export default function ExecutiveDashboard() {
   );
 
   const selectedPlacementCount = placementByPeriod[kpiPeriod];
-  const selectedC3Count = c3ByPeriod[kpiPeriod];
 
   const placementKpiValue =
     kpiPeriod === 'ytd'
@@ -1186,20 +1185,6 @@ export default function ExecutiveDashboard() {
     monthly: 'Placements this month',
     quarterly: 'Placements this quarter',
     ytd: 'Placements this year vs annual target',
-  };
-
-  const c3KpiLabel = kpiPeriod === 'weekly' ? 'C3 This Week' : 'C3 SESSIONS';
-
-  const c3KpiValue =
-    kpiPeriod === 'weekly'
-      ? `${selectedC3Count} / ${C3_WEEKLY_TARGET}`
-      : String(selectedC3Count);
-
-  const c3KpiSub: Record<KpiPeriod, string> = {
-    weekly: 'C3 sessions this week vs weekly target',
-    monthly: 'C3 sessions this month',
-    quarterly: 'C3 sessions this quarter',
-    ytd: 'C3 sessions this year',
   };
 
   if (loading) {
