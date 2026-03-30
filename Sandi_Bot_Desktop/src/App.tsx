@@ -23,6 +23,9 @@ import { dbExecute } from '@/services/db';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import ExecutiveDashboard from '@/modules/ExecutiveDashboard';
 import ClientIntelligence from '@/modules/ClientIntelligence';
+import BusinessGoals from './modules/BusinessGoals';
+import CoachingActions from './modules/CoachingActions';
+import MyPractice from './modules/MyPractice';
 import AdminStreamliner from '@/modules/AdminStreamliner';
 import AuditTransparency from '@/modules/AuditTransparency';
 import HowToUse from '@/modules/HowToUse';
@@ -397,7 +400,11 @@ function App() {
           </ErrorBoundary>
         );
       case 'business':
-        return <PlaceholderPage title="Business Goals" />;
+        return (
+          <ErrorBoundary moduleName="Business Goals">
+            <BusinessGoals />
+          </ErrorBoundary>
+        );
       case 'clients':
         return (
           <ErrorBoundary moduleName="Client Intelligence">
@@ -409,9 +416,17 @@ function App() {
           </ErrorBoundary>
         );
       case 'coaching':
-        return <PlaceholderPage title="Coaching Actions" />;
+        return (
+          <ErrorBoundary moduleName="Coaching Actions">
+            <CoachingActions />
+          </ErrorBoundary>
+        );
       case 'practice':
-        return <PlaceholderPage title="My Practice" />;
+        return (
+          <ErrorBoundary moduleName="My Practice">
+            <MyPractice />
+          </ErrorBoundary>
+        );
       case 'admin':
         return (
           <ErrorBoundary moduleName="Admin Streamliner">
