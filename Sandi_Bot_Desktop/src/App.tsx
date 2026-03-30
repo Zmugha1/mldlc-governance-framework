@@ -1,17 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  GitBranch, 
-  MessageSquare, 
-  BarChart3, 
+import {
+  Sun,
+  Target,
+  Users,
+  Zap,
+  BarChart2,
   Settings,
   Menu,
   Bot,
-  ChevronRight,
   Shield,
-  BookOpen
+  HelpCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -24,9 +23,6 @@ import { dbExecute } from '@/services/db';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import ExecutiveDashboard from '@/modules/ExecutiveDashboard';
 import ClientIntelligence from '@/modules/ClientIntelligence';
-import PipelineVisualizer from '@/modules/PipelineVisualizer';
-import LiveCoachingAssistant from '@/modules/LiveCoachingAssistant';
-import PostCallAnalysis from '@/modules/PostCallAnalysis';
 import AdminStreamliner from '@/modules/AdminStreamliner';
 import AuditTransparency from '@/modules/AuditTransparency';
 import HowToUse from '@/modules/HowToUse';
@@ -34,6 +30,20 @@ import { seedKnowledgeBase } from '@/services/knowledgeSeed';
 import StatusBar from '@/components/StatusBar';
 
 const REFLECTION_LAST_SHOWN_KEY = 'reflection_last_shown';
+
+const brandRootStyle = {
+  '--color-navy': '#2D4459',
+  '--color-teal': '#3BBFBF',
+  '--color-teal-light': '#C8E8E5',
+  '--color-coral': '#F05F57',
+  '--color-coral-light': '#E8A99A',
+  '--color-burnt': '#C8613F',
+  '--color-slate': '#7A8F95',
+  '--color-offwhite': '#FEFAF5',
+  '--color-lightgray': '#F4F7F8',
+  '--color-border': '#C8E8E5',
+  '--color-white': '#ffffff',
+} as React.CSSProperties;
 
 function localCalendarDateYyyyMmDd(): string {
   const d = new Date();
@@ -59,139 +69,167 @@ function markReflectionShownToday(): void {
   }
 }
 
-type ModuleType = 'dashboard' | 'clients' | 'pipeline' | 'coaching' | 'analysis' | 'admin' | 'audit' | 'help';
+type ModuleType =
+  | 'morning'
+  | 'business'
+  | 'clients'
+  | 'coaching'
+  | 'practice'
+  | 'admin'
+  | 'audit'
+  | 'help';
 
-interface NavItem {
+interface MainNavItem {
   id: ModuleType;
   label: string;
   icon: React.ElementType;
-  description: string;
 }
 
-const navItems: NavItem[] = [
-  { 
-    id: 'dashboard', 
-    label: 'Executive Dashboard', 
-    icon: LayoutDashboard,
-    description: 'KPIs & pipeline performance'
-  },
-  { 
-    id: 'clients', 
-    label: 'Client Intelligence', 
-    icon: Users,
-    description: 'DISC, You 2.0, Vision Statements'
-  },
-  { 
-    id: 'pipeline', 
-    label: 'Pipeline Visualizer', 
-    icon: GitBranch,
-    description: '5-compartment coaching journey'
-  },
-  { 
-    id: 'coaching', 
-    label: 'Live Coaching Assistant', 
-    icon: MessageSquare,
-    description: 'Coach Bot with CLEAR framework'
-  },
-  { 
-    id: 'analysis', 
-    label: 'Post-Call Analysis', 
-    icon: BarChart3,
-    description: 'CLEAR scoring & insights'
-  },
-  { 
-    id: 'admin', 
-    label: 'Admin Streamliner', 
-    icon: Settings,
-    description: 'Activity logs & settings'
-  },
-  { 
-    id: 'audit', 
-    label: 'Audit & Transparency', 
-    icon: Shield,
-    description: 'Source citations & audit logs'
-  },
-  { 
-    id: 'help', 
-    label: 'How to Use', 
-    icon: BookOpen,
-    description: 'Detailed instructions & guide'
-  },
+const mainNavItems: MainNavItem[] = [
+  { id: 'morning', label: 'Morning Brief', icon: Sun },
+  { id: 'business', label: 'Business Goals', icon: Target },
+  { id: 'clients', label: 'Client Intelligence', icon: Users },
+  { id: 'coaching', label: 'Coaching Actions', icon: Zap },
+  { id: 'practice', label: 'My Practice', icon: BarChart2 },
 ];
 
-function Sidebar({ 
-  activeModule, 
-  onModuleChange 
-}: { 
-  activeModule: ModuleType; 
+const footerNavItems: Array<{
+  id: Extract<ModuleType, 'admin' | 'help' | 'audit'>;
+  icon: React.ElementType;
+  ariaLabel: string;
+}> = [
+  { id: 'admin', icon: Settings, ariaLabel: 'Settings' },
+  { id: 'help', icon: HelpCircle, ariaLabel: 'Help' },
+  { id: 'audit', icon: Shield, ariaLabel: 'Audit and transparency' },
+];
+
+function PlaceholderPage({ title }: { title: string }) {
+  return (
+    <div
+      className="rounded-[12px] border border-[#C8E8E5] bg-white p-6 shadow-sm"
+      style={{ borderLeftWidth: 4, borderLeftColor: '#3BBFBF' }}
+    >
+      <h2 className="text-xl font-semibold mb-2" style={{ color: '#2D4459' }}>
+        {title}
+      </h2>
+      <p className="text-[#7A8F95]">Coming in this build.</p>
+    </div>
+  );
+}
+
+function Sidebar({
+  activeModule,
+  onModuleChange,
+}: {
+  activeModule: ModuleType;
   onModuleChange: (module: ModuleType) => void;
 }) {
   return (
-    <div className="flex h-full flex-col bg-slate-900 text-white">
-      {/* Logo */}
-      <div className="flex items-center gap-3 p-6 border-b border-slate-800">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
+    <div
+      className="flex h-full flex-col text-white"
+      style={{ backgroundColor: '#2D4459' }}
+    >
+      <div
+        className="flex items-center gap-3 p-6"
+        style={{ borderBottom: '1px solid rgba(200, 232, 229, 0.15)' }}
+      >
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-xl"
+          style={{ backgroundColor: '#3BBFBF' }}
+        >
           <Bot className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h1 className="font-bold text-lg leading-tight">Coach Bot</h1>
-          <p className="text-xs text-slate-400">Coaching Intelligence</p>
+          <h1 className="font-bold leading-tight text-white" style={{ fontSize: 16 }}>
+            Coach Bot
+          </h1>
+          <p
+            className="mt-0.5 leading-tight"
+            style={{ fontSize: 10, color: 'rgba(200, 232, 229, 0.6)' }}
+          >
+            Your practice. Compounding.
+          </p>
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 overflow-auto p-4">
-        <div className="space-y-2">
-          {navItems.map((item) => {
+        <div className="space-y-1">
+          {mainNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeModule === item.id;
             return (
               <button
                 key={item.id}
+                type="button"
                 onClick={() => onModuleChange(item.id)}
                 className={cn(
-                  "w-full flex items-start gap-3 rounded-lg px-3 py-3 text-left transition-all",
-                  isActive 
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
-                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  'w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium transition-colors',
+                  isActive
+                    ? 'text-[#3BBFBF]'
+                    : 'text-[#7A8F95] hover:bg-[rgba(200,232,229,0.1)]'
                 )}
+                style={
+                  isActive
+                    ? {
+                        borderLeft: '3px solid #3BBFBF',
+                        marginLeft: 0,
+                        paddingLeft: 'calc(0.75rem - 3px)',
+                      }
+                    : { borderLeft: '3px solid transparent' }
+                }
               >
-                <Icon className={cn(
-                  "h-5 w-5 mt-0.5 shrink-0",
-                  isActive ? "text-white" : "text-slate-400"
-                )} />
-                <div className="flex-1 min-w-0">
-                  <p className={cn(
-                    "font-medium text-sm",
-                    isActive && "text-white"
-                  )}>
-                    {item.label}
-                  </p>
-                  <p className={cn(
-                    "text-xs mt-0.5",
-                    isActive ? "text-blue-100" : "text-slate-500"
-                  )}>
-                    {item.description}
-                  </p>
-                </div>
-                {isActive && (
-                  <ChevronRight className="h-4 w-4 mt-1 shrink-0 opacity-60" />
-                )}
+                <Icon className="h-5 w-5 shrink-0" aria-hidden />
+                <span>{item.label}</span>
               </button>
             );
           })}
         </div>
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-slate-800">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800/50">
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-pink-500 to-orange-400 flex items-center justify-center text-xs font-bold">
+      <div
+        className="flex items-center justify-center gap-1 px-4 py-3"
+        style={{ borderTop: '1px solid rgba(200, 232, 229, 0.15)' }}
+      >
+        {footerNavItems.map(({ id, icon: Icon, ariaLabel }) => {
+          const isActive = activeModule === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-label={ariaLabel}
+              onClick={() => onModuleChange(id)}
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-md transition-colors',
+                isActive
+                  ? 'text-[#3BBFBF]'
+                  : 'text-[#7A8F95] hover:bg-[rgba(200,232,229,0.1)]'
+              )}
+            >
+              <Icon className="h-5 w-5" aria-hidden />
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        className="p-4"
+        style={{ borderTop: '1px solid rgba(200, 232, 229, 0.15)' }}
+      >
+        <div
+          className="flex items-center gap-3 rounded-lg px-3 py-2"
+          style={{ backgroundColor: 'rgba(200, 232, 229, 0.08)' }}
+        >
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+            style={{ background: 'linear-gradient(135deg, #F05F57, #C8613F)' }}
+          >
             SS
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white">Sandi Stahl</p>
-            <p className="text-xs text-slate-400">Franchise Coach</p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">Sandi Stahl</p>
+            <p className="truncate text-xs" style={{ color: '#7A8F95' }}>
+              Franchise Coach
+            </p>
           </div>
         </div>
       </div>
@@ -199,11 +237,11 @@ function Sidebar({
   );
 }
 
-function MobileSidebar({ 
-  activeModule, 
-  onModuleChange 
-}: { 
-  activeModule: ModuleType; 
+function MobileSidebar({
+  activeModule,
+  onModuleChange,
+}: {
+  activeModule: ModuleType;
   onModuleChange: (module: ModuleType) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -211,41 +249,43 @@ function MobileSidebar({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="lg:hidden fixed top-4 left-4 z-50 bg-white shadow-lg"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="fixed left-4 top-4 z-50 shadow-lg lg:hidden"
+          style={{ backgroundColor: '#ffffff', border: '1px solid #C8E8E5' }}
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-5 w-5" style={{ color: '#2D4459' }} />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="p-0 w-72">
-        <Sidebar activeModule={activeModule} onModuleChange={(module) => {
-          onModuleChange(module);
-          setOpen(false);
-        }} />
+      <SheetContent side="left" className="w-72 p-0">
+        <Sidebar
+          activeModule={activeModule}
+          onModuleChange={(module) => {
+            onModuleChange(module);
+            setOpen(false);
+          }}
+        />
       </SheetContent>
     </Sheet>
   );
 }
 
-function ModuleHeader({ 
-  title, 
-  description 
-}: { 
-  title: string; 
-  description: string;
-}) {
+function ModuleHeader({ title, description }: { title: string; description: string }) {
   return (
     <div className="mb-6">
-      <h2 className="text-2xl font-bold text-slate-900">{title}</h2>
-      <p className="text-slate-500 mt-1">{description}</p>
+      <h2 className="text-2xl font-bold" style={{ color: '#2D4459' }}>
+        {title}
+      </h2>
+      <p className="mt-1" style={{ color: '#7A8F95' }}>
+        {description}
+      </p>
     </div>
   );
 }
 
 function App() {
-  const [activeModule, setActiveModule] = useState<ModuleType>('dashboard');
+  const [activeModule, setActiveModule] = useState<ModuleType>('morning');
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [reflectionWorked, setReflectionWorked] = useState('');
   const [reflectionHard, setReflectionHard] = useState('');
@@ -296,63 +336,87 @@ function App() {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
+  const closeReflectionModal = useCallback(() => {
+    setReflectionOpen(false);
+    setReflectionWorked('');
+    setReflectionHard('');
+    setReflectionSaveError(null);
+  }, []);
+
+  const handleReflectionSkip = useCallback(() => {
+    markReflectionShownToday();
+    closeReflectionModal();
+  }, [closeReflectionModal]);
+
+  const handleReflectionSave = useCallback(async () => {
+    setReflectionSaving(true);
+    setReflectionSaveError(null);
+    try {
+      const id = crypto.randomUUID();
+      const sessionDate = localCalendarDateYyyyMmDd();
+      const createdAt = new Date().toISOString();
+      const w = reflectionWorked.trim();
+      const h = reflectionHard.trim();
+      const feedbackText = `WORKED: ${w} | HARD: ${h}`;
+      await dbExecute(
+        `INSERT INTO user_feedback
+         (id, page_name, feedback_type, rating, feedback_text, feature_name, thumbs_up, session_date, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          'daily_reflection',
+          'daily_reflection',
+          null,
+          feedbackText,
+          null,
+          null,
+          sessionDate,
+          createdAt,
+        ]
+      );
+      markReflectionShownToday();
+      closeReflectionModal();
+    } catch (err) {
+      console.error('daily reflection insert failed:', err);
+      setReflectionSaveError('Could not save reflection');
+    } finally {
+      setReflectionSaving(false);
+    }
+  }, [reflectionWorked, reflectionHard, closeReflectionModal]);
+
   const renderModule = () => {
     switch (activeModule) {
-      case 'dashboard':
+      case 'morning':
         return (
-          <ErrorBoundary moduleName="Executive Dashboard">
-            <ModuleHeader 
-              title="Executive Dashboard" 
+          <ErrorBoundary moduleName="Morning Brief">
+            <ModuleHeader
+              title="Morning Brief"
               description="Real-time KPIs and pipeline performance overview"
             />
             <ExecutiveDashboard />
           </ErrorBoundary>
         );
+      case 'business':
+        return <PlaceholderPage title="Business Goals" />;
       case 'clients':
         return (
           <ErrorBoundary moduleName="Client Intelligence">
-            <ModuleHeader 
-              title="Client Intelligence" 
+            <ModuleHeader
+              title="Client Intelligence"
               description="DISC profiles, You 2.0, Vision Statements, and TUMAY data"
             />
             <ClientIntelligence />
           </ErrorBoundary>
         );
-      case 'pipeline':
-        return (
-          <ErrorBoundary moduleName="Pipeline Visualizer">
-            <ModuleHeader 
-              title="Pipeline Visualizer" 
-              description="5-compartment coaching journey with Pink Flags"
-            />
-            <PipelineVisualizer />
-          </ErrorBoundary>
-        );
       case 'coaching':
-        return (
-          <ErrorBoundary moduleName="Live Coaching Assistant">
-            <ModuleHeader 
-              title="Live Coaching Assistant" 
-              description="Coach Bot with CLEAR framework and source citations"
-            />
-            <LiveCoachingAssistant />
-          </ErrorBoundary>
-        );
-      case 'analysis':
-        return (
-          <ErrorBoundary moduleName="Post-Call Analysis">
-            <ModuleHeader 
-              title="Post-Call Analysis" 
-              description="CLEAR scoring methodology and coaching effectiveness"
-            />
-            <PostCallAnalysis />
-          </ErrorBoundary>
-        );
+        return <PlaceholderPage title="Coaching Actions" />;
+      case 'practice':
+        return <PlaceholderPage title="My Practice" />;
       case 'admin':
         return (
           <ErrorBoundary moduleName="Admin Streamliner">
-            <ModuleHeader 
-              title="Admin Streamliner" 
+            <ModuleHeader
+              title="Admin Streamliner"
               description="Activity logs, system settings, and data management"
             />
             <AdminStreamliner />
@@ -361,8 +425,8 @@ function App() {
       case 'audit':
         return (
           <ErrorBoundary moduleName="Audit & Transparency">
-            <ModuleHeader 
-              title="Audit & Transparency" 
+            <ModuleHeader
+              title="Audit & Transparency"
               description="Source citations, audit logs, and transparency metrics"
             />
             <AuditTransparency />
@@ -371,8 +435,8 @@ function App() {
       case 'help':
         return (
           <ErrorBoundary moduleName="How to Use This Dashboard">
-            <ModuleHeader 
-              title="How to Use This Dashboard" 
+            <ModuleHeader
+              title="How to Use This Dashboard"
               description="Complete guide to all features and best practices"
             />
             <HowToUse />
@@ -384,7 +448,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="flex min-h-screen" style={brandRootStyle}>
       {reflectionOpen && (
         <div
           className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4"
@@ -394,21 +458,32 @@ function App() {
         >
           <div
             className="box-border w-full max-w-[420px] bg-white shadow-lg"
-            style={{ width: 420, maxWidth: '100%', borderRadius: 12, padding: '28px 32px' }}
+            style={{
+              width: 420,
+              maxWidth: '100%',
+              borderRadius: 12,
+              padding: '28px 32px',
+              border: '1px solid #C8E8E5',
+            }}
           >
             <h2
               id="reflection-title"
-              className="text-base font-bold text-slate-900"
+              className="text-base font-bold"
+              style={{ color: '#2D4459' }}
             >
               Quick Reflection
             </h2>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs" style={{ color: '#7A8F95' }}>
               30 seconds — helps Coach Bot learn what&apos;s working
             </p>
 
             <div className="mt-5 space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="reflection-worked" className="text-sm font-medium text-slate-800">
+                <Label
+                  htmlFor="reflection-worked"
+                  className="text-sm font-medium"
+                  style={{ color: '#2D4459' }}
+                >
                   What worked well today?
                 </Label>
                 <Textarea
@@ -416,14 +491,16 @@ function App() {
                   rows={2}
                   value={reflectionWorked}
                   onChange={(e) => setReflectionWorked(e.target.value)}
-                  placeholder={
-                    'A client conversation, a coaching moment, something that felt right...'
-                  }
-                  className="resize-y"
+                  placeholder="A client conversation, a coaching moment, something that felt right..."
+                  className="resize-y border-[#C8E8E5]"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="reflection-hard" className="text-sm font-medium text-slate-800">
+                <Label
+                  htmlFor="reflection-hard"
+                  className="text-sm font-medium"
+                  style={{ color: '#2D4459' }}
+                >
                   What felt hard or missing?
                 </Label>
                 <Textarea
@@ -431,10 +508,8 @@ function App() {
                   rows={2}
                   value={reflectionHard}
                   onChange={(e) => setReflectionHard(e.target.value)}
-                  placeholder={
-                    'Something confusing, a feature you wished existed, something that slowed you down...'
-                  }
-                  className="resize-y"
+                  placeholder="Something confusing, a feature you wished existed, something that slowed you down..."
+                  className="resize-y border-[#C8E8E5]"
                 />
               </div>
             </div>
@@ -448,7 +523,8 @@ function App() {
                 type="button"
                 onClick={handleReflectionSkip}
                 disabled={reflectionSaving}
-                className="text-sm text-slate-600 underline-offset-4 hover:underline disabled:opacity-50"
+                className="text-sm underline-offset-4 hover:underline disabled:opacity-50"
+                style={{ color: '#7A8F95' }}
               >
                 Skip for today
               </button>
@@ -456,6 +532,8 @@ function App() {
                 type="button"
                 onClick={() => void handleReflectionSave()}
                 disabled={reflectionSaving}
+                style={{ backgroundColor: '#3BBFBF' }}
+                className="text-white hover:opacity-90"
               >
                 {reflectionSaving ? 'Saving…' : 'Save Reflection'}
               </Button>
@@ -464,22 +542,20 @@ function App() {
         </div>
       )}
 
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block w-72 shrink-0">
+      <div className="hidden w-72 shrink-0 lg:block">
         <div className="fixed inset-y-0 left-0 w-72">
           <Sidebar activeModule={activeModule} onModuleChange={setActiveModule} />
         </div>
       </div>
 
-      {/* Mobile Sidebar */}
       <MobileSidebar activeModule={activeModule} onModuleChange={setActiveModule} />
 
-      {/* Main Content */}
-      <div className="flex-1 min-w-0 min-h-screen flex flex-col">
+      <div
+        className="flex min-h-screen min-w-0 flex-1 flex-col"
+        style={{ backgroundColor: '#FEFAF5' }}
+      >
         <main className="flex-1">
-          <div className="p-4 lg:p-8 max-w-7xl mx-auto">
-            {renderModule()}
-          </div>
+          <div className="mx-auto max-w-7xl p-4 lg:p-8">{renderModule()}</div>
         </main>
         <StatusBar />
       </div>
