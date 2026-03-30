@@ -974,6 +974,8 @@ pub fn run() {
             kind: MigrationKind::Up,
         },
         migrations::migration_54(),
+        migrations::migration_55(),
+        migrations::migration_56(),
     ];
 
     tauri::Builder::default()
