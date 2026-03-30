@@ -89,7 +89,7 @@ const RESPONSE_OPTIONS = [
 
 const RESPONSE_CONFIRM_MS = 1000;
 
-type SignalKind = 'gone_quiet' | 'pink_flag';
+type SignalKind = 'at_risk' | 'gone_quiet' | 'pink_flag';
 
 type SignalItem = {
   id: string;
@@ -136,6 +136,26 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
   );
   const respondedKey = new Set(respondedToday.map((r) => `${r.client_id}:${r.signal_type}`));
 
+  const atRiskRows = await db.select<{ id: string; name: string }>(
+    `SELECT id, name FROM clients
+     WHERE LOWER(COALESCE(outcome_bucket, 'active')) = 'active'
+       AND inferred_stage IN ('C3', 'C4')
+       AND last_contact_date < date('now', '-14 days')`,
+    []
+  );
+
+  const atRiskSignals: SignalItem[] = [];
+  for (const r of atRiskRows) {
+    if (respondedKey.has(`${r.id}:at_risk`)) continue;
+    atRiskSignals.push({
+      id: `ar:${r.id}`,
+      clientId: r.id,
+      clientName: r.name,
+      kind: 'at_risk',
+      description: 'No session in 14+ days — C3/C4 client needs attention',
+    });
+  }
+
   const clientRows = await db.select<{
     id: string;
     name: string;
@@ -159,32 +179,15 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
   );
   const lastSessionByClient = new Map(sessionRows.map((r) => [r.client_id, r.last_dt]));
 
-  const nextSignals: SignalItem[] = [];
+  const pinkSignals: SignalItem[] = [];
+  const goneQuietSignals: SignalItem[] = [];
 
   for (const c of clientRows) {
-    const stage = normalizeStage(c.inferred_stage ?? '');
-    const threshold = GONE_QUIET_DAYS[stage] ?? 14;
-    const lastSess = lastSessionByClient.get(c.id) ?? null;
-    const refDate = lastSess ?? c.updated_at ?? '';
-    const daysSince = daysSinceReferenceLocal(refDate);
-    const goneQuiet =
-      daysSince !== null && daysSince > threshold && !respondedKey.has(`${c.id}:gone_quiet`);
-
-    if (goneQuiet) {
-      nextSignals.push({
-        id: `gq:${c.id}`,
-        clientId: c.id,
-        clientName: c.name,
-        kind: 'gone_quiet',
-        description: `No coaching contact within ${threshold} days for stage ${stage} (${daysSince} days since last touch).`,
-      });
-    }
-
     const actPink = activePinkFlags(parsePinkFlagsJson(c.pink_flags));
     if (actPink.length > 0 && !respondedKey.has(`${c.id}:pink_flag`)) {
       for (const flag of actPink) {
         const label = flag.replace(/_/g, ' ');
-        nextSignals.push({
+        pinkSignals.push({
           id: `pf:${c.id}:${flag}`,
           clientId: c.id,
           clientName: c.name,
@@ -194,7 +197,27 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
         });
       }
     }
+
+    const stage = normalizeStage(c.inferred_stage ?? '');
+    const threshold = GONE_QUIET_DAYS[stage] ?? 14;
+    const lastSess = lastSessionByClient.get(c.id) ?? null;
+    const refDate = lastSess ?? c.updated_at ?? '';
+    const daysSince = daysSinceReferenceLocal(refDate);
+    const goneQuiet =
+      daysSince !== null && daysSince > threshold && !respondedKey.has(`${c.id}:gone_quiet`);
+
+    if (goneQuiet) {
+      goneQuietSignals.push({
+        id: `gq:${c.id}`,
+        clientId: c.id,
+        clientName: c.name,
+        kind: 'gone_quiet',
+        description: `No coaching contact within ${threshold} days for stage ${stage} (${daysSince} days since last touch).`,
+      });
+    }
   }
+
+  const nextSignals: SignalItem[] = [...atRiskSignals, ...pinkSignals, ...goneQuietSignals];
 
   const conv = await db.select<ConvertedRow>(
     `SELECT id, name, golden_rules_notes FROM clients
@@ -235,14 +258,25 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
 }
 
 function signalLabel(kind: SignalKind): string {
-  return kind === 'gone_quiet' ? 'Gone quiet' : 'Pink flag';
+  if (kind === 'at_risk') return 'At Risk';
+  if (kind === 'gone_quiet') return 'Gone quiet';
+  return 'Pink flag';
 }
 
 function signalBorderColor(kind: SignalKind): string {
-  return kind === 'gone_quiet' ? '#C8613F' : '#F05F57';
+  if (kind === 'at_risk') return '#2D4459';
+  if (kind === 'gone_quiet') return '#C8613F';
+  return '#F05F57';
+}
+
+/** Badge fill: at-risk uses navy; others use same as border accent. */
+function signalBadgeStyle(kind: SignalKind): { background: string; color: string } {
+  if (kind === 'at_risk') return { background: '#2D4459', color: '#FFFFFF' };
+  return { background: signalBorderColor(kind), color: '#FFFFFF' };
 }
 
 function formatHistorySignal(t: string): string {
+  if (t === 'at_risk') return 'At risk';
   if (t === 'gone_quiet') return 'Gone quiet';
   if (t === 'pink_flag') return 'Pink flag';
   return t;
@@ -382,9 +416,19 @@ export default function CoachingActions() {
       </header>
 
       <section>
-        <h2 className="font-bold" style={{ fontSize: 14, color: '#2D4459' }}>
-          Signals Needing Response
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-bold" style={{ fontSize: 14, color: '#2D4459' }}>
+            Signals Needing Response
+          </h2>
+          {signals.length > 0 ? (
+            <span
+              className="rounded-full px-2.5 py-0.5 text-xs font-semibold"
+              style={{ background: '#E8EEF1', color: '#2D4459' }}
+            >
+              {signals.length} signals need your response
+            </span>
+          ) : null}
+        </div>
         {signals.length === 0 ? (
           <div
             className="mt-3 rounded-[10px] border px-4 py-4 text-sm"
@@ -414,13 +458,19 @@ export default function CoachingActions() {
                     {item.clientName}
                   </span>
                   <span
-                    className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-                    style={{ background: signalBorderColor(item.kind) }}
+                    className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                    style={signalBadgeStyle(item.kind)}
                   >
                     {signalLabel(item.kind)}
                   </span>
                 </div>
-                <p className="mt-1 text-xs" style={{ color: '#7A8F95' }}>
+                <p
+                  className="mt-1"
+                  style={{
+                    fontSize: 12,
+                    color: '#7A8F95',
+                  }}
+                >
                   {item.description}
                 </p>
                 <select
