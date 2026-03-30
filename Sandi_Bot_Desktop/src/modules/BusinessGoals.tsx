@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Star, MessageSquare, CheckCircle, Target, Info } from 'lucide-react';
 import { getDb } from '../services/db';
+import { getConversionRate } from '../services/clientService';
 import {
   Tooltip,
   TooltipContent,
@@ -13,6 +14,7 @@ const DEFAULT_PLACEMENT_REVENUE = 28_000;
 const DEFAULT_REVENUE_TO_DATE = 84_000;
 const C3_WEEKLY_TARGET = 2.5;
 
+const TARGET_IC = 70;
 const TARGET_C1 = 75;
 const TARGET_C2 = 65;
 const TARGET_C3 = 83;
@@ -112,10 +114,13 @@ type GapRowDef = {
   key: string;
   stage: string;
   description: string;
-  actual: number;
+  actual: number | null;
   target: number;
   actionLabel: string;
   onAction: () => void;
+  nullTooltip?: string;
+  /** C4 keeps legacy green; funnel rows use teal vs coral */
+  colorMode?: 'funnel' | 'legacy';
 };
 
 export default function BusinessGoals() {
@@ -126,10 +131,11 @@ export default function BusinessGoals() {
   const [revenueSumRaw, setRevenueSumRaw] = useState(0);
   const [c3WeekCount, setC3WeekCount] = useState(0);
   const [c3YtdCount, setC3YtdCount] = useState(0);
-  const [c1ShowPct, setC1ShowPct] = useState(0);
+  const [icShowPct, setIcShowPct] = useState<number | null>(null);
+  const [c1ShowPct, setC1ShowPct] = useState<number | null>(null);
   const [c4ConversionPct, setC4ConversionPct] = useState(0);
-  const [c2MovementPct, setC2MovementPct] = useState(0);
-  const [c3MovementPct, setC3MovementPct] = useState(0);
+  const [c2MovementPct, setC2MovementPct] = useState<number | null>(null);
+  const [c3MovementPct, setC3MovementPct] = useState<number | null>(null);
   const [interventionCount, setInterventionCount] = useState(0);
   const [flagsResolvedCount, setFlagsResolvedCount] = useState(0);
   const [clientsReadyCount, setClientsReadyCount] = useState(0);
@@ -159,13 +165,14 @@ export default function BusinessGoals() {
           revenueRows,
           c3WeekRows,
           c3YtdRows,
-          c1DenomRows,
-          c1NumRowsCorrect,
+          icScheduledRows,
+          icHeldRows,
+          c1ScheduledRows,
+          c1HeldRows,
           c4Rows,
-          c2DenomRows,
-          c2NumRows,
-          c3DenomRows,
-          c3NumRows,
+          stageLogCountRows,
+          c2DenomUnionRows,
+          c3DenomUnionRows,
           interventionRows,
           pinkRows,
           readyRows,
@@ -197,19 +204,33 @@ export default function BusinessGoals() {
             [yearStart, today]
           ),
           db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM clients c
-             WHERE ${activeSql}
-               AND TRIM(COALESCE(NULLIF(c.inferred_stage, ''), c.stage)) IN ('C1', 'Seeker Connection')`,
+            `SELECT COUNT(*) as cnt FROM coaching_sessions s
+             WHERE s.stage = 'IC'
+                 AND s.session_scheduled = 1
+                 AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
+                 AND date(s.session_date) >= date('now', 'start of year')`,
             []
           ),
           db.select<{ cnt: number }>(
-            `SELECT COUNT(DISTINCT s.client_id) as cnt
-             FROM coaching_sessions s
-             JOIN clients c ON c.id = s.client_id
-             WHERE ${activeSql}
-               AND s.stage = 'C1'
-               AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
-               AND strftime('%Y-%m', date(s.session_date)) = strftime('%Y-%m', date('now'))`,
+            `SELECT COUNT(*) as cnt FROM coaching_sessions s
+             WHERE s.stage = 'IC'
+                 AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
+                 AND date(s.session_date) >= date('now', 'start of year')`,
+            []
+          ),
+          db.select<{ cnt: number }>(
+            `SELECT COUNT(*) as cnt FROM coaching_sessions s
+             WHERE s.stage = 'C1'
+                 AND s.session_scheduled = 1
+                 AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
+                 AND date(s.session_date) >= date('now', 'start of year')`,
+            []
+          ),
+          db.select<{ cnt: number }>(
+            `SELECT COUNT(*) as cnt FROM coaching_sessions s
+             WHERE s.stage = 'C1'
+                 AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
+                 AND date(s.session_date) >= date('now', 'start of year')`,
             []
           ),
           db.select<{ with_poc: number; total: number }>(
@@ -222,38 +243,24 @@ export default function BusinessGoals() {
             []
           ),
           db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM clients c
-             WHERE ${activeSql}
-               AND TRIM(COALESCE(NULLIF(c.inferred_stage, ''), c.stage)) IN ('C2', 'Seeker Clarification')`,
+            `SELECT COUNT(*) as cnt FROM client_stage_log`,
             []
           ),
           db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM clients c
-             WHERE ${activeSql}
-               AND TRIM(COALESCE(NULLIF(c.inferred_stage, ''), c.stage)) IN ('C2', 'Seeker Clarification')
-               AND EXISTS (
-                 SELECT 1 FROM coaching_sessions s
-                 WHERE s.client_id = c.id
-                   AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
-                   AND date(s.session_date) >= date('now', '-30 days')
-               )`,
-            []
+            `SELECT COUNT(*) as cnt FROM (
+               SELECT DISTINCT client_id AS cid FROM client_stage_log WHERE to_stage = $1
+               UNION
+               SELECT DISTINCT id AS cid FROM clients WHERE inferred_stage = $1
+             ) AS d`,
+            ['C1']
           ),
           db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM clients c
-             WHERE ${activeSql}
-               AND TRIM(COALESCE(NULLIF(c.inferred_stage, ''), c.stage)) IN ('C3', 'Possibilities', 'Coach Client Collaboration')`,
-            []
-          ),
-          db.select<{ cnt: number }>(
-            `SELECT COUNT(DISTINCT s.client_id) as cnt
-             FROM coaching_sessions s
-             JOIN clients c ON c.id = s.client_id
-             WHERE ${activeSql}
-               AND s.stage = 'C3'
-               AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
-               AND date(s.session_date) >= date('now', '-30 days')`,
-            []
+            `SELECT COUNT(*) as cnt FROM (
+               SELECT DISTINCT client_id AS cid FROM client_stage_log WHERE to_stage = $1
+               UNION
+               SELECT DISTINCT id AS cid FROM clients WHERE inferred_stage = $1
+             ) AS d`,
+            ['C2']
           ),
           db.select<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM intervention_logs`, []),
           db.select<{ pink_flags: string | null }>(
@@ -273,26 +280,47 @@ export default function BusinessGoals() {
 
         if (cancelled) return;
 
-        const c1Denom = Number(c1DenomRows[0]?.cnt ?? 0);
-        const c1Num = Number(c1NumRowsCorrect[0]?.cnt ?? 0);
+        const icSched = Number(icScheduledRows[0]?.cnt ?? 0);
+        const icHeld = Number(icHeldRows[0]?.cnt ?? 0);
+        const c1Sched = Number(c1ScheduledRows[0]?.cnt ?? 0);
+        const c1Held = Number(c1HeldRows[0]?.cnt ?? 0);
         const c4 = c4Rows[0];
         const c4Total = Number(c4?.total ?? 0);
         const c4Poc = Number(c4?.with_poc ?? 0);
+
+        const stageLogCount = Number(stageLogCountRows[0]?.cnt ?? 0);
+        const denomC2 = Number(c2DenomUnionRows[0]?.cnt ?? 0);
+        const denomC3 = Number(c3DenomUnionRows[0]?.cnt ?? 0);
+
+        const [rateC2, rateC3] = await Promise.all([
+          getConversionRate('C1', 'C2'),
+          getConversionRate('C2', 'C3'),
+        ]);
 
         setPlacementCount(Number(placementRows[0]?.cnt ?? 0));
         setRevenueSumRaw(revenueRows.reduce((sum, r) => sum + parseRevenue(r.placement_revenue), 0));
         setC3WeekCount(Number(c3WeekRows[0]?.cnt ?? 0));
         setC3YtdCount(Number(c3YtdRows[0]?.cnt ?? 0));
-        setC1ShowPct(safePct(c1Num, c1Denom));
+        setIcShowPct(
+          icSched === 0 ? null : Math.min(100, Math.round((icHeld / icSched) * 1000) / 10)
+        );
+        setC1ShowPct(
+          c1Sched === 0 ? null : Math.min(100, Math.round((c1Held / c1Sched) * 1000) / 10)
+        );
         setC4ConversionPct(safePct(c4Poc, c4Total));
 
-        const c2d = Number(c2DenomRows[0]?.cnt ?? 0);
-        const c2n = Number(c2NumRows[0]?.cnt ?? 0);
-        setC2MovementPct(safePct(c2n, c2d));
+        let c2Val: number | null;
+        if (denomC2 === 0) c2Val = null;
+        else if (rateC2 === 0 && stageLogCount === 0) c2Val = null;
+        else c2Val = Math.min(100, Math.round(rateC2 * 10) / 10);
 
-        const c3d = Number(c3DenomRows[0]?.cnt ?? 0);
-        const c3n = Number(c3NumRows[0]?.cnt ?? 0);
-        setC3MovementPct(safePct(c3n, c3d));
+        let c3Val: number | null;
+        if (denomC3 === 0) c3Val = null;
+        else if (rateC3 === 0 && stageLogCount === 0) c3Val = null;
+        else c3Val = Math.min(100, Math.round(rateC3 * 10) / 10);
+
+        setC2MovementPct(c2Val);
+        setC3MovementPct(c3Val);
 
         setInterventionCount(Number(interventionRows[0]?.cnt ?? 0));
         let resolved = 0;
@@ -365,7 +393,25 @@ export default function BusinessGoals() {
     year: 'numeric',
   });
 
+  const c1ScheduledNullTip =
+    'Mark sessions as scheduled on client Fathom tabs to calculate your C1 show rate.';
+  const icScheduledNullTip =
+    'Mark sessions as scheduled on client Fathom tabs to calculate your IC session held rate.';
+  const movementNullTip =
+    'Move clients between stages to calculate conversion rates.';
+
   const gapRows: GapRowDef[] = [
+    {
+      key: 'ic',
+      stage: 'IC Session Held Rate',
+      description: 'Scheduled ICs actually held',
+      actual: icShowPct,
+      target: TARGET_IC,
+      actionLabel: 'Mark sessions scheduled →',
+      onAction: () => navigateToClientIntelligence(),
+      nullTooltip: icScheduledNullTip,
+      colorMode: 'funnel',
+    },
     {
       key: 'c1',
       stage: 'C1 Show Rate',
@@ -374,6 +420,8 @@ export default function BusinessGoals() {
       target: TARGET_C1,
       actionLabel: 'Mark sessions scheduled →',
       onAction: () => navigateToClientIntelligence(),
+      nullTooltip: c1ScheduledNullTip,
+      colorMode: 'funnel',
     },
     {
       key: 'c2',
@@ -383,6 +431,8 @@ export default function BusinessGoals() {
       target: TARGET_C2,
       actionLabel: 'Review C1 clients →',
       onAction: () => navigateToClientIntelligence('C1'),
+      nullTooltip: movementNullTip,
+      colorMode: 'funnel',
     },
     {
       key: 'c3',
@@ -392,6 +442,8 @@ export default function BusinessGoals() {
       target: TARGET_C3,
       actionLabel: 'Review C2 clients →',
       onAction: () => navigateToClientIntelligence('C2'),
+      nullTooltip: movementNullTip,
+      colorMode: 'funnel',
     },
     {
       key: 'c4',
@@ -401,6 +453,7 @@ export default function BusinessGoals() {
       target: TARGET_C4,
       actionLabel: 'Mark POC reached →',
       onAction: () => navigateToClientIntelligence('C4'),
+      colorMode: 'legacy',
     },
   ];
 
@@ -600,9 +653,36 @@ export default function BusinessGoals() {
         </p>
         <div className="mt-2">
           {gapRows.map((row, idx) => {
-            const met = row.actual >= row.target;
-            const actualColor = met ? '#22C55E' : '#F05F57';
+            const mode = row.colorMode ?? 'funnel';
+            const met = row.actual !== null && row.actual >= row.target;
+            const actualColor =
+              row.actual === null
+                ? '#7A8F95'
+                : mode === 'legacy'
+                  ? met
+                    ? '#22C55E'
+                    : '#F05F57'
+                  : met
+                    ? '#3BBFBF'
+                    : '#F05F57';
             const isLast = idx === gapRows.length - 1;
+            const actualCell =
+              row.actual === null ? (
+                row.nullTooltip ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help tabular-nums">—</span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs text-xs leading-relaxed" side="top">
+                      {row.nullTooltip}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  '—'
+                )
+              ) : (
+                `${row.actual}%`
+              );
             return (
               <div
                 key={row.key}
@@ -622,7 +702,7 @@ export default function BusinessGoals() {
                   className="w-full min-w-[72px] basis-[20%] text-left font-bold tabular-nums md:text-center"
                   style={{ fontSize: 20, color: actualColor }}
                 >
-                  {row.actual}%
+                  {actualCell}
                 </div>
                 <div
                   className="hidden w-full basis-[15%] justify-center text-center md:flex"
