@@ -458,6 +458,14 @@ function timeSavedForPeriod(period: KpiPeriod, ref: Date): { hours: number; doll
 const C3_WEEKLY_TARGET = 2.5;
 
 const PLACEMENT_TARGET_COUNT = 11;
+const GREETING_REVENUE_GOAL = 300_000;
+const DEFAULT_GREETING_PLACEMENT_REVENUE = 28_000;
+
+function parseGreetingPlacementRevenue(raw: string | null | undefined): number {
+  if (raw == null || String(raw).trim() === '') return DEFAULT_GREETING_PLACEMENT_REVENUE;
+  const n = Number(String(raw).replace(/[$,\s]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_GREETING_PLACEMENT_REVENUE;
+}
 
 /** Display stage label → pipeline code for active-client counts (Sandi plan table). */
 const PIPELINE_YTD_CODE_FROM_DISPLAY: Record<
@@ -987,6 +995,26 @@ export default function ExecutiveDashboard() {
     return ordered;
   }, [clients, discLetterByProfileClientId]);
 
+  const greetingPlacementRevenueYtd = useMemo(() => {
+    let sum = 0;
+    for (const cl of clients) {
+      const ext = cl as Client & {
+        business_purchase_date?: string | null;
+        placement_revenue?: string | null;
+      };
+      if (ext.business_purchase_date == null || String(ext.business_purchase_date).trim() === '') {
+        continue;
+      }
+      sum += parseGreetingPlacementRevenue(ext.placement_revenue);
+    }
+    return sum;
+  }, [clients]);
+
+  const atRiskGreetingCount = useMemo(
+    () => needsAttentionOrdered.filter((e) => e.kind === 'at_risk').length,
+    [needsAttentionOrdered]
+  );
+
   const seekerWeekKey = useMemo(
     () => isoWeekStringLocal(new Date(greetingNow)),
     [greetingNow]
@@ -1002,45 +1030,51 @@ export default function ExecutiveDashboard() {
   const seekerWeekLoggedComplete =
     contactedLogged !== undefined && respondedLogged !== undefined;
 
-  const morningAttentionBulletStrings = useMemo(() => {
-    const lines: string[] = [];
-    if (anchorSeekerLogClientId && !seekerWeekLoggedComplete) {
-      lines.push('Weekly seeker contacts not logged yet');
-    }
+  type GreetingPillSpec = {
+    id: string;
+    label: string;
+    dotColor: string;
+    dotRing?: boolean;
+  };
+
+  const greetingSignalPills = useMemo((): GreetingPillSpec[] => {
+    const pills: GreetingPillSpec[] = [];
     if (goneQuietAttentionCount > 0) {
-      lines.push(
-        `${goneQuietAttentionCount} client${goneQuietAttentionCount === 1 ? '' : 's'} have gone quiet`
-      );
+      pills.push({
+        id: 'gq',
+        dotColor: '#C8613F',
+        label: `${goneQuietAttentionCount} gone quiet`,
+      });
     }
     if (pinkNeedResponseCount > 0) {
-      lines.push(
-        pinkNeedResponseCount === 1
-          ? '1 pink flag needs a response'
-          : `${pinkNeedResponseCount} pink flags need a response`
-      );
+      pills.push({
+        id: 'pink',
+        dotColor: '#F05F57',
+        label: `${pinkNeedResponseCount} pink flags`,
+      });
     }
-    if (highPriorityStaleCount > 0) {
-      lines.push(
-        highPriorityStaleCount === 1
-          ? '1 high-priority client needs a session scheduled'
-          : `${highPriorityStaleCount} high-priority clients need a session scheduled`
-      );
+    if (anchorSeekerLogClientId && !seekerWeekLoggedComplete) {
+      pills.push({
+        id: 'weekly',
+        dotColor: '#C8E8E5',
+        label: 'Weekly input needed',
+      });
     }
-    if (sessionsScheduledNullCount > 0) {
-      lines.push(
-        sessionsScheduledNullCount === 1
-          ? '1 recent session needs scheduled status confirmed'
-          : `${sessionsScheduledNullCount} recent sessions need scheduled status confirmed`
-      );
+    if (atRiskGreetingCount > 0) {
+      pills.push({
+        id: 'atrisk',
+        dotColor: '#2D4459',
+        dotRing: true,
+        label: `${atRiskGreetingCount} at risk`,
+      });
     }
-    return lines;
+    return pills;
   }, [
-    anchorSeekerLogClientId,
-    seekerWeekLoggedComplete,
     goneQuietAttentionCount,
     pinkNeedResponseCount,
-    highPriorityStaleCount,
-    sessionsScheduledNullCount,
+    anchorSeekerLogClientId,
+    seekerWeekLoggedComplete,
+    atRiskGreetingCount,
   ]);
 
   const draftContactedNum = Math.max(0, Math.floor(Number(seekerContactedInput) || 0));
@@ -1179,6 +1213,17 @@ export default function ExecutiveDashboard() {
     );
   }
 
+  const greetingMoneyFmt = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
+  const ytdPlacementsForGreeting = placementByPeriod.ytd;
+  const placementPulseBarPct = Math.min(
+    100,
+    (ytdPlacementsForGreeting / PLACEMENT_TARGET_COUNT) * 100
+  );
+
   return (
     <div className="space-y-6">
       <FeedbackButton pageName="Executive Dashboard" />
@@ -1213,39 +1258,120 @@ export default function ExecutiveDashboard() {
       <section
         className="w-full"
         style={{
-          background: '#2D4459',
+          background: 'linear-gradient(180deg, #2D4459 0%, #1a2d3d 100%)',
           borderRadius: 16,
-          padding: '24px 28px',
+          padding: '32px 36px',
           marginBottom: 24,
+          minHeight: 160,
         }}
       >
-        <h1 className="font-bold text-white" style={{ fontSize: 24 }}>
-          {greetingSalutation}
-        </h1>
-        <p className="mt-1" style={{ fontSize: 14, color: '#C8E8E5' }}>
-          {greetingDateLine}
-        </p>
-        {morningAttentionBulletStrings.length === 0 ? (
-          <p className="mt-2 whitespace-pre-line" style={{ fontSize: 12, color: '#C8E8E5' }}>
-            Your pipeline is in good shape.{`\n`}Nothing urgent today.
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1
+              className="font-bold text-white"
+              style={{ fontSize: 28, letterSpacing: '-0.5px' }}
+            >
+              {greetingSalutation}
+            </h1>
+            <p style={{ fontSize: 14, color: '#C8E8E5', marginTop: 4 }}>{greetingDateLine}</p>
+          </div>
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 12,
+              padding: '12px 20px',
+              textAlign: 'center',
+            }}
+          >
+            <p className="uppercase" style={{ fontSize: 10, color: '#fff', opacity: 0.7 }}>
+              PLACEMENTS
+            </p>
+            <p className="font-bold tabular-nums text-white" style={{ fontSize: 24 }}>
+              {ytdPlacementsForGreeting} / {PLACEMENT_TARGET_COUNT}
+            </p>
+            <p style={{ fontSize: 11, color: '#3BBFBF' }}>
+              {greetingMoneyFmt.format(greetingPlacementRevenueYtd)} of{' '}
+              {greetingMoneyFmt.format(GREETING_REVENUE_GOAL)}
+            </p>
+            <div
+              className="mt-2 w-full overflow-hidden rounded-full"
+              style={{ height: 3, background: 'rgba(255,255,255,0.2)' }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: `${placementPulseBarPct}%`,
+                  background: '#3BBFBF',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '16px 0' }} />
+        {greetingSignalPills.length === 0 ? (
+          <p style={{ fontSize: 14, color: '#C8E8E5' }}>
+            ✓ Your pipeline is in good shape. Nothing urgent today.
           </p>
         ) : (
-          <div className="mt-2 space-y-1">
-            {morningAttentionBulletStrings.slice(0, 3).map((line, i) => (
-              <p key={i} style={{ fontSize: 12, color: '#C8E8E5' }}>
-                • {line}
-              </p>
-            ))}
-            {morningAttentionBulletStrings.length > 3 ? (
-              <button
-                type="button"
-                onClick={navigateToCoachingActions}
-                className="mt-1 block text-left text-[12px] font-medium underline-offset-2 hover:underline"
-                style={{ color: '#C8E8E5' }}
-              >
-                + {morningAttentionBulletStrings.length - 3} more in Coaching Actions
-              </button>
-            ) : null}
+          <div>
+            <p
+              className="uppercase"
+              style={{
+                fontSize: 10,
+                color: '#C8E8E5',
+                opacity: 0.7,
+                marginBottom: 8,
+              }}
+            >
+              TODAY&apos;S FOCUS
+            </p>
+            <div className="flex flex-wrap items-center">
+              {greetingSignalPills.slice(0, 3).map((pill) => (
+                <div
+                  key={pill.id}
+                  className="inline-flex items-center gap-1.5"
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: 20,
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    color: '#fff',
+                    marginRight: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <span
+                    className="inline-block shrink-0 rounded-full"
+                    style={{
+                      width: 6,
+                      height: 6,
+                      background: pill.dotColor,
+                      ...(pill.dotRing ? { boxShadow: '0 0 0 1px #fff' } : {}),
+                    }}
+                    aria-hidden
+                  />
+                  {pill.label}
+                </div>
+              ))}
+              {greetingSignalPills.length > 3 ? (
+                <div
+                  style={{
+                    background: '#3BBFBF',
+                    borderRadius: 20,
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    color: '#fff',
+                    fontWeight: 600,
+                    marginRight: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  + {greetingSignalPills.length - 3} more
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </section>
