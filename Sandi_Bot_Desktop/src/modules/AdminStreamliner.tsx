@@ -579,8 +579,10 @@ ${workingText}`;
         let skills: string[] | null = null;
         try {
           const rawResponse = await invoke<string>('ollama_generate', {
-            model: SKILLS_ONLY_OLLAMA_MODEL,
             prompt: skillsInstruction,
+            system:
+              'You are a document data extractor. Return only valid JSON. No markdown. No explanation.',
+            model: SKILLS_ONLY_OLLAMA_MODEL,
           });
           skills = parseSkillsOnlyResponse(rawResponse);
         } catch (e) {
