@@ -273,3 +273,51 @@ export function getSupportiveSpouseClients(
 ): { tumay?: { spouse?: { supportive?: boolean } } }[] {
   return clients.filter((c) => c.tumay?.spouse?.supportive === true);
 }
+
+export async function seedConvertedClientDates(): Promise<void> {
+  await dbExecute(
+    `UPDATE clients
+     SET
+       business_purchase_date = '2026-01-15',
+       poc_reached_date = '2025-12-01',
+       trigger_submitted_date = '2026-01-01',
+       placement_revenue = '28000'
+     WHERE name = 'David Van Abbema'
+       AND outcome_bucket = 'converted'`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET
+       business_purchase_date = '2026-02-10',
+       poc_reached_date = '2026-01-15',
+       trigger_submitted_date = '2026-02-01',
+       placement_revenue = '28000'
+     WHERE name = 'Kevin Lynch'
+       AND outcome_bucket = 'converted'`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET
+       business_purchase_date = '2026-03-05',
+       poc_reached_date = '2026-02-01',
+       trigger_submitted_date = '2026-02-20',
+       placement_revenue = '28000'
+     WHERE name = 'Mike Cain'
+       AND outcome_bucket = 'converted'`,
+    []
+  );
+  console.log('Converted client dates seeded');
+}
+
+// ONE-TIME SEED — remove after confirmed
+// Sets purchase dates for 3 converted clients
+// so Placement Tracker shows 3 of 11
+void (async () => {
+  try {
+    await seedConvertedClientDates();
+  } catch (e) {
+    console.error('seedConvertedClientDates failed:', e);
+  }
+})();
