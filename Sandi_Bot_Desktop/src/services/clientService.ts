@@ -426,6 +426,71 @@ export async function seedConvertedClientDates(): Promise<void> {
   console.log('Converted client dates seeded');
 }
 
+export async function seedPocDates(): Promise<void> {
+  await dbExecute(
+    `UPDATE clients
+     SET
+       poc_reached_date = '2026-01-01',
+       last_contact_date = '2026-03-15'
+     WHERE name = 'Alex Raiyn'
+       AND outcome_bucket = 'active'`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET
+       poc_reached_date = '2026-02-01',
+       last_contact_date = '2026-03-10'
+     WHERE name = 'Jeff Dayton'
+       AND outcome_bucket = 'active'`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-02-14'
+     WHERE outcome_bucket = 'active'
+       AND inferred_stage IN ('C2')
+       AND (
+         last_contact_date IS NULL
+         OR last_contact_date < '2024-01-01'
+       )`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-02-20'
+     WHERE outcome_bucket = 'active'
+       AND inferred_stage IN ('C3')
+       AND (
+         last_contact_date IS NULL
+         OR last_contact_date < '2024-01-01'
+       )`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-03-10'
+     WHERE outcome_bucket = 'active'
+       AND inferred_stage IN ('C4', 'C5')
+       AND (
+         last_contact_date IS NULL
+         OR last_contact_date < '2024-01-01'
+       )`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-01-15'
+     WHERE outcome_bucket = 'paused'
+       AND (
+         last_contact_date IS NULL
+         OR last_contact_date < '2024-01-01'
+       )`,
+    []
+  );
+  console.log('POC dates and last contact dates seeded');
+}
+
 export async function fixPlaceholderDates(): Promise<void> {
   const now = new Date().toISOString();
 
@@ -513,5 +578,15 @@ void (async () => {
     await fixPlaceholderDates();
   } catch (e) {
     console.error('fixPlaceholderDates failed:', e);
+  }
+})();
+
+// ONE-TIME SEED — POC dates for Alex
+// and Jeff + fix remaining 2023 dates
+void (async () => {
+  try {
+    await seedPocDates();
+  } catch (e) {
+    console.error('seedPocDates failed:', e);
   }
 })();
