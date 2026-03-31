@@ -40,16 +40,16 @@ export const stageConfig = {
     compartment: 'Compartment 3'
   },
   'Client Career 2.0': { 
-    label: 'Client Career 2.0', 
+    label: 'Initial Validation', 
     color: '#DCFCE7', 
-    description: 'Zor calls, debrief, Point of Clarity',
+    description: 'First ZOR presentation — exploring specific businesses',
     compartment: 'Compartment 4'
   },
   'Business Purchase': { 
-    label: 'Business Purchase', 
+    label: 'Continued Validation', 
     color: '#22C55E', 
-    description: 'Agreement signed, training begins!',
-    compartment: 'Closed'
+    description: 'Continued validation — ongoing ZOR discussions',
+    compartment: 'Continued Validation'
   }
 };
 
