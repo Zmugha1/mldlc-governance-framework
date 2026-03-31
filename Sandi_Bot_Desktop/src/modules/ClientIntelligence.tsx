@@ -34,6 +34,7 @@ import {
   getStageReadiness,
   moveClientStage,
   getAllStageReadiness,
+  type PipelineStage,
   type Recommendation,
   type StageReadiness,
 } from '@/services/stageReadinessService';
@@ -164,6 +165,45 @@ function stageCardCompartmentSubtitle(code: PipelineStageCode | null): string {
     C5: 5,
   };
   return `Compartment ${n[code]}`;
+}
+
+const PIPELINE_ORDER: PipelineStage[] = ['IC', 'C1', 'C2', 'C3', 'C4', 'C5'];
+
+function pipelineOrderIndex(code: PipelineStageCode | null): number {
+  if (!code) return 0;
+  const i = PIPELINE_ORDER.indexOf(code as PipelineStage);
+  return i >= 0 ? i : 0;
+}
+
+/** Advisory warning when moving forward into a stage with typical doc gaps. */
+function forwardMoveDocumentWarning(
+  target: PipelineStage,
+  ctx: {
+    sessionCount: number;
+    hasDisc: boolean;
+    hasYou2: boolean;
+    hasVision: boolean;
+  }
+): string | null {
+  if (target === 'C1' && ctx.sessionCount < 1) {
+    return 'C1 requires: first session';
+  }
+  if (target === 'C2' && !ctx.hasDisc) {
+    return 'C2 requires: DISC profile';
+  }
+  if (target === 'C3' && (!ctx.hasDisc || !ctx.hasYou2)) {
+    return 'C3 requires: DISC + You 2.0';
+  }
+  if (
+    target === 'C4' &&
+    (!ctx.hasDisc || !ctx.hasYou2 || ctx.sessionCount < 1)
+  ) {
+    return 'C4 requires: DISC + You 2.0 + at least 1 session';
+  }
+  if (target === 'C5' && (!ctx.hasDisc || !ctx.hasYou2 || !ctx.hasVision)) {
+    return 'C5 requires: DISC + You 2.0 + vision statement';
+  }
+  return null;
 }
 
 function getStageBadgeColor(stageCode: string): string {
@@ -556,10 +596,14 @@ function ClientDetailModal({
   client,
   onInactivate,
   onVisionUpdated,
+  onStageMoved,
+  onStageMoveToast,
 }: {
   client: DisplayClient;
   onInactivate?: (id: string) => void;
   onVisionUpdated?: () => void;
+  onStageMoved?: (clientId: string) => void | Promise<void>;
+  onStageMoveToast?: (message: string) => void;
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null);
   const [you2Vision, setYou2Vision] = useState('No statement yet');
@@ -714,6 +758,11 @@ function ClientDetailModal({
   const [visionDraftMode, setVisionDraftMode] = useState(false);
   const [visionEditText, setVisionEditText] = useState('');
   const [visionApproveMsg, setVisionApproveMsg] = useState<string | null>(null);
+  const [stageMoveDialog, setStageMoveDialog] = useState<{
+    target: PipelineStage;
+    direction: 'forward' | 'back';
+  } | null>(null);
+  const [stageMoveSaving, setStageMoveSaving] = useState(false);
 
   useEffect(() => {
     if (!client?.id) return;
@@ -747,6 +796,8 @@ function ClientDetailModal({
   useEffect(() => {
     setDetailTab('overview');
     setShowInactivateConfirm(false);
+    setStageMoveDialog(null);
+    setStageMoveSaving(false);
   }, [client?.id]);
 
   useEffect(() => {
@@ -1091,7 +1142,7 @@ function ClientDetailModal({
       setIsEditingLastContact(false);
       setLastContactDraft('');
     }
-  }, [client?.id]);
+  }, [client?.id, client?.inferred_stage]);
 
   const mostRecentSessionDate = useMemo(() => {
     for (const s of fathomSessions) {
@@ -1117,6 +1168,14 @@ function ClientDetailModal({
   const stageCompartmentSubtitle =
     stageCardCompartmentSubtitle(resolvedPipelineCode);
 
+  const pipeIdx = pipelineOrderIndex(resolvedPipelineCode);
+  const prevStageMove =
+    pipeIdx > 0 ? PIPELINE_ORDER[pipeIdx - 1]! : null;
+  const nextStageMove =
+    pipeIdx < PIPELINE_ORDER.length - 1
+      ? PIPELINE_ORDER[pipeIdx + 1]!
+      : null;
+
   const persistedVisionText = (client.visionStatement.paragraph ?? '').trim();
   const visionIsApproved = client.vision_approved === 1;
 
@@ -1128,6 +1187,60 @@ function ClientDetailModal({
     shouldShowGoneQuietBadge(client) && discScores
       ? goneQuietTipFromNaturalScores(discScores)
       : null;
+
+  const handleConfirmStageMove = async () => {
+    if (!stageMoveDialog) return;
+    const target = stageMoveDialog.target;
+    setStageMoveSaving(true);
+    try {
+      const curRows = await dbSelect<{ inferred_stage: string | null }>(
+        `SELECT inferred_stage FROM clients WHERE id = $1`,
+        [client.id]
+      );
+      const fromRaw = curRows[0]?.inferred_stage ?? null;
+
+      await dbExecute(
+        `UPDATE clients SET inferred_stage = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [target, client.id]
+      );
+
+      const logId = crypto.randomUUID();
+      const movedAt = new Date().toISOString();
+      await dbExecute(
+        `INSERT INTO client_stage_log (id, client_id, from_stage, to_stage, moved_at, moved_by, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [logId, client.id, fromRaw, target, movedAt, 'sandi', null]
+      );
+
+      const detail = `${fromRaw ?? ''} → ${target}`;
+      await logEntry(
+        'stage_moved',
+        client.id,
+        fromRaw,
+        detail,
+        null,
+        'deterministic'
+      );
+
+      setStageMoveDialog(null);
+      await onStageMoved?.(client.id);
+
+      const targetDisplay =
+        STAGE_DISPLAY_NAMES[target] ?? getStageDisplayName(target);
+      onStageMoveToast?.(`${client.name} moved to ${targetDisplay}`);
+
+      void getStageReadiness(client.id).then(setReadiness);
+      void getAllStageReadiness()
+        .then((allReadiness) => {
+          const matched = allReadiness.find((r) => r.client_id === client.id);
+          setReadinessScorePct(matched?.readiness_score ?? 0);
+        })
+        .catch(() => {});
+    } catch (e) {
+      console.error('stage move failed:', e);
+    } finally {
+      setStageMoveSaving(false);
+    }
+  };
 
   const handleInactivate = () => {
     if (!onInactivate) return;
@@ -2330,6 +2443,58 @@ function ClientDetailModal({
                   <p className="text-xs text-slate-500 mt-2">
                     {stageCompartmentSubtitle}
                   </p>
+                  <div
+                    className="flex flex-row justify-between"
+                    style={{ marginTop: 12 }}
+                  >
+                    {prevStageMove ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setStageMoveDialog({
+                            target: prevStageMove,
+                            direction: 'back',
+                          })
+                        }
+                        className="text-left transition-opacity hover:opacity-90"
+                        style={{
+                          background: 'white',
+                          border: '1px solid #C8E8E5',
+                          color: '#7A8F95',
+                          borderRadius: 8,
+                          padding: '6px 12px',
+                          fontSize: 12,
+                        }}
+                      >
+                        ← Move Back
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                    {nextStageMove ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setStageMoveDialog({
+                            target: nextStageMove,
+                            direction: 'forward',
+                          })
+                        }
+                        className="text-right font-bold transition-opacity hover:opacity-90"
+                        style={{
+                          background: '#3BBFBF',
+                          color: 'white',
+                          borderRadius: 8,
+                          padding: '6px 12px',
+                          fontSize: 12,
+                        }}
+                      >
+                        Move Forward →
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                  </div>
                 </CardContent>
               </Card>
               <Card>
@@ -3895,6 +4060,78 @@ Use reminders for:
         </Tabs>
 
       <Dialog
+        open={!!stageMoveDialog}
+        onOpenChange={(open) => {
+          if (!open && !stageMoveSaving) setStageMoveDialog(null);
+        }}
+      >
+        <DialogContent
+          className="max-w-[440px] gap-0 border-0 p-0 shadow-xl"
+          style={{
+            borderRadius: 12,
+            padding: '24px 28px',
+            background: 'white',
+          }}
+        >
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle style={{ color: '#2D4459', fontSize: 16, fontWeight: 700 }}>
+              Move {client.name}?
+            </DialogTitle>
+          </DialogHeader>
+          {stageMoveDialog ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm" style={{ color: '#2D4459' }}>
+                Move from{' '}
+                <span className="font-semibold">{stageLabel}</span> to{' '}
+                <span className="font-semibold">
+                  {STAGE_DISPLAY_NAMES[stageMoveDialog.target] ??
+                    getStageDisplayName(stageMoveDialog.target)}
+                </span>
+                ?
+              </p>
+              {stageMoveDialog.direction === 'forward'
+                ? (() => {
+                    const w = forwardMoveDocumentWarning(
+                      stageMoveDialog.target,
+                      {
+                        sessionCount: fathomSessionCount,
+                        hasDisc: discScores != null,
+                        hasYou2: you2Details != null,
+                        hasVision: persistedVisionText.length > 0,
+                      }
+                    );
+                    return w ? (
+                      <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        {w}
+                      </p>
+                    ) : null;
+                  })()
+                : null}
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  className="text-sm font-medium text-[#7A8F95] underline-offset-2 hover:underline"
+                  disabled={stageMoveSaving}
+                  onClick={() => setStageMoveDialog(null)}
+                >
+                  Cancel
+                </button>
+                <Button
+                  type="button"
+                  disabled={stageMoveSaving}
+                  className="w-full border-0 text-white hover:opacity-90 sm:w-auto"
+                  style={{ background: '#3BBFBF' }}
+                  onClick={() => void handleConfirmStageMove()}
+                >
+                  {stageMoveSaving ? 'Saving…' : 'Confirm Move'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={ahaModalOpen}
         onOpenChange={(open) => {
           setAhaModalOpen(open);
@@ -4048,9 +4285,12 @@ export default function ClientIntelligence() {
     };
   }, [loading, error]);
 
-  const loadClients = () => {
-    setLoading(true);
-    setError(null);
+  const loadClients = (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     Promise.all([
       getAllClients(),
       getDiscProfilesMap(),
@@ -4107,9 +4347,13 @@ export default function ClientIntelligence() {
       })
       .catch((err) => {
         console.error(err);
-        setError(String(err?.message ?? err ?? 'Failed to load clients'));
+        if (!silent) {
+          setError(String(err?.message ?? err ?? 'Failed to load clients'));
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -4522,6 +4766,16 @@ export default function ClientIntelligence() {
                   client={selectedDisplay}
                   onInactivate={handleInactivateClient}
                   onVisionUpdated={loadClients}
+                  onStageMoved={async (id) => {
+                    try {
+                      const fresh = await getClient(id);
+                      setSelectedClient(fresh);
+                    } catch (e) {
+                      console.error(e);
+                    }
+                    loadClients({ silent: true });
+                  }}
+                  onStageMoveToast={setToastMessage}
                 />
               ) : (
                 <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 text-center">
