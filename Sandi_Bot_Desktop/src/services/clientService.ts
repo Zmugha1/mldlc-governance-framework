@@ -559,6 +559,47 @@ export async function fixPlaceholderDates(): Promise<void> {
   console.log('Placeholder dates fixed');
 }
 
+export async function clearPlaceholderSessions(): Promise<void> {
+  await dbExecute(
+    `DELETE FROM coaching_sessions
+     WHERE notes LIKE '%John Doe%'`,
+    []
+  );
+  await dbExecute(
+    `DELETE FROM coaching_sessions
+     WHERE notes LIKE '%john doe%'`,
+    []
+  );
+  await dbExecute(
+    `DELETE FROM coaching_sessions
+     WHERE (
+       notes IS NULL
+       OR notes = ''
+       OR notes = 'No notes recorded for this session.'
+     )
+     AND (
+       session_date = '2026-02-14'
+       OR session_date = '2026-02-20'
+       OR session_date = '2023-02-15'
+       OR session_date = '2023-02-20'
+     )
+     AND next_actions IS NULL`,
+    []
+  );
+  await dbExecute(
+    `DELETE FROM coaching_sessions
+     WHERE clear_curiosity = 3
+       AND clear_locating = 3
+       AND clear_engagement = 3
+       AND clear_accountability = 3
+       AND clear_reflection = 3
+       AND (notes IS NULL OR notes = '')
+       AND next_actions IS NULL`,
+    []
+  );
+  console.log('Placeholder sessions cleared');
+}
+
 // ONE-TIME SEED — remove after confirmed
 // Sets purchase dates for 3 converted clients
 // so Placement Tracker shows 3 of 11
@@ -588,5 +629,17 @@ void (async () => {
     await seedPocDates();
   } catch (e) {
     console.error('seedPocDates failed:', e);
+  }
+})();
+
+// ONE-TIME CLEANUP — removes John Doe
+// placeholder sessions and empty
+// pre-structure sessions before RAG
+// embedding
+void (async () => {
+  try {
+    await clearPlaceholderSessions();
+  } catch (e) {
+    console.error('clearPlaceholderSessions failed:', e);
   }
 })();
