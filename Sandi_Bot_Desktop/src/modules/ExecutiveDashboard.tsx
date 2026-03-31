@@ -317,6 +317,15 @@ const NEED_ATTENTION_GONE_QUIET_DAYS: Record<
   C5: 60,
 };
 
+/** Gone quiet SQL thresholds (IC–C4 only; matches dashboard COUNT query). */
+const GONE_QUIET_LAST_CONTACT_THRESHOLDS: Record<'IC' | 'C1' | 'C2' | 'C3' | 'C4', number> = {
+  IC: 14,
+  C1: 21,
+  C2: 14,
+  C3: 14,
+  C4: 60,
+};
+
 type NeedAttentionKind = 'at_risk' | 'pink_flag' | 'gone_quiet';
 
 type NeedAttentionEntry = {
@@ -717,6 +726,7 @@ export default function ExecutiveDashboard() {
         anchorSeekerRows,
         userPrefsRows,
         glanceAtTableRows,
+        goneQuietCountRows,
       ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
@@ -797,6 +807,28 @@ export default function ExecutiveDashboard() {
            ORDER BY c.name`,
           []
         ),
+        dbSelect<{ gone_quiet_count: number }>(
+          `SELECT COUNT(*) as gone_quiet_count
+           FROM clients c
+           WHERE c.outcome_bucket = 'active'
+           AND (
+             (c.inferred_stage = 'IC'
+               AND c.last_contact_date < date('now', '-14 days'))
+             OR
+             (c.inferred_stage = 'C1'
+               AND c.last_contact_date < date('now', '-21 days'))
+             OR
+             (c.inferred_stage = 'C2'
+               AND c.last_contact_date < date('now', '-14 days'))
+             OR
+             (c.inferred_stage = 'C3'
+               AND c.last_contact_date < date('now', '-14 days'))
+             OR
+             (c.inferred_stage = 'C4'
+               AND c.last_contact_date < date('now', '-60 days'))
+           )`,
+          []
+        ),
       ]);
       setStats(s);
       setClients(c);
@@ -822,12 +854,7 @@ export default function ExecutiveDashboard() {
       }
       setGlanceAtTableByClientId(glanceMap);
 
-      let goneQuietN = 0;
-      for (const r of readiness) {
-        if ((r.outcome_bucket ?? '').toLowerCase() !== 'active') continue;
-        if (r.gone_quiet) goneQuietN += 1;
-      }
-      setGoneQuietAttentionCount(goneQuietN);
+      setGoneQuietAttentionCount(Number(goneQuietCountRows[0]?.gone_quiet_count ?? 0));
 
       const pinkWeekSet = new Set(
         pinkFlagWeekClients.map((row) => row.client_id).filter(Boolean)
@@ -1067,13 +1094,14 @@ export default function ExecutiveDashboard() {
     }
 
     for (const cl of clients) {
-      if (!isActive(cl)) continue;
+      if (cl.outcome_bucket !== 'active') continue;
       const lc = clientLastContactDate(cl);
       if (!lc) continue;
       const days = daysSinceCalendarLocal(lc);
       if (days === null) continue;
       const code = stagePipelineCodeForAttention(cl);
-      const th = NEED_ATTENTION_GONE_QUIET_DAYS[code];
+      const th = GONE_QUIET_LAST_CONTACT_THRESHOLDS[code as keyof typeof GONE_QUIET_LAST_CONTACT_THRESHOLDS];
+      if (th === undefined) continue;
       if (days <= th) continue;
       goneQ.push({
         clientId: cl.id,
