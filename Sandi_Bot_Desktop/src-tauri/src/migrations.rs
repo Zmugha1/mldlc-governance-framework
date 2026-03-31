@@ -92,3 +92,16 @@ pub fn migration_57() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 58: `last_contact_date` on `clients` (backfilled from `updated_at`).
+pub fn migration_58() -> Migration {
+    Migration {
+        version: 58,
+        description: "add_last_contact_date_to_clients",
+        sql: "ALTER TABLE clients ADD COLUMN last_contact_date TEXT;
+              UPDATE clients
+                SET last_contact_date = updated_at
+                WHERE last_contact_date IS NULL;",
+        kind: MigrationKind::Up,
+    }
+}
