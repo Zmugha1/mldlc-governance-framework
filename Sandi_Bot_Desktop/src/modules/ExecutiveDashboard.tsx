@@ -1,4 +1,12 @@
-import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  type ReactNode,
+} from 'react';
 import { RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -502,6 +510,10 @@ function timeSavedForPeriod(
   }
 }
 
+/** Morning Brief Time Saved card — week 1 baseline floor. */
+const TIME_SAVED_CARD_MIN_HOURS = 2;
+const TIME_SAVED_CARD_MIN_DOLLARS = 300;
+
 function formatTimeSavedHours(h: number): string {
   const x = roundTo1Decimal(h);
   return Number.isInteger(x) ? String(x) : x.toFixed(1);
@@ -581,7 +593,7 @@ function MorningBriefKpiCard({
         {sub}
       </p>
       {footnote ? (
-        <p className="mt-1.5" style={{ fontSize: 10, color: '#7A8F95' }}>
+        <p className="mt-1.5 whitespace-pre-line" style={{ fontSize: 10, color: '#7A8F95' }}>
           {footnote}
         </p>
       ) : null}
@@ -640,6 +652,26 @@ export default function ExecutiveDashboard() {
     const t = window.setTimeout(() => setSeekerWeekSaveOk(false), 3000);
     return () => window.clearTimeout(t);
   }, [seekerWeekSaveOk]);
+
+  const morningBriefShellRef = useRef<HTMLDivElement>(null);
+
+  /** App.tsx ModuleHeader subtitle; hide so only in-module copy shows. */
+  useLayoutEffect(() => {
+    if (loading || error || !stats) return;
+    const root = morningBriefShellRef.current;
+    if (!root?.parentElement) return;
+    const legacyDesc = root.parentElement.querySelector(
+      ':scope > div.mb-6 > p.mt-1'
+    ) as HTMLElement | null;
+    if (!legacyDesc?.textContent?.includes('Real-time KPIs')) return;
+    const prev = legacyDesc.style.display;
+    legacyDesc.style.display = 'none';
+    return () => {
+      if (document.body.contains(legacyDesc)) {
+        legacyDesc.style.display = prev;
+      }
+    };
+  }, [loading, error, stats]);
 
   const greetingSalutation = useMemo(() => {
     const d = new Date(greetingNow);
@@ -1163,7 +1195,7 @@ export default function ExecutiveDashboard() {
     'font-semibold border-[#C8E8E5] text-[#2D4459] bg-[#F4F7F8]';
   const tableBodyRowClass = 'border-b border-[#C8E8E5]';
 
-  const timeSavedDisplay = useMemo(
+  const timeSavedRaw = useMemo(
     () => timeSavedForPeriod(kpiPeriod, new Date(greetingNow), timeSavedPrefs),
     [kpiPeriod, greetingNow, timeSavedPrefs]
   );
@@ -1172,6 +1204,29 @@ export default function ExecutiveDashboard() {
     () => formatTimeSavedInstallFootnote(timeSavedPrefs),
     [timeSavedPrefs]
   );
+
+  const timeSavedCard = useMemo(() => {
+    const raw = timeSavedRaw;
+    if (raw.hours < TIME_SAVED_CARD_MIN_HOURS) {
+      return {
+        hours: TIME_SAVED_CARD_MIN_HOURS,
+        dollars: TIME_SAVED_CARD_MIN_DOLLARS,
+        firstWeekBaseline: true,
+      };
+    }
+    return {
+      hours: raw.hours,
+      dollars: Math.max(raw.dollars, TIME_SAVED_CARD_MIN_DOLLARS),
+      firstWeekBaseline: false,
+    };
+  }, [timeSavedRaw]);
+
+  const timeSavedCardFootnote = useMemo(() => {
+    if (timeSavedCard.firstWeekBaseline) {
+      return 'First week — tracking from Mar 27 2026';
+    }
+    return timeSavedInstallFootnote;
+  }, [timeSavedCard.firstWeekBaseline, timeSavedInstallFootnote]);
 
   const selectedPlacementCount = placementByPeriod[kpiPeriod];
 
@@ -1231,8 +1286,11 @@ export default function ExecutiveDashboard() {
   );
 
   return (
-    <div className="space-y-6">
+    <div ref={morningBriefShellRef} className="space-y-6">
       <FeedbackButton pageName="Executive Dashboard" />
+      <p className="-mt-2 text-sm leading-snug" style={{ color: '#7A8F95' }}>
+        Your daily coaching command center
+      </p>
 
       <div className="flex flex-wrap items-center justify-end gap-3">
         {lastUpdated ? (
@@ -1667,10 +1725,10 @@ export default function ExecutiveDashboard() {
         />
         <MorningBriefKpiCard
           label="TIME SAVED"
-          value={`${formatTimeSavedHours(timeSavedDisplay.hours)} hours`}
-          sub={`${formatUsdWhole(timeSavedDisplay.dollars)} in coaching time`}
+          value={`${formatTimeSavedHours(timeSavedCard.hours)} hours`}
+          sub={`${formatUsdWhole(timeSavedCard.dollars)} in coaching time`}
           valueColor="#3BBFBF"
-          footnote={timeSavedInstallFootnote}
+          footnote={timeSavedCardFootnote}
         />
       </section>
 
