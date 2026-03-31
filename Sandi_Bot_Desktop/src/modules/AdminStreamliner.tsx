@@ -115,15 +115,136 @@ function csvEscapeCell(value: string): string {
   return value;
 }
 
-interface You2CompletenessAuditRow {
+type CompletenessCellStatus = 'OK' | 'PARTIAL' | 'MISSING' | 'WARN';
+
+type CompletenessAuditRow = {
   name: string;
   inferred_stage: string | null;
   outcome_bucket: string | null;
-  vision: string;
-  dangers: string;
-  opportunities: string;
-  strengths: string;
-  skills: string;
+  vision: CompletenessCellStatus;
+  dangers: CompletenessCellStatus;
+  opportunities: CompletenessCellStatus;
+  strengths: CompletenessCellStatus;
+  skills: CompletenessCellStatus;
+  disc: CompletenessCellStatus;
+  sessions: CompletenessCellStatus;
+  contact: CompletenessCellStatus;
+  lastContact: CompletenessCellStatus;
+  ragReady: boolean;
+};
+
+function isMeaningful(value: unknown): boolean {
+  if (value === null) return false;
+  if (value === undefined) return false;
+  const str = String(value).trim();
+  if (str === '') return false;
+  if (str === '[]') return false;
+  if (str === '{}') return false;
+  if (str === 'null') return false;
+  if (str === 'undefined') return false;
+  if (str === 'Not provided') return false;
+  if (str === 'Not available') return false;
+  if (str === 'N/A') return false;
+  if (str.length < 10) return false;
+  try {
+    const parsed = JSON.parse(str) as unknown;
+    if (Array.isArray(parsed) && parsed.length === 0) return false;
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((item) => String(item).trim() === '')
+    ) {
+      return false;
+    }
+  } catch {
+    // not JSON — use string check above
+  }
+  return true;
+}
+
+/** You2-style text fields: OK (>30 chars), PARTIAL (10–30), MISSING otherwise. */
+function you2FieldStatus(value: unknown): CompletenessCellStatus {
+  if (!isMeaningful(value)) return 'MISSING';
+  const str = String(value).trim();
+  return str.length > 30 ? 'OK' : 'PARTIAL';
+}
+
+function discColumnStatus(row: {
+  natural_d: number | null;
+  natural_i: number | null;
+  natural_s: number | null;
+  natural_c: number | null;
+}): CompletenessCellStatus {
+  const nums = [
+    Number(row.natural_d ?? 0),
+    Number(row.natural_i ?? 0),
+    Number(row.natural_s ?? 0),
+    Number(row.natural_c ?? 0),
+  ];
+  return nums.some((n) => n > 0) ? 'OK' : 'MISSING';
+}
+
+function sessionsColumnStatus(realSessionCount: number): CompletenessCellStatus {
+  return realSessionCount >= 1 ? 'OK' : 'WARN';
+}
+
+function contactColumnStatus(email: unknown): CompletenessCellStatus {
+  if (email === null || email === undefined) return 'MISSING';
+  const str = String(email).trim();
+  if (str === '') return 'MISSING';
+  if (str === '[]' || str === 'null' || str === 'undefined') return 'MISSING';
+  if (
+    str === 'Not provided' ||
+    str === 'Not available' ||
+    str === 'N/A'
+  ) {
+    return 'MISSING';
+  }
+  if (!str.includes('@')) return 'MISSING';
+  const local = str.split('@')[0] ?? '';
+  if (local.length < 2) return 'MISSING';
+  if (str.length < 10) return 'PARTIAL';
+  return 'OK';
+}
+
+function lastContactColumnStatus(dateVal: unknown): CompletenessCellStatus {
+  if (dateVal === null || dateVal === undefined) return 'MISSING';
+  const str = String(dateVal).trim();
+  if (str === '') return 'MISSING';
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return 'MISSING';
+  const cutoff = new Date('2024-01-01T00:00:00.000Z');
+  if (d < cutoff) return 'MISSING';
+  return 'OK';
+}
+
+function completenessStatusLabel(s: CompletenessCellStatus): string {
+  if (s === 'OK') return '✅ OK';
+  if (s === 'PARTIAL') return '⚠️ PARTIAL';
+  if (s === 'WARN') return '⚠️ WARN';
+  return '❌ MISSING';
+}
+
+function completenessStatusTextClass(s: CompletenessCellStatus): string {
+  if (s === 'OK') return 'text-green-700';
+  if (s === 'PARTIAL' || s === 'WARN') return 'text-amber-700';
+  return 'text-red-700';
+}
+
+function auditRowBackground(row: CompletenessAuditRow): string {
+  const cells: CompletenessCellStatus[] = [
+    row.vision,
+    row.dangers,
+    row.opportunities,
+    row.strengths,
+    row.skills,
+    row.disc,
+    row.sessions,
+    row.contact,
+    row.lastContact,
+  ];
+  if (cells.some((c) => c === 'MISSING')) return '#FFF0F0';
+  if (cells.some((c) => c === 'PARTIAL' || c === 'WARN')) return '#FFF8F0';
+  return '#ffffff';
 }
 
 const SKILLS_ONLY_REEXTRACT_NAMES = [
@@ -282,7 +403,7 @@ export default function AdminStreamliner() {
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [validateReadyCount, setValidateReadyCount] = useState(0);
-  const [completenessAuditRows, setCompletenessAuditRows] = useState<You2CompletenessAuditRow[] | null>(null);
+  const [completenessAuditRows, setCompletenessAuditRows] = useState<CompletenessAuditRow[] | null>(null);
   const [completenessAuditLoading, setCompletenessAuditLoading] = useState(false);
   const [completenessAuditError, setCompletenessAuditError] = useState<string | null>(null);
   const [skillsReExtractRunning, setSkillsReExtractRunning] = useState(false);
@@ -435,33 +556,99 @@ export default function AdminStreamliner() {
     setCompletenessAuditLoading(true);
     setCompletenessAuditError(null);
     try {
-      const rows = await dbSelect<You2CompletenessAuditRow>(
+      type RawCompletenessRow = {
+        name: string;
+        inferred_stage: string | null;
+        outcome_bucket: string | null;
+        one_year_vision: string | null;
+        dangers: string | null;
+        opportunities: string | null;
+        strengths: string | null;
+        skills: string | null;
+        natural_d: number | null;
+        natural_i: number | null;
+        natural_s: number | null;
+        natural_c: number | null;
+        email: string | null;
+        last_contact_date: string | null;
+        real_session_count: number | null;
+      };
+
+      const rawRows = await dbSelect<RawCompletenessRow>(
         `SELECT
           c.name,
           c.inferred_stage,
           c.outcome_bucket,
-          CASE WHEN y.one_year_vision IS NOT NULL
-            AND LENGTH(y.one_year_vision) > 20
-            THEN 'OK' ELSE 'MISSING' END as vision,
-          CASE WHEN y.dangers IS NOT NULL
-            AND LENGTH(y.dangers) > 5
-            THEN 'OK' ELSE 'MISSING' END as dangers,
-          CASE WHEN y.opportunities IS NOT NULL
-            AND LENGTH(y.opportunities) > 5
-            THEN 'OK' ELSE 'MISSING' END as opportunities,
-          CASE WHEN y.strengths IS NOT NULL
-            AND LENGTH(y.strengths) > 5
-            THEN 'OK' ELSE 'MISSING' END as strengths,
-          CASE WHEN y.skills IS NOT NULL
-            AND LENGTH(y.skills) > 5
-            THEN 'OK' ELSE 'MISSING' END as skills
+          y.one_year_vision,
+          y.dangers,
+          y.opportunities,
+          y.strengths,
+          y.skills,
+          dp.natural_d,
+          dp.natural_i,
+          dp.natural_s,
+          dp.natural_c,
+          c.email,
+          c.last_contact_date,
+          (
+            SELECT COUNT(*)
+            FROM coaching_sessions cs
+            WHERE cs.client_id = c.id
+              AND cs.notes IS NOT NULL
+              AND TRIM(cs.notes) != ''
+              AND cs.notes NOT LIKE '%John Doe%'
+              AND LENGTH(cs.notes) > 20
+          ) AS real_session_count
         FROM clients c
-        LEFT JOIN client_you2_profiles y
-          ON c.id = y.client_id
+        LEFT JOIN client_you2_profiles y ON c.id = y.client_id
+        LEFT JOIN client_disc_profiles dp ON c.id = dp.client_id
         WHERE c.outcome_bucket != 'inactive'
         ORDER BY c.outcome_bucket, c.name`,
         []
       );
+
+      const rows: CompletenessAuditRow[] = rawRows.map((r) => {
+        const vision = you2FieldStatus(r.one_year_vision);
+        const dangers = you2FieldStatus(r.dangers);
+        const opportunities = you2FieldStatus(r.opportunities);
+        const strengths = you2FieldStatus(r.strengths);
+        const skills = you2FieldStatus(r.skills);
+        const disc = discColumnStatus({
+          natural_d: r.natural_d,
+          natural_i: r.natural_i,
+          natural_s: r.natural_s,
+          natural_c: r.natural_c,
+        });
+        const realCount = Number(r.real_session_count ?? 0);
+        const sessions = sessionsColumnStatus(realCount);
+        const contact = contactColumnStatus(r.email);
+        const lastContact = lastContactColumnStatus(r.last_contact_date);
+        const ragReady =
+          vision === 'OK' &&
+          dangers === 'OK' &&
+          opportunities === 'OK' &&
+          strengths === 'OK' &&
+          skills === 'OK' &&
+          disc === 'OK' &&
+          realCount >= 1;
+
+        return {
+          name: r.name,
+          inferred_stage: r.inferred_stage,
+          outcome_bucket: r.outcome_bucket,
+          vision,
+          dangers,
+          opportunities,
+          strengths,
+          skills,
+          disc,
+          sessions,
+          contact,
+          lastContact,
+          ragReady,
+        };
+      });
+
       setCompletenessAuditRows(rows);
     } catch (err) {
       console.error(err);
@@ -1032,43 +1219,140 @@ ${workingText}`;
                           <th className="p-2 font-semibold text-slate-700">Opportunities</th>
                           <th className="p-2 font-semibold text-slate-700">Strengths</th>
                           <th className="p-2 font-semibold text-slate-700">Skills</th>
+                          <th className="p-2 font-semibold text-slate-700">DISC</th>
+                          <th className="p-2 font-semibold text-slate-700">Sessions</th>
+                          <th className="p-2 font-semibold text-slate-700">Contact</th>
+                          <th className="p-2 font-semibold text-slate-700">Last Contact</th>
+                          <th className="p-2 font-semibold text-slate-700">RAG Ready</th>
                         </tr>
                       </thead>
                       <tbody>
                         {completenessAuditRows.map((row, i) => (
-                          <tr key={`${row.name}-${i}`} className="border-b border-slate-100">
+                          <tr
+                            key={`${row.name}-${i}`}
+                            className="border-b border-slate-100"
+                            style={{ backgroundColor: auditRowBackground(row) }}
+                          >
                             <td className="p-2 text-slate-900">{row.name}</td>
                             <td className="p-2 text-slate-700">{row.inferred_stage ?? '—'}</td>
                             <td className="p-2">
-                              <span className={cn('font-medium', row.vision === 'OK' ? 'text-green-600' : 'text-red-600')}>
-                                {row.vision}
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.vision)
+                                )}
+                              >
+                                {completenessStatusLabel(row.vision)}
                               </span>
                             </td>
                             <td className="p-2">
-                              <span className={cn('font-medium', row.dangers === 'OK' ? 'text-green-600' : 'text-red-600')}>
-                                {row.dangers}
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.dangers)
+                                )}
+                              >
+                                {completenessStatusLabel(row.dangers)}
                               </span>
                             </td>
                             <td className="p-2">
-                              <span className={cn('font-medium', row.opportunities === 'OK' ? 'text-green-600' : 'text-red-600')}>
-                                {row.opportunities}
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.opportunities)
+                                )}
+                              >
+                                {completenessStatusLabel(row.opportunities)}
                               </span>
                             </td>
                             <td className="p-2">
-                              <span className={cn('font-medium', row.strengths === 'OK' ? 'text-green-600' : 'text-red-600')}>
-                                {row.strengths}
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.strengths)
+                                )}
+                              >
+                                {completenessStatusLabel(row.strengths)}
                               </span>
                             </td>
                             <td className="p-2">
-                              {row.skills === 'OK' ? (
-                                <span className="font-medium text-green-600">OK</span>
-                              ) : (
-                                <span className="font-medium text-slate-500">N/A in doc</span>
-                              )}
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.skills)
+                                )}
+                              >
+                                {completenessStatusLabel(row.skills)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.disc)
+                                )}
+                              >
+                                {completenessStatusLabel(row.disc)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.sessions)
+                                )}
+                              >
+                                {completenessStatusLabel(row.sessions)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.contact)
+                                )}
+                              >
+                                {completenessStatusLabel(row.contact)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  completenessStatusTextClass(row.lastContact)
+                                )}
+                              >
+                                {completenessStatusLabel(row.lastContact)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'font-medium whitespace-nowrap',
+                                  row.ragReady ? 'text-green-700' : 'text-red-700'
+                                )}
+                              >
+                                {row.ragReady ? '✅ Ready' : '❌ Not Ready'}
+                              </span>
                             </td>
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 bg-slate-100">
+                          <td
+                            colSpan={12}
+                            className="p-3 text-sm font-medium text-slate-800"
+                          >
+                            {completenessAuditRows.filter((r) => r.ragReady).length} of{' '}
+                            {completenessAuditRows.length} clients fully complete
+                            <br />
+                            {completenessAuditRows.length -
+                              completenessAuditRows.filter((r) => r.ragReady).length}{' '}
+                            clients have gaps
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 )}
