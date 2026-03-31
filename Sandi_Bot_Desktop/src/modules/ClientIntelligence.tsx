@@ -547,31 +547,11 @@ const REMINDER_TYPE_OPTIONS = [
 
 type ReminderTypeOption = (typeof REMINDER_TYPE_OPTIONS)[number];
 
-function parseListField(
-  field: unknown,
+function mapParsedListItems(
+  items: unknown[],
   primaryKey?: string
 ): string[] {
-  if (!field) return [];
-
-  let arr: unknown[] = [];
-
-  if (typeof field === 'string') {
-    try {
-      const parsed = JSON.parse(field);
-      arr = Array.isArray(parsed) ? parsed : [parsed];
-    } catch {
-      return field
-        .split('\n')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-    }
-  } else if (Array.isArray(field)) {
-    arr = field;
-  } else {
-    return [String(field)];
-  }
-
-  return arr
+  return items
     .map((item) => {
       if (typeof item === 'string') return item;
       if (typeof item === 'object' && item !== null) {
@@ -592,6 +572,93 @@ function parseListField(
     .filter((s) => s.length > 0);
 }
 
+function You2VisionDisplay({ text }: { text: string }) {
+  const t = text.trim();
+  const ok =
+    t.length > 10 && t !== 'Not provided' && t !== 'No statement yet';
+  if (ok) {
+    return (
+      <p style={{ color: '#2D4459', fontSize: 13, lineHeight: 1.6 }}>{t}</p>
+    );
+  }
+  return (
+    <p className="italic" style={{ color: '#7A8F95', fontSize: 12 }}>
+      Not yet captured
+    </p>
+  );
+}
+
+function You2ParsedListDisplay({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return (
+      <p className="italic" style={{ color: '#7A8F95', fontSize: 12 }}>
+        Not yet captured
+      </p>
+    );
+  }
+  return (
+    <ul className="m-0 list-none space-y-0 p-0">
+      {items.map((item, i) => (
+        <li
+          key={i}
+          className="flex gap-2"
+          style={{ color: '#2D4459', fontSize: 13, lineHeight: 1.6 }}
+        >
+          <span className="shrink-0" aria-hidden>
+            •
+          </span>
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Parses You 2.0 list strings (JSON / newline / comma); supports arrays and JSON arrays of objects for Fathom/TUMAY. */
+function parseListField(
+  field: unknown,
+  primaryKey?: string
+): string[] {
+  if (field === null || field === undefined) return [];
+
+  if (typeof field === 'string') {
+    if (field === 'Not provided') return [];
+    if (field === 'null') return [];
+    if (field === '[]') return [];
+    const trimmed = field.trim();
+    if (trimmed === '') return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return mapParsedListItems(parsed, primaryKey);
+      }
+    } catch {
+      // not JSON
+    }
+    if (trimmed.includes('\n')) {
+      return trimmed
+        .split('\n')
+        .map((i) => i.trim())
+        .filter((i) => i.length > 0);
+    }
+    if (trimmed.includes(',')) {
+      return trimmed
+        .split(',')
+        .map((i) => i.trim())
+        .filter((i) => i.length > 0);
+    }
+    return [trimmed];
+  }
+
+  if (Array.isArray(field)) {
+    return mapParsedListItems(field, primaryKey);
+  }
+
+  return [String(field)]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 function ClientDetailModal({
   client,
   onInactivate,
@@ -606,7 +673,7 @@ function ClientDetailModal({
   onStageMoveToast?: (message: string) => void;
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null);
-  const [you2Vision, setYou2Vision] = useState('No statement yet');
+  const [you2Vision, setYou2Vision] = useState('');
   const [you2Details, setYou2Details] = useState<{
     spouse_name: string;
     financial_net_worth_range: string;
@@ -1010,29 +1077,33 @@ function ClientDetailModal({
       )
         .then((you2Result) => {
           const row = you2Result[0];
-          const vision = String(row?.one_year_vision ?? '')
-            ?? 'No statement yet';
-          setYou2Vision(vision || 'No statement yet');
-          setYou2Details(
-            row
-              ? {
-                  spouse_name: String(row.spouse_name ?? ''),
-                  financial_net_worth_range: String(row.financial_net_worth_range ?? ''),
-                  credit_score: typeof row.credit_score === 'number' ? row.credit_score : Number(row.credit_score ?? 0) || null,
-                  launch_timeline: String(row.launch_timeline ?? ''),
-                  dangers: parseListField(row.top_3_dangers ?? row.dangers, 'danger'),
-                  strengths: parseListField(row.top_3_strengths ?? row.strengths, 'strength'),
-                  opportunities: parseListField(row.top_3_opportunities ?? row.opportunities, 'opportunity'),
-                  areas_of_interest: parseListField(row.areas_of_interest),
-                  skills: parseListField(row.skills),
-                  time_commitment: String(row.time_commitment ?? ''),
-                  reasons_for_change: parseListField(row.reasons_for_change),
-                }
-              : null
-          );
+          if (!row) {
+            setYou2Vision('');
+            setYou2Details(null);
+            return;
+          }
+          setYou2Vision(String(row.one_year_vision ?? '').trim());
+          setYou2Details({
+            spouse_name: String(row.spouse_name ?? ''),
+            financial_net_worth_range: String(row.financial_net_worth_range ?? ''),
+            credit_score:
+              typeof row.credit_score === 'number'
+                ? row.credit_score
+                : Number(row.credit_score ?? 0) || null,
+            launch_timeline: String(row.launch_timeline ?? ''),
+            dangers: parseListField(row.top_3_dangers ?? row.dangers),
+            strengths: parseListField(row.top_3_strengths ?? row.strengths),
+            opportunities: parseListField(
+              row.top_3_opportunities ?? row.opportunities
+            ),
+            areas_of_interest: parseListField(row.areas_of_interest),
+            skills: parseListField(row.skills),
+            time_commitment: String(row.time_commitment ?? ''),
+            reasons_for_change: parseListField(row.reasons_for_change),
+          });
         })
         .catch(() => {
-          setYou2Vision('No statement yet');
+          setYou2Vision('');
           setYou2Details(null);
         });
       dbSelect<{
@@ -1126,7 +1197,7 @@ function ClientDetailModal({
     } else {
       setLocalPinkFlagsJson('[]');
       setReadiness(null);
-      setYou2Vision('No statement yet');
+      setYou2Vision('');
       setYou2Details(null);
       setTumayData(null);
       setReadinessScorePct(0);
@@ -3305,10 +3376,8 @@ function ClientDetailModal({
                 <CardTitle className="text-lg">You 2.0 Statement</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <p className="text-slate-700 italic">
-                    &quot;{you2Vision || 'No statement yet'}&quot;
-                  </p>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <You2VisionDisplay text={you2Vision} />
                 </div>
               </CardContent>
             </Card>
@@ -3336,19 +3405,6 @@ function ClientDetailModal({
                       </ul>
                     </div>
                   )}
-                  {you2Details.skills.length > 0 && (
-                    <div>
-                      <p className="font-semibold mb-1">Skills:</p>
-                      <ul className="space-y-1">
-                        {you2Details.skills.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="text-teal-600">•</span>
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                   {you2Details.reasons_for_change.length > 0 && (
                     <div>
                       <p className="font-semibold mb-1">Reasons for change:</p>
@@ -3365,63 +3421,54 @@ function ClientDetailModal({
                 </CardContent>
               </Card>
             )}
-            {you2Details && (you2Details.dangers.length > 0 || you2Details.opportunities.length > 0 || you2Details.strengths.length > 0) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2 text-red-600">
-                      <AlertCircle className="h-5 w-5" />
-                      Dangers
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2">
-                      {you2Details.dangers.map((danger, i) => (
-                        <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                          <span className="text-red-500 mt-0.5">•</span>
-                          {danger}
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2 text-green-600">
-                    <TrendingUp className="h-5 w-5" />
-                    Opportunities
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2">
-                      {you2Details.opportunities.map((opp, i) => (
-                        <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                          <span className="text-green-500 mt-0.5">•</span>
-                          {opp}
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-            {you2Details && you2Details.strengths.length > 0 && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Strengths</CardTitle>
+                  <CardTitle className="text-lg flex items-center gap-2 text-red-600">
+                    <AlertCircle className="h-5 w-5" />
+                    Dangers
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ul className="space-y-2">
-                    {you2Details.strengths.map((strength, i) => (
-                      <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                        <span className="text-blue-500 mt-0.5">•</span>
-                        {strength}
-                      </li>
-                    ))}
-                  </ul>
+                  <You2ParsedListDisplay
+                    items={you2Details?.dangers ?? []}
+                  />
                 </CardContent>
               </Card>
-            )}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2 text-green-600">
+                    <TrendingUp className="h-5 w-5" />
+                    Opportunities
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <You2ParsedListDisplay
+                    items={you2Details?.opportunities ?? []}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Strengths</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <You2ParsedListDisplay
+                  items={you2Details?.strengths ?? []}
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Skills</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <You2ParsedListDisplay
+                  items={you2Details?.skills ?? []}
+                />
+              </CardContent>
+            </Card>
             </div>
           </TabsContent>
 
