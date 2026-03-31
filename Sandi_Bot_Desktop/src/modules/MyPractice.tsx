@@ -113,42 +113,49 @@ type ClientCompletenessRow = {
   areas_of_interest: string | null;
   time_commitment: string | null;
   reasons_for_change: string | null;
+  has_disc: number;
+  fathom_count: number;
+  tumay_ok: number;
 };
-
-const YOU2_FIELD_KEYS: (keyof Omit<ClientCompletenessRow, 'id' | 'name'>)[] = [
-  'one_year_vision',
-  'spouse_name',
-  'financial_net_worth_range',
-  'launch_timeline',
-  'dangers',
-  'strengths',
-  'opportunities',
-  'areas_of_interest',
-  'time_commitment',
-  'reasons_for_change',
-];
 
 function fieldFilled(v: string | null | undefined): boolean {
   return v != null && String(v).trim().length > 0;
 }
 
-function you2CompletenessPct(row: ClientCompletenessRow): number {
-  let n = 0;
-  for (const k of YOU2_FIELD_KEYS) {
-    if (fieldFilled(row[k])) n += 1;
-  }
-  return Math.round((n / YOU2_FIELD_KEYS.length) * 1000) / 10;
+/** DISC 25 + You2 vision 25 + ≥1 session 30 + TUMAY 20 = 100 */
+function profileWeightedPct(row: ClientCompletenessRow): number {
+  let pts = 0;
+  if (Number(row.has_disc) === 1) pts += 25;
+  if (fieldFilled(row.one_year_vision)) pts += 25;
+  if (Number(row.fathom_count) > 0) pts += 30;
+  if (Number(row.tumay_ok) === 1) pts += 20;
+  return pts;
+}
+
+function isActiveClientProfileComplete(row: ClientCompletenessRow): boolean {
+  return (
+    Number(row.has_disc) === 1 &&
+    fieldFilled(row.one_year_vision) &&
+    Number(row.fathom_count) > 0
+  );
+}
+
+function profileStatusLabel(pct: number): string {
+  if (pct >= 100) return 'Complete profile';
+  if (pct >= 75) return 'Missing TUMAY data';
+  if (pct >= 50) return 'Missing sessions or TUMAY';
+  return 'Needs attention';
+}
+
+function profileBarColor(pct: number): string {
+  if (pct >= 100) return '#3BBFBF';
+  if (pct >= 75) return '#C8613F';
+  return '#F05F57';
 }
 
 function clearScoreColor(avg: number): string {
   if (avg >= 4) return '#22C55E';
   if (avg >= 3) return '#F59E0B';
-  return '#F05F57';
-}
-
-function completenessBarColor(pct: number): string {
-  if (pct >= 100) return '#22C55E';
-  if (pct > 0) return '#F59E0B';
   return '#F05F57';
 }
 
@@ -238,9 +245,25 @@ export default function MyPractice() {
              y.opportunities,
              y.areas_of_interest,
              y.time_commitment,
-             y.reasons_for_change
+             y.reasons_for_change,
+             CASE WHEN d.client_id IS NOT NULL THEN 1 ELSE 0 END AS has_disc,
+             (
+               SELECT COUNT(*)
+               FROM coaching_sessions cs
+               WHERE cs.client_id = c.id
+                 AND cs.session_date IS NOT NULL
+                 AND TRIM(cs.session_date) != ''
+             ) AS fathom_count,
+             CASE
+               WHEN c.tumay_data IS NOT NULL
+                 AND LENGTH(TRIM(c.tumay_data)) > 2
+                 AND LOWER(TRIM(c.tumay_data)) NOT IN ('{}', 'null', '[]')
+               THEN 1
+               ELSE 0
+             END AS tumay_ok
            FROM clients c
            LEFT JOIN client_you2_profiles y ON y.client_id = c.id
+           LEFT JOIN client_disc_profiles d ON d.client_id = c.id
            WHERE LOWER(COALESCE(c.outcome_bucket, 'active')) = 'active'
            ORDER BY c.name COLLATE NOCASE`,
           []
@@ -304,7 +327,7 @@ export default function MyPractice() {
   }
   const discInsight = topCount <= 0 ? null : DISC_INSIGHT[topLetter];
 
-  const completeCount = clientsComplete.filter((row) => you2CompletenessPct(row) >= 100).length;
+  const completeCount = clientsComplete.filter((row) => isActiveClientProfileComplete(row)).length;
   const totalActive = clientsComplete.length;
 
   const filteredAhaMoments = useMemo(() => {
@@ -601,7 +624,7 @@ export default function MyPractice() {
           Profile Completeness
         </h2>
         <p className="mt-2 text-sm" style={{ color: MUTED }}>
-          {completeCount} of {totalActive} clients have complete profiles.
+          {completeCount} of {totalActive} active clients have complete profiles.
         </p>
         <div className="mt-4 space-y-3">
           {clientsComplete.length === 0 ? (
@@ -610,8 +633,8 @@ export default function MyPractice() {
             </p>
           ) : (
             clientsComplete.map((row) => {
-              const pct = you2CompletenessPct(row);
-              const barColor = completenessBarColor(pct);
+              const pct = profileWeightedPct(row);
+              const barColor = profileBarColor(pct);
               return (
                 <div key={row.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
                   <span
@@ -628,7 +651,7 @@ export default function MyPractice() {
                       />
                     </div>
                     <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
-                      {pct.toFixed(0)}% You 2.0 fields
+                      {pct}% · {profileStatusLabel(pct)}
                     </p>
                   </div>
                 </div>
