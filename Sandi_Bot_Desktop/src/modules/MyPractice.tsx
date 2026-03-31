@@ -417,6 +417,7 @@ export default function MyPractice() {
   const [clearAgg, setClearAgg] = useState<ClearAgg | null>(null);
   const [discAgg, setDiscAgg] = useState<DiscAgg | null>(null);
   const [clientsComplete, setClientsComplete] = useState<ClientCompletenessRow[]>([]);
+  const [activeClientTotal, setActiveClientTotal] = useState(0);
   const [ahaMoments, setAhaMoments] = useState<AhaMomentRow[]>([]);
   const [ahaFilter, setAhaFilter] = useState<AhaFilter>('all');
 
@@ -458,13 +459,14 @@ export default function MyPractice() {
         const yearStart = `${now.getFullYear()}-01-01`;
         const monthStart = formatLocalYyyyMmDd(startOfMonthLocal(now));
 
-        const activeSql = `LOWER(COALESCE(c.outcome_bucket, 'active')) = 'active'`;
+        const activeSql = `c.outcome_bucket = 'active'`;
 
         const [
           rules,
           clear,
           disc,
           activeClients,
+          activeTotalRows,
           ahas,
           placementRows,
           revenueRows,
@@ -505,26 +507,28 @@ export default function MyPractice() {
           db.select<DiscAgg>(
             `SELECT
                SUM(CASE
-                 WHEN COALESCE(natural_d, 0) > COALESCE(natural_i, 0)
-                  AND COALESCE(natural_d, 0) > COALESCE(natural_s, 0)
-                  AND COALESCE(natural_d, 0) > COALESCE(natural_c, 0)
+                 WHEN COALESCE(p.natural_d, 0) > COALESCE(p.natural_i, 0)
+                  AND COALESCE(p.natural_d, 0) > COALESCE(p.natural_s, 0)
+                  AND COALESCE(p.natural_d, 0) > COALESCE(p.natural_c, 0)
                  THEN 1 ELSE 0 END) as d_count,
                SUM(CASE
-                 WHEN COALESCE(natural_i, 0) >= COALESCE(natural_d, 0)
-                  AND COALESCE(natural_i, 0) > COALESCE(natural_s, 0)
-                  AND COALESCE(natural_i, 0) > COALESCE(natural_c, 0)
+                 WHEN COALESCE(p.natural_i, 0) >= COALESCE(p.natural_d, 0)
+                  AND COALESCE(p.natural_i, 0) > COALESCE(p.natural_s, 0)
+                  AND COALESCE(p.natural_i, 0) > COALESCE(p.natural_c, 0)
                  THEN 1 ELSE 0 END) as i_count,
                SUM(CASE
-                 WHEN COALESCE(natural_s, 0) >= COALESCE(natural_d, 0)
-                  AND COALESCE(natural_s, 0) >= COALESCE(natural_i, 0)
-                  AND COALESCE(natural_s, 0) > COALESCE(natural_c, 0)
+                 WHEN COALESCE(p.natural_s, 0) >= COALESCE(p.natural_d, 0)
+                  AND COALESCE(p.natural_s, 0) >= COALESCE(p.natural_i, 0)
+                  AND COALESCE(p.natural_s, 0) > COALESCE(p.natural_c, 0)
                  THEN 1 ELSE 0 END) as s_count,
                SUM(CASE
-                 WHEN COALESCE(natural_c, 0) >= COALESCE(natural_d, 0)
-                  AND COALESCE(natural_c, 0) >= COALESCE(natural_i, 0)
-                  AND COALESCE(natural_c, 0) >= COALESCE(natural_s, 0)
+                 WHEN COALESCE(p.natural_c, 0) >= COALESCE(p.natural_d, 0)
+                  AND COALESCE(p.natural_c, 0) >= COALESCE(p.natural_i, 0)
+                  AND COALESCE(p.natural_c, 0) >= COALESCE(p.natural_s, 0)
                  THEN 1 ELSE 0 END) as c_count
-             FROM client_disc_profiles`,
+             FROM client_disc_profiles p
+             INNER JOIN clients c ON c.id = p.client_id
+             WHERE c.outcome_bucket = 'active'`,
             []
           ),
           db.select<ClientCompletenessRow>(
@@ -559,8 +563,14 @@ export default function MyPractice() {
              FROM clients c
              LEFT JOIN client_you2_profiles y ON y.client_id = c.id
              LEFT JOIN client_disc_profiles d ON d.client_id = c.id
-             WHERE LOWER(COALESCE(c.outcome_bucket, 'active')) = 'active'
+             WHERE c.outcome_bucket = 'active'
              ORDER BY c.name COLLATE NOCASE`,
+            []
+          ),
+          db.select<{ total: number }>(
+            `SELECT COUNT(*) as total
+             FROM clients
+             WHERE outcome_bucket = 'active'`,
             []
           ),
           db.select<AhaMomentRow>(
@@ -636,7 +646,7 @@ export default function MyPractice() {
                WHERE cs.client_id = c.id
                  AND cs.session_date IS NOT NULL AND TRIM(cs.session_date) != '') AS last_sess
              FROM clients c
-             WHERE LOWER(COALESCE(c.outcome_bucket, '')) = 'active'`,
+             WHERE c.outcome_bucket = 'active'`,
             []
           ),
           db.select<{ install_date: string | null; coach_hourly_rate: number | null; weekly_hours_saved: number | null }>(
@@ -699,6 +709,7 @@ export default function MyPractice() {
         setClearAgg(clear[0] ?? null);
         setDiscAgg(disc[0] ?? null);
         setClientsComplete(activeClients);
+        setActiveClientTotal(Number(activeTotalRows[0]?.total ?? 0));
         setAhaMoments(ahas);
         setPlacementCount(Number(placementRows[0]?.cnt ?? 0));
         setRevenueSumRaw(revenueRows.reduce((sum, r) => sum + parseRevenue(r.placement_revenue), 0));
@@ -779,8 +790,8 @@ export default function MyPractice() {
     interventionTotal <= 0 ? 100 : safePct(interventionResponded, interventionTotal);
 
   const completeCount = clientsComplete.filter((row) => isActiveClientProfileComplete(row)).length;
-  const totalActive = clientsComplete.length;
-  const profileCompletenessRatio = totalActive > 0 ? completeCount / totalActive : 0;
+  const profileCompletenessRatio =
+    activeClientTotal > 0 ? completeCount / activeClientTotal : 0;
 
   const clearDims: {
     key: keyof Pick<ClearAgg, 'contracting' | 'listening' | 'exploring' | 'action' | 'reflection'>;
@@ -807,7 +818,7 @@ export default function MyPractice() {
   const c3NorthStarPts = Math.min(20, (c3ForNorthStar / C3_WEEKLY_TARGET) * 20);
   const interventionPts =
     interventionTotal <= 0 ? 20 : (interventionResponded / interventionTotal) * 20;
-  const dataCompletePts = totalActive <= 0 ? 0 : profileCompletenessRatio * 15;
+  const dataCompletePts = activeClientTotal <= 0 ? 0 : profileCompletenessRatio * 15;
   let clearQualityPts = 5;
   if (avgClear != null) {
     if (avgClear >= 4) clearQualityPts = 10;
@@ -1454,11 +1465,11 @@ export default function MyPractice() {
           Profile completeness
         </h2>
         <p className="mt-1 text-sm" style={{ color: MUTED }}>
-          {completeCount} of {totalActive} active clients have complete profiles (DISC + You2 vision + ≥1
+          {completeCount} of {activeClientTotal} active clients have complete profiles (DISC + You2 vision + ≥1
           session). Weighted score per client below.
         </p>
         <div className="mt-5 space-y-4">
-          {clientsComplete.length === 0 ? (
+          {activeClientTotal === 0 ? (
             <p className="text-sm" style={{ color: MUTED }}>
               No active clients yet.
             </p>
