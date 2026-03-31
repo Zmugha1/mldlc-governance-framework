@@ -3,16 +3,6 @@ import { getDb } from '../services/db';
 
 type PipelineStage = 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
 
-/** Mirrors stageReadinessService — gone-quiet thresholds (days). */
-const GONE_QUIET_DAYS: Record<PipelineStage, number> = {
-  IC: 14,
-  C1: 21,
-  C2: 14,
-  C3: 14,
-  C4: 60,
-  C5: 60,
-};
-
 const STAGE_INPUT_TO_PIPELINE: Record<string, PipelineStage> = {
   IC: 'IC',
   C1: 'C1',
@@ -68,6 +58,30 @@ function activePinkFlags(flags: string[]): string[] {
   return flags.filter((f) => !String(f).startsWith('resolved:'));
 }
 
+const DISC_REENGAGEMENT_TIP: Record<'D' | 'I' | 'S' | 'C', string> = {
+  D: 'Send direct email with specific question',
+  I: 'Call and reconnect with excitement',
+  S: 'Check in warmly, ask about family',
+  C: 'Send data or article, give them time',
+};
+
+function deriveDiscLetter(d: number, i: number, s: number, c: number): 'D' | 'I' | 'S' | 'C' {
+  const pairs: ['D' | 'I' | 'S' | 'C', number][] = [
+    ['D', d],
+    ['I', i],
+    ['S', s],
+    ['C', c],
+  ];
+  pairs.sort((a, b) => b[1] - a[1]);
+  return pairs[0][0];
+}
+
+function pinkLabelPretty(key: string): string {
+  const raw = key.replace(/_/g, ' ');
+  return raw.replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+
 function localYyyyMmDd(d: Date): string {
   const y = d.getFullYear();
   const m = d.getMonth() + 1;
@@ -91,13 +105,24 @@ const RESPONSE_CONFIRM_MS = 1000;
 
 type SignalKind = 'at_risk' | 'gone_quiet' | 'pink_flag';
 
-type SignalItem = {
+/** One card per client in SECTION 1 — may combine at-risk, pink flags, gone-quiet. */
+type ClientSignalCard = {
   id: string;
   clientId: string;
   clientName: string;
-  kind: SignalKind;
-  description: string;
-  pinkFlagKey?: string;
+  /** 1 = at-risk C3/C4, 2 = 2+ pink, 3 = 1 pink, 4 = gone quiet (updated_at) */
+  sortTier: 1 | 2 | 3 | 4;
+  borderColor: string;
+  badgeLabel: string;
+  badgeBg: string;
+  atRiskLine?: string;
+  /** Grouped pink flags — "N active signals" + list */
+  pinkLabels?: string[];
+  goneQuietLine?: string;
+  discTip?: string;
+  /** Highest-priority kind for intervention_logs.signal_type */
+  logSignalType: SignalKind;
+  pinkFlagKeys: string[];
 };
 
 type ConvertedRow = {
@@ -119,7 +144,7 @@ type HistoryRow = {
 };
 
 type PageData = {
-  signals: SignalItem[];
+  signalClients: ClientSignalCard[];
   converted: ConvertedRow[];
   history: HistoryRow[];
   goldenDrafts: Record<string, string>;
@@ -144,16 +169,29 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
     []
   );
 
-  const atRiskSignals: SignalItem[] = [];
+  type Acc = {
+    clientId: string;
+    clientName: string;
+    atRiskLine?: string;
+    pinkKeys: string[];
+    goneQuietLine?: string;
+    discTip?: string;
+  };
+  const byClient = new Map<string, Acc>();
+
+  function ensureAcc(id: string, name: string): Acc {
+    let a = byClient.get(id);
+    if (!a) {
+      a = { clientId: id, clientName: name, pinkKeys: [] };
+      byClient.set(id, a);
+    }
+    return a;
+  }
+
   for (const r of atRiskRows) {
     if (respondedKey.has(`${r.id}:at_risk`)) continue;
-    atRiskSignals.push({
-      id: `ar:${r.id}`,
-      clientId: r.id,
-      clientName: r.name,
-      kind: 'at_risk',
-      description: 'No session in 14+ days — C3/C4 client needs attention',
-    });
+    const a = ensureAcc(r.id, r.name);
+    a.atRiskLine = 'No session in 14+ days — C3/C4 client needs attention';
   }
 
   const clientRows = await db.select<{
@@ -163,61 +201,111 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
     inferred_stage: string | null;
     updated_at: string | null;
     outcome_bucket: string | null;
+    natural_d: number | null;
+    natural_i: number | null;
+    natural_s: number | null;
+    natural_c: number | null;
+    gq_stale: number;
   }>(
-    `SELECT id, name, pink_flags, inferred_stage, updated_at, outcome_bucket
-     FROM clients
-     WHERE LOWER(COALESCE(outcome_bucket, 'active')) = 'active'`,
+    `SELECT c.id, c.name, c.pink_flags, c.inferred_stage, c.updated_at, c.outcome_bucket,
+            p.natural_d, p.natural_i, p.natural_s, p.natural_c,
+            CASE WHEN date(c.updated_at) < date('now', '-14 days') THEN 1 ELSE 0 END AS gq_stale
+     FROM clients c
+     LEFT JOIN client_disc_profiles p ON p.client_id = c.id
+     WHERE LOWER(COALESCE(c.outcome_bucket, 'active')) = 'active'`,
     []
   );
-
-  const sessionRows = await db.select<{ client_id: string; last_dt: string | null }>(
-    `SELECT client_id, MAX(session_date) as last_dt
-     FROM coaching_sessions
-     WHERE session_date IS NOT NULL AND TRIM(session_date) != ''
-     GROUP BY client_id`,
-    []
-  );
-  const lastSessionByClient = new Map(sessionRows.map((r) => [r.client_id, r.last_dt]));
-
-  const pinkSignals: SignalItem[] = [];
-  const goneQuietSignals: SignalItem[] = [];
 
   for (const c of clientRows) {
     const actPink = activePinkFlags(parsePinkFlagsJson(c.pink_flags));
     if (actPink.length > 0 && !respondedKey.has(`${c.id}:pink_flag`)) {
-      for (const flag of actPink) {
-        const label = flag.replace(/_/g, ' ');
-        pinkSignals.push({
-          id: `pf:${c.id}:${flag}`,
-          clientId: c.id,
-          clientName: c.name,
-          kind: 'pink_flag',
-          pinkFlagKey: flag,
-          description: `Active pink flag: ${label}`,
-        });
-      }
+      const a = ensureAcc(c.id, c.name);
+      a.pinkKeys = actPink;
     }
 
-    const stage = normalizeStage(c.inferred_stage ?? '');
-    const threshold = GONE_QUIET_DAYS[stage] ?? 14;
-    const lastSess = lastSessionByClient.get(c.id) ?? null;
-    const refDate = lastSess ?? c.updated_at ?? '';
-    const daysSince = daysSinceReferenceLocal(refDate);
-    const goneQuiet =
-      daysSince !== null && daysSince > threshold && !respondedKey.has(`${c.id}:gone_quiet`);
+    const stageCode = normalizeStage(c.inferred_stage ?? '');
+    const isC234 = stageCode === 'C2' || stageCode === 'C3' || stageCode === 'C4';
+    const staleUpdate =
+      isC234 && Number(c.gq_stale) === 1 && !respondedKey.has(`${c.id}:gone_quiet`);
 
-    if (goneQuiet) {
-      goneQuietSignals.push({
-        id: `gq:${c.id}`,
-        clientId: c.id,
-        clientName: c.name,
-        kind: 'gone_quiet',
-        description: `No coaching contact within ${threshold} days for stage ${stage} (${daysSince} days since last touch).`,
-      });
+    if (staleUpdate) {
+      const a = ensureAcc(c.id, c.name);
+      a.goneQuietLine = 'No client record update in 14+ days — time to re-engage.';
+      const d = Number(c.natural_d ?? 0);
+      const i = Number(c.natural_i ?? 0);
+      const s = Number(c.natural_s ?? 0);
+      const cc = Number(c.natural_c ?? 0);
+      const letter =
+        d + i + s + cc > 0 ? deriveDiscLetter(d, i, s, cc) : ('S' as const);
+      a.discTip = DISC_REENGAGEMENT_TIP[letter];
     }
   }
 
-  const nextSignals: SignalItem[] = [...atRiskSignals, ...pinkSignals, ...goneQuietSignals];
+  const signalClients: ClientSignalCard[] = [];
+  for (const a of byClient.values()) {
+    const hasPink = a.pinkKeys.length > 0;
+    const hasAt = Boolean(a.atRiskLine);
+    const hasGq = Boolean(a.goneQuietLine);
+
+    let sortTier: 1 | 2 | 3 | 4;
+    let borderColor: string;
+    let badgeBg: string;
+    let badgeLabel: string;
+    let logSignalType: SignalKind;
+
+    if (hasAt) {
+      sortTier = 1;
+      borderColor = '#2D4459';
+      badgeBg = '#2D4459';
+      badgeLabel = 'At risk';
+      logSignalType = 'at_risk';
+    } else if (a.pinkKeys.length >= 2) {
+      sortTier = 2;
+      borderColor = '#B91C1C';
+      badgeBg = '#B91C1C';
+      badgeLabel = 'Pink flags';
+      logSignalType = 'pink_flag';
+    } else if (a.pinkKeys.length === 1) {
+      sortTier = 3;
+      borderColor = '#F05F57';
+      badgeBg = '#F05F57';
+      badgeLabel = 'Pink flag';
+      logSignalType = 'pink_flag';
+    } else {
+      sortTier = 4;
+      borderColor = '#D97706';
+      badgeBg = '#D97706';
+      badgeLabel = 'Gone quiet';
+      logSignalType = 'gone_quiet';
+    }
+
+    const signalTypes =
+      (hasAt ? 1 : 0) + (hasPink ? 1 : 0) + (hasGq ? 1 : 0);
+    if (signalTypes > 1) {
+      badgeLabel = 'Multiple signals';
+    }
+
+    signalClients.push({
+      id: a.clientId,
+      clientId: a.clientId,
+      clientName: a.clientName,
+      sortTier,
+      borderColor,
+      badgeLabel,
+      badgeBg,
+      atRiskLine: a.atRiskLine,
+      pinkLabels: hasPink ? a.pinkKeys.map(pinkLabelPretty) : undefined,
+      goneQuietLine: a.goneQuietLine,
+      discTip: a.discTip,
+      logSignalType,
+      pinkFlagKeys: [...a.pinkKeys],
+    });
+  }
+
+  signalClients.sort((x, y) => {
+    if (x.sortTier !== y.sortTier) return x.sortTier - y.sortTier;
+    return x.clientName.localeCompare(y.clientName, undefined, { sensitivity: 'base' });
+  });
 
   const conv = await db.select<ConvertedRow>(
     `SELECT id, name, golden_rules_notes FROM clients
@@ -250,29 +338,11 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
   }
 
   return {
-    signals: nextSignals,
+    signalClients,
     converted: conv,
     history: hist,
     goldenDrafts,
   };
-}
-
-function signalLabel(kind: SignalKind): string {
-  if (kind === 'at_risk') return 'At Risk';
-  if (kind === 'gone_quiet') return 'Gone quiet';
-  return 'Pink flag';
-}
-
-function signalBorderColor(kind: SignalKind): string {
-  if (kind === 'at_risk') return '#2D4459';
-  if (kind === 'gone_quiet') return '#C8613F';
-  return '#F05F57';
-}
-
-/** Badge fill: at-risk uses navy; others use same as border accent. */
-function signalBadgeStyle(kind: SignalKind): { background: string; color: string } {
-  if (kind === 'at_risk') return { background: '#2D4459', color: '#FFFFFF' };
-  return { background: signalBorderColor(kind), color: '#FFFFFF' };
 }
 
 function formatHistorySignal(t: string): string {
@@ -288,9 +358,12 @@ function daysSinceFromDateStr(iso: string | null | undefined): number {
   return n ?? 0;
 }
 
+const SIGNALS_PREVIEW_LIMIT = 5;
+
 export default function CoachingActions() {
   const [loading, setLoading] = useState(true);
-  const [signals, setSignals] = useState<SignalItem[]>([]);
+  const [signalClients, setSignalClients] = useState<ClientSignalCard[]>([]);
+  const [signalsExpanded, setSignalsExpanded] = useState(false);
   const [converted, setConverted] = useState<ConvertedRow[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [goldenDrafts, setGoldenDrafts] = useState<Record<string, string>>({});
@@ -306,7 +379,7 @@ export default function CoachingActions() {
       try {
         const data = await loadCoachingActionsPageData();
         if (!cancelled) {
-          setSignals(data.signals);
+          setSignalClients(data.signalClients);
           setConverted(data.converted);
           setHistory(data.history);
           setGoldenDrafts(data.goldenDrafts);
@@ -325,13 +398,13 @@ export default function CoachingActions() {
   }, []);
 
   const applyPageData = (data: PageData) => {
-    setSignals(data.signals);
+    setSignalClients(data.signalClients);
     setConverted(data.converted);
     setHistory(data.history);
     setGoldenDrafts(data.goldenDrafts);
   };
 
-  const handleResponseChange = async (item: SignalItem, value: string) => {
+  const handleResponseChange = async (item: ClientSignalCard, value: string) => {
     if (!value || value === RESPONSE_PLACEHOLDER) return;
     setSavingId(item.id);
     setLoggedId(null);
@@ -346,11 +419,11 @@ export default function CoachingActions() {
         [
           crypto.randomUUID(),
           item.clientId,
-          item.kind,
+          item.logSignalType,
           today,
           value,
           today,
-          item.pinkFlagKey ?? null,
+          item.pinkFlagKeys.length > 0 ? item.pinkFlagKeys.join(',') : null,
           null,
           createdAt,
         ]
@@ -420,16 +493,17 @@ export default function CoachingActions() {
           <h2 className="font-bold" style={{ fontSize: 14, color: '#2D4459' }}>
             Signals Needing Response
           </h2>
-          {signals.length > 0 ? (
+          {signalClients.length > 0 ? (
             <span
               className="rounded-full px-2.5 py-0.5 text-xs font-semibold"
               style={{ background: '#E8EEF1', color: '#2D4459' }}
             >
-              {signals.length} signals need your response
+              {signalClients.length}{' '}
+              {signalClients.length === 1 ? 'client needs' : 'clients need'} your response
             </span>
           ) : null}
         </div>
-        {signals.length === 0 ? (
+        {signalClients.length === 0 ? (
           <div
             className="mt-3 rounded-[10px] border px-4 py-4 text-sm"
             style={{
@@ -442,58 +516,83 @@ export default function CoachingActions() {
           </div>
         ) : (
           <div className="mt-3 space-y-2">
-            {signals.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-[10px] border bg-white"
-                style={{
-                  border: '1px solid #C8E8E5',
-                  borderLeft: `4px solid ${signalBorderColor(item.kind)}`,
-                  padding: '14px 18px',
-                  marginBottom: 8,
-                }}
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold" style={{ color: '#2D4459' }}>
-                    {item.clientName}
-                  </span>
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                    style={signalBadgeStyle(item.kind)}
-                  >
-                    {signalLabel(item.kind)}
-                  </span>
-                </div>
-                <p
-                  className="mt-1"
+            {(signalsExpanded ? signalClients : signalClients.slice(0, SIGNALS_PREVIEW_LIMIT)).map(
+              (item) => (
+                <div
+                  key={item.id}
+                  className="rounded-[10px] border bg-white"
                   style={{
-                    fontSize: 12,
-                    color: '#7A8F95',
+                    border: '1px solid #C8E8E5',
+                    borderLeft: `4px solid ${item.borderColor}`,
+                    padding: '14px 18px',
+                    marginBottom: 8,
                   }}
                 >
-                  {item.description}
-                </p>
-                <select
-                  className="mt-3 w-full max-w-md rounded-lg border border-[#C8E8E5] bg-white px-3 py-2 text-sm text-[#2D4459] outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
-                  value={dropdownValue[item.id] ?? RESPONSE_PLACEHOLDER}
-                  disabled={savingId === item.id}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setDropdownValue((prev) => ({ ...prev, [item.id]: v }));
-                    void handleResponseChange(item, v);
-                  }}
-                >
-                  {RESPONSE_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-                {loggedId === item.id ? (
-                  <p className="mt-2 text-sm font-medium text-green-600">Response logged ✓</p>
-                ) : null}
-              </div>
-            ))}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold" style={{ color: '#2D4459' }}>
+                      {item.clientName}
+                    </span>
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                      style={{ background: item.badgeBg }}
+                    >
+                      {item.badgeLabel}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-2" style={{ fontSize: 12, color: '#7A8F95' }}>
+                    {item.atRiskLine ? <p>{item.atRiskLine}</p> : null}
+                    {item.pinkLabels && item.pinkLabels.length > 0 ? (
+                      <div>
+                        <p className="font-semibold text-[#2D4459]">
+                          {item.pinkLabels.length} active{' '}
+                          {item.pinkLabels.length === 1 ? 'signal' : 'signals'}
+                        </p>
+                        <ul className="mt-1 list-inside list-disc space-y-0.5">
+                          {item.pinkLabels.map((label) => (
+                            <li key={label}>{label}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {item.goneQuietLine ? <p>{item.goneQuietLine}</p> : null}
+                    {item.discTip ? (
+                      <p className="italic" style={{ color: '#2D4459' }}>
+                        DISC tip: {item.discTip}
+                      </p>
+                    ) : null}
+                  </div>
+                  <select
+                    className="mt-3 w-full max-w-md rounded-lg border border-[#C8E8E5] bg-white px-3 py-2 text-sm text-[#2D4459] outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
+                    value={dropdownValue[item.id] ?? RESPONSE_PLACEHOLDER}
+                    disabled={savingId === item.id}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDropdownValue((prev) => ({ ...prev, [item.id]: v }));
+                      void handleResponseChange(item, v);
+                    }}
+                  >
+                    {RESPONSE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                  {loggedId === item.id ? (
+                    <p className="mt-2 text-sm font-medium text-green-600">Response logged ✓</p>
+                  ) : null}
+                </div>
+              )
+            )}
+            {!signalsExpanded && signalClients.length > SIGNALS_PREVIEW_LIMIT ? (
+              <button
+                type="button"
+                className="text-sm font-semibold underline-offset-2 hover:underline"
+                style={{ color: '#3BBFBF' }}
+                onClick={() => setSignalsExpanded(true)}
+              >
+                See {signalClients.length - SIGNALS_PREVIEW_LIMIT} more in full list
+              </button>
+            ) : null}
           </div>
         )}
       </section>
