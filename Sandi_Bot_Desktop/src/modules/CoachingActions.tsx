@@ -161,11 +161,30 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
   );
   const respondedKey = new Set(respondedToday.map((r) => `${r.client_id}:${r.signal_type}`));
 
-  const atRiskRows = await db.select<{ id: string; name: string }>(
-    `SELECT id, name FROM clients
-     WHERE LOWER(COALESCE(outcome_bucket, 'active')) = 'active'
-       AND inferred_stage IN ('C3', 'C4')
-       AND last_contact_date < date('now', '-14 days')`,
+  const atRiskRows = await db.select<{
+    id: string;
+    name: string;
+    inferred_stage: string | null;
+    last_contact_date: string | null;
+    pink_flags: string | null;
+    natural_d: number | null;
+    natural_i: number | null;
+    natural_s: number | null;
+    natural_c: number | null;
+  }>(
+    `SELECT c.id, c.name, c.inferred_stage,
+       c.last_contact_date, c.pink_flags,
+       d.natural_d, d.natural_i,
+       d.natural_s, d.natural_c
+     FROM clients c
+     LEFT JOIN client_disc_profiles d
+       ON d.client_id = c.id
+     WHERE c.outcome_bucket = 'active'
+       AND c.inferred_stage IN ('C3', 'C4')
+       AND (
+         c.last_contact_date IS NULL
+         OR c.last_contact_date < date('now', '-14 days')
+       )`,
     []
   );
 
