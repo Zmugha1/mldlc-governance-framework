@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, type ChangeEvent } from 'react';
+import { useState, useMemo, useEffect, useLayoutEffect, useRef, type ChangeEvent } from 'react';
 import {
   Briefcase,
   Mail,
@@ -3683,6 +3683,26 @@ export default function ClientIntelligence() {
   >(new Map());
   const [discDerivedMap, setDiscDerivedMap] = useState<Map<string, { style: 'D' | 'I' | 'S' | 'C'; label: string }>>(new Map());
 
+  const clientIntelligenceShellRef = useRef<HTMLDivElement>(null);
+
+  /** App.tsx ModuleHeader still passes the legacy description; hide it so only our subtitle shows. */
+  useLayoutEffect(() => {
+    if (loading || error) return;
+    const root = clientIntelligenceShellRef.current;
+    if (!root?.parentElement) return;
+    const legacyDesc = root.parentElement.querySelector(
+      ':scope > div.mb-6 > p.mt-1'
+    ) as HTMLElement | null;
+    if (!legacyDesc?.textContent?.includes('DISC profiles')) return;
+    const prev = legacyDesc.style.display;
+    legacyDesc.style.display = 'none';
+    return () => {
+      if (document.body.contains(legacyDesc)) {
+        legacyDesc.style.display = prev;
+      }
+    };
+  }, [loading, error]);
+
   const loadClients = () => {
     setLoading(true);
     setError(null);
@@ -3962,7 +3982,7 @@ export default function ClientIntelligence() {
   }
 
   return (
-    <div className="space-y-6">
+    <div ref={clientIntelligenceShellRef} className="space-y-6">
       <FeedbackButton pageName="Client Intelligence" />
       <p className="-mt-2 text-sm leading-snug" style={{ color: '#7A8F95' }}>
         Your client profiles and
