@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Star, MessageSquare, CheckCircle, Target, Info } from 'lucide-react';
 import { getDb } from '../services/db';
-import { getConversionRate } from '../services/clientService';
 import {
   Tooltip,
   TooltipContent,
@@ -170,9 +169,6 @@ export default function BusinessGoals() {
           c1ScheduledRows,
           c1HeldRows,
           c4Rows,
-          stageLogCountRows,
-          c2DenomUnionRows,
-          c3DenomUnionRows,
           interventionRows,
           pinkRows,
           readyRows,
@@ -242,26 +238,6 @@ export default function BusinessGoals() {
                AND TRIM(COALESCE(NULLIF(c.inferred_stage, ''), c.stage)) IN ('C4', 'Client Career 2.0')`,
             []
           ),
-          db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM client_stage_log`,
-            []
-          ),
-          db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM (
-               SELECT DISTINCT client_id AS cid FROM client_stage_log WHERE to_stage = $1
-               UNION
-               SELECT DISTINCT id AS cid FROM clients WHERE inferred_stage = $1
-             ) AS d`,
-            ['C1']
-          ),
-          db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM (
-               SELECT DISTINCT client_id AS cid FROM client_stage_log WHERE to_stage = $1
-               UNION
-               SELECT DISTINCT id AS cid FROM clients WHERE inferred_stage = $1
-             ) AS d`,
-            ['C2']
-          ),
           db.select<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM intervention_logs`, []),
           db.select<{ pink_flags: string | null }>(
             `SELECT pink_flags FROM clients c
@@ -288,15 +264,6 @@ export default function BusinessGoals() {
         const c4Total = Number(c4?.total ?? 0);
         const c4Poc = Number(c4?.with_poc ?? 0);
 
-        const stageLogCount = Number(stageLogCountRows[0]?.cnt ?? 0);
-        const denomC2 = Number(c2DenomUnionRows[0]?.cnt ?? 0);
-        const denomC3 = Number(c3DenomUnionRows[0]?.cnt ?? 0);
-
-        const [rateC2, rateC3] = await Promise.all([
-          getConversionRate('C1', 'C2'),
-          getConversionRate('C2', 'C3'),
-        ]);
-
         setPlacementCount(Number(placementRows[0]?.cnt ?? 0));
         setRevenueSumRaw(revenueRows.reduce((sum, r) => sum + parseRevenue(r.placement_revenue), 0));
         setC3WeekCount(Number(c3WeekRows[0]?.cnt ?? 0));
@@ -309,18 +276,8 @@ export default function BusinessGoals() {
         );
         setC4ConversionPct(safePct(c4Poc, c4Total));
 
-        let c2Val: number | null;
-        if (denomC2 === 0) c2Val = null;
-        else if (rateC2 === 0 && stageLogCount === 0) c2Val = null;
-        else c2Val = Math.min(100, Math.round(rateC2 * 10) / 10);
-
-        let c3Val: number | null;
-        if (denomC3 === 0) c3Val = null;
-        else if (rateC3 === 0 && stageLogCount === 0) c3Val = null;
-        else c3Val = Math.min(100, Math.round(rateC3 * 10) / 10);
-
-        setC2MovementPct(c2Val);
-        setC3MovementPct(c3Val);
+        setC2MovementPct(null);
+        setC3MovementPct(null);
 
         setInterventionCount(Number(interventionRows[0]?.cnt ?? 0));
         let resolved = 0;
@@ -398,7 +355,7 @@ export default function BusinessGoals() {
   const icScheduledNullTip =
     'Mark sessions as scheduled on client Fathom tabs to calculate your IC session held rate.';
   const movementNullTip =
-    'Move clients between stages to calculate conversion rates.';
+    'Move clients between stages to calculate this rate';
 
   const gapRows: GapRowDef[] = [
     {
