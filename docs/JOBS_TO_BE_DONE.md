@@ -358,3 +358,396 @@ Data completeness:
 Ollama confirmed:
   qwen2.5:7b running ✅
   nomic-embed-text pulled ⚠️ needed for RAG
+
+---
+
+## JOBS 10-12 — Extended Job Map
+
+### JOB 10 — Protect the franchise relationship
+Sandi operates under a franchise agreement.
+Every client interaction carries compliance
+risk. Coach Bot must help her stay within
+boundaries — documented, auditable,
+defensible.
+
+KPIs:
+  Audit log completeness
+    Target: 100% of recommendations logged
+    Storage: audit_log table
+    Calculated: actions with reasoning /
+      total actions
+    Signal: any unlogged recommendation →
+      governance alert
+    Page: Settings (Admin Streamliner)
+
+### JOB 11 — Grow through referrals
+90 days after a placement Sandi should
+ask converted clients for referrals.
+One referral = one more placement =
+$28,000.
+
+KPIs:
+  Referral ask rate
+    Target: 100% of converted clients
+      contacted at 90 days
+    Storage: clients.referral_ask_sent
+    Calculated: referral asks sent /
+      total converted clients past 90 days
+    Signal: converted client at 90 days
+      with no referral ask → Morning Brief
+    Page: My Practice
+
+### JOB 12 — Prepare for every call
+Before each coaching call Sandi needs
+to know who she is talking to, where
+they are in the journey, what their
+DISC style says to do, what was said
+last time, and what pink flags to watch.
+
+KPIs:
+  Pre-call prep completion
+    Target: client card opened before
+      every session
+    Storage: audit_log — client_accessed
+      events before session events
+    Calculated: sessions with prior
+      client_accessed event /
+      total sessions
+    Signal: session logged with no prior
+      client_accessed → coaching quality note
+    Page: Client Intelligence
+
+---
+
+## VTCO FRAMEWORK — Two Layers
+
+Dr. Data Decision Intelligence LLC
+Proprietary methodology — all rights reserved
+
+### VTCO Definition 1 — STZ Governance Layer
+Applied to: AI system design and governance
+  V — Verb: what action does the system take
+  T — Task: what specific function executes
+  C — Constraint: what boundaries govern
+        the action — what requires human
+        confirmation, what gets logged,
+        what the AI cannot do alone
+  O — Outcome: what changes in the system
+        when the action completes
+
+Purpose: Encodes expert judgment into
+  governance-first AI systems. Defines
+  the operating band where human expert
+  and AI work at exactly the right ratio.
+  This is the Skill Threshold Zone.
+
+Example — Vision Statement Generation:
+  V: Generate
+  T: Create three-paragraph vision statement
+  C: Requires DISC + You2 + Fathom data.
+     Sandi must approve before saving.
+     Cannot reference TES or franchise brand.
+     Output logged to audit_log.
+  O: vision_statement saved,
+     vision_approved = 1,
+     audit entry created
+
+### VTCO Definition 2 — UX Design Layer
+Applied to: Dashboard and interface design
+  V — Verb: what action does Sandi take
+  T — Task: what specific activity does
+        this UI element enable
+  C — Context: what is the minimum
+        information needed to take action —
+        no more, no less
+  O — Outcome: what KPI or job outcome
+        changes when she completes the task
+
+Purpose: Ensures every UI element earns
+  its place. If an element cannot answer
+  all four VTCO questions it does not
+  belong on that page.
+
+Example — Gone Quiet Signal Card:
+  V: Respond
+  T: Log what Sandi did about this client
+  C: Client name, stage, days since contact,
+     DISC re-engagement tip — nothing else
+  O: Intervention logged, signal cleared,
+     intervention_response_rate KPI updates
+
+---
+
+## THE THREE DESIGN QUESTIONS
+
+Every UI element must pass all three:
+
+1. Does this help Sandi do one of her
+   12 jobs?
+   → Answered by VTCO-UX Verb + Task
+   → If no verb and no task: remove it
+
+2. Is this the simplest way to show it?
+   → Answered by VTCO-UX Context
+   → Show minimum context needed to act
+   → If more context than needed: simplify
+
+3. Would she understand this without
+   reading the How to Use guide?
+   → Answered by VTCO-UX Outcome
+   → If outcome is not obvious: redesign
+   → Label, icon, and color must be
+     self-explanatory
+
+---
+
+## PAGE TO JOB MAPPING — Complete
+
+### Morning Brief
+ONE DOMINANT JOB: Know what to do today
+
+Elements and their VTCO-UX:
+
+Gone Quiet / Pink Flag / At Risk cards:
+  V: Review → T: Open at-risk client
+  C: Name, stage, signal, days
+  O: Intervention logged, signal cleared
+  Jobs served: 5, 12
+
+Weekly Seeker Input:
+  V: Log → T: Enter weekly contacts
+  C: Target 22/week, engagement rate
+  O: Job 1 KPI calculated
+  Jobs served: 1
+
+Placement Pulse (greeting card):
+  V: Track → T: See revenue progress
+  C: X of 11, $X of $300K
+  O: Motivation, pace awareness
+  Jobs served: 4
+
+KPI Cards:
+  V: See → T: Pipeline status at a glance
+  C: 6 numbers, period toggle
+  O: Decision to act or relax today
+  Jobs served: 3, 4, 5, 8
+
+Does NOT belong here:
+  Pipeline charts → Business Goals
+  Individual client details → Client Intel
+  System logs → Admin
+
+### Business Goals
+ONE DOMINANT JOB: Know if on track for $300K
+
+Elements and their VTCO-UX:
+
+North Star Zone:
+  V: Present → T: Hit C3 this week
+  C: 0.0/2.5, why it matters, YTD
+  O: Placement trajectory changes
+  Jobs served: 3, 4
+
+Revenue Story:
+  V: Review → T: See pace vs target
+  C: Revenue, target, projection, bar
+  O: Decision to push harder or stay course
+  Jobs served: 4
+
+Where to Focus:
+  V: Improve → T: Close conversion gaps
+  C: Actual %, target %, action pill
+  O: Specific action taken this week
+  Jobs served: 2, 3, 6
+
+Intelligence Cards:
+  V: Track → T: See coaching behavior KPIs
+  C: Decisions logged, flags resolved,
+     clients ready
+  O: Awareness of coaching consistency
+  Jobs served: 5, 7, 10
+
+Does NOT belong here:
+  Gone quiet alerts → Morning Brief
+  Client profiles → Client Intelligence
+  Aha moments → My Practice
+
+### Client Intelligence
+ONE DOMINANT JOB: Know your client completely
+
+Elements and their VTCO-UX:
+
+Sidebar client list:
+  V: Select → T: Open client profile
+  C: Name, stage, DISC, signal badges
+  O: Right panel loads full profile
+  Jobs served: 9, 12
+
+Overview tab:
+  V: Review → T: Pre-call preparation
+  C: Stage, readiness, pink flags,
+     contact info, last contacted
+  O: Call starts informed
+  Jobs served: 9, 12
+
+Vision tab:
+  V: Generate → T: Create vision statement
+  C: DISC style, You2, territory check
+  O: Vision saved, PowerPoint downloaded
+  Jobs served: 9
+
+Aha Moment button:
+  V: Capture → T: Log coaching insight
+  C: Client name, insight type
+  O: Aha saved to My Practice library
+  Jobs served: 7
+
+Fathom tab:
+  V: Review → T: See session history
+  C: Date, notes, CLEAR score, next steps
+  O: Pattern recognition, prep for next call
+  Jobs served: 6, 9, 12
+
+Does NOT belong here:
+  Revenue KPIs → Business Goals
+  System logs → Admin
+  Data import → Admin
+
+### Coaching Actions
+ONE DOMINANT JOB: Respond to every signal
+
+Elements and their VTCO-UX:
+
+Signal cards:
+  V: Respond → T: Log what you did
+  C: Client, signal type, days, DISC tip
+  O: Intervention logged, rate KPI updates
+  Jobs served: 5, 10
+
+Golden Rules:
+  V: Capture → T: Write what made them convert
+  C: Client name, conversion date
+  O: Golden rule saved to My Practice
+  Jobs served: 7, 11
+
+Decision History:
+  V: Review → T: Audit your responses
+  C: Date, client, signal, response
+  O: Pattern awareness, compliance proof
+  Jobs served: 10
+
+Does NOT belong here:
+  KPI charts → Business Goals
+  Client details → Client Intelligence
+  Settings → Admin
+
+### My Practice
+ONE DOMINANT JOB: Learn from your patterns
+
+Elements and their VTCO-UX:
+
+Aha Moments library:
+  V: Review → T: Read coaching insights
+  C: Filtered by type, client, date
+  O: Patterns identified, approach refined
+  Jobs served: 7
+
+Golden Rules:
+  V: Review → T: Read what converts clients
+  C: Client attribution, rule text
+  O: Coaching approach improves
+  Jobs served: 7, 11
+
+CLEAR Trends:
+  V: Track → T: See coaching quality over time
+  C: Monthly averages per dimension
+  O: Weakest dimension identified, improved
+  Jobs served: 6
+
+DISC Distribution:
+  V: See → T: Understand client mix
+  C: D/I/S/C counts, insight line
+  O: Coaching style adapted to majority
+  Jobs served: 6
+
+Profile Completeness:
+  V: Review → T: Identify data gaps
+  C: % per client, what is missing
+  O: Upload actioned, RAG quality improves
+  Jobs served: 9
+
+Does NOT belong here:
+  Today's signals → Morning Brief
+  Revenue tracking → Business Goals
+  Individual sessions → Client Intelligence
+
+### Settings (Admin Streamliner)
+ONE DOMINANT JOB: Manage the system
+
+Elements and their VTCO-UX:
+
+Import tools:
+  V: Import → T: Upload client files
+  C: File type, client matching
+  O: Profile completeness increases
+  Jobs served: 9
+
+Activity log:
+  V: Audit → T: Review all system actions
+  C: Action, client, timestamp, reasoning
+  O: Compliance maintained
+  Jobs served: 10
+
+Feedback tab:
+  V: Review → T: See Sandi's feedback
+  C: Page, type, text, date
+  O: Next build priorities identified
+  Jobs served: 8
+
+Does NOT belong here:
+  Client coaching data → Client Intelligence
+  Business KPIs → Business Goals
+  Signals → Coaching Actions
+
+---
+
+## THE DESIGN RULE
+
+One page. One dominant job.
+Every element answers all four VTCO questions.
+Every element passes all three design questions.
+If it fails any — cut it or move it.
+
+The five pages in one sentence each:
+  Morning Brief: Review signals and log
+    what you will do today.
+  Business Goals: Track your $300K year
+    and close the gaps.
+  Client Intelligence: Know your client
+    completely before every call.
+  Coaching Actions: Respond to every
+    signal the system surfaces.
+  My Practice: Learn from your own
+    coaching patterns over time.
+
+This is the STZ framework fully operational
+at the UX layer. Two VTCOs. One methodology.
+Every page earns its place.
+
+---
+
+## REUSE INSTRUCTIONS — New Verticals
+
+For every new vertical:
+1. List their jobs to be done (8-12 jobs)
+2. Apply VTCO-STZ to each job for governance
+3. Apply VTCO-UX to each job for interface
+4. Map jobs to pages — one dominant job per page
+5. Apply three design questions to every element
+6. Cut anything that fails
+
+This methodology is vertical-agnostic.
+It works for franchise coaching, financial
+advisory, legal practice, healthcare,
+HR consulting — any knowledge worker
+who makes decisions about people.
