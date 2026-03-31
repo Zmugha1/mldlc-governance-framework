@@ -55,7 +55,7 @@ const DISC_LETTER_COLORS: Record<'D' | 'I' | 'S' | 'C', string> = {
   C: '#3B82F6',
 };
 
-/** Last contact must be after this date (ISO day) to display; older/null → muted placeholders. */
+/** Last contact on or after this ISO day displays as a real date; older/null → "Not yet contacted". */
 const GLANCE_LAST_CONTACT_MIN_DAY = '2024-01-01';
 
 /** Gone-quiet thresholds by compartment display label (matches CoachingActions). */
@@ -76,7 +76,7 @@ function goneQuietThresholdDaysForCompartment(compartment: string): number {
 function isValidGlanceLastContact(raw: string | null | undefined): boolean {
   if (raw == null || String(raw).trim() === '') return false;
   const day = String(raw).trim().slice(0, 10);
-  return day > GLANCE_LAST_CONTACT_MIN_DAY;
+  return day >= GLANCE_LAST_CONTACT_MIN_DAY;
 }
 
 function clientLastContactDateField(cl: Client): string | null {
@@ -612,6 +612,9 @@ export default function ExecutiveDashboard() {
   const [sessionStatsByClient, setSessionStatsByClient] = useState<
     Map<string, { count: number; lastDate: string | null }>
   >(new Map());
+  const [glanceAtTableByClientId, setGlanceAtTableByClientId] = useState<
+    Map<string, { last_contact_date: string | null; session_count: number }>
+  >(() => new Map());
   const [discLetterByProfileClientId, setDiscLetterByProfileClientId] = useState<
     Map<string, 'D' | 'I' | 'S' | 'C'>
   >(() => new Map());
@@ -713,6 +716,7 @@ export default function ExecutiveDashboard() {
         sessionsNullSchedRows,
         anchorSeekerRows,
         userPrefsRows,
+        glanceAtTableRows,
       ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
@@ -773,6 +777,26 @@ export default function ExecutiveDashboard() {
            WHERE id = 'singleton'`,
           []
         ),
+        dbSelect<{
+          id: string;
+          name: string;
+          inferred_stage: string | null;
+          outcome_bucket: string | null;
+          pink_flags: string | null;
+          last_contact_date: string | null;
+          session_count: number;
+        }>(
+          `SELECT c.id, c.name, c.inferred_stage,
+                  c.outcome_bucket, c.pink_flags,
+                  c.last_contact_date,
+                  COUNT(cs.id) as session_count
+           FROM clients c
+           LEFT JOIN coaching_sessions cs ON cs.client_id = c.id
+           WHERE c.outcome_bucket != 'inactive'
+           GROUP BY c.id
+           ORDER BY c.name`,
+          []
+        ),
       ]);
       setStats(s);
       setClients(c);
@@ -785,6 +809,18 @@ export default function ExecutiveDashboard() {
         });
       }
       setSessionStatsByClient(sessMap);
+
+      const glanceMap = new Map<string, { last_contact_date: string | null; session_count: number }>();
+      for (const gRow of glanceAtTableRows) {
+        const rawLc = gRow.last_contact_date;
+        const lc =
+          rawLc != null && String(rawLc).trim() !== '' ? String(rawLc).trim() : null;
+        glanceMap.set(gRow.id, {
+          last_contact_date: lc,
+          session_count: Number(gRow.session_count ?? 0),
+        });
+      }
+      setGlanceAtTableByClientId(glanceMap);
 
       let goneQuietN = 0;
       for (const r of readiness) {
@@ -932,8 +968,12 @@ export default function ExecutiveDashboard() {
       const rec = r.recommendation;
       if (rec !== 'VALIDATE' && rec !== 'GATHER' && rec !== 'PAUSE') continue;
       const sess = sessionStatsByClient.get(r.client_id);
-      const sessionCount = sess?.count ?? 0;
-      const lastContactDate = clientLastContactDateField(cl);
+      const glance = glanceAtTableByClientId.get(r.client_id);
+      const sessionCount = glance?.session_count ?? sess?.count ?? 0;
+      const lastContactDate =
+        glance !== undefined
+          ? glance.last_contact_date
+          : clientLastContactDateField(cl);
       list.push({
         id: r.client_id,
         name: r.client_name,
@@ -955,7 +995,13 @@ export default function ExecutiveDashboard() {
       return a.name.localeCompare(b.name);
     });
     return list;
-  }, [readinessRows, clients, sessionStatsByClient, discLetterByProfileClientId]);
+  }, [
+    readinessRows,
+    clients,
+    sessionStatsByClient,
+    glanceAtTableByClientId,
+    discLetterByProfileClientId,
+  ]);
 
   const filteredGlanceRows = useMemo(() => {
     return clientsAtAGlanceRows.filter((row) => {
@@ -1804,9 +1850,6 @@ export default function ExecutiveDashboard() {
               <TableBody>
                 {filteredGlanceRows.map((row) => {
                   const recStyle = recommendationStyleMap[row.recommendation];
-                  const lcEmpty =
-                    row.lastContactDate == null || String(row.lastContactDate).trim() === '';
-                  const showNoSessionsYet = row.sessionCount === 0 && lcEmpty;
                   const showValidDate = isValidGlanceLastContact(row.lastContactDate);
                   const daysSinceLc = showValidDate
                     ? daysSinceCalendarLocal(row.lastContactDate)
@@ -1882,11 +1925,7 @@ export default function ExecutiveDashboard() {
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        {showNoSessionsYet ? (
-                          <span className="text-sm" style={{ color: '#7A8F95' }}>
-                            No sessions yet
-                          </span>
-                        ) : showValidDate ? (
+                        {showValidDate ? (
                           showGoneQuietDot ? (
                             <UiTooltip>
                               <TooltipTrigger asChild>
@@ -1900,7 +1939,7 @@ export default function ExecutiveDashboard() {
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="top" className="max-w-xs text-xs">
-                                Gone quiet — {daysSinceLc} days since last contact
+                                Gone quiet
                               </TooltipContent>
                             </UiTooltip>
                           ) : (
