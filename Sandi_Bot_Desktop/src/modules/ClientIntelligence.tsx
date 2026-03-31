@@ -132,6 +132,17 @@ function resolvePipelineStageCode(
   return DISPLAY_LABEL_TO_PIPELINE_CODE[label] ?? null;
 }
 
+function formatFathomSessionCardDate(iso: string | null | undefined): string {
+  if (iso == null || String(iso).trim() === '') return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso).trim();
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 function shouldShowPlacementMilestones(client: {
   inferred_stage?: string | null;
   outcome_bucket?: string | null;
@@ -588,19 +599,6 @@ function ClientDetailModal({
   const [isEditingLastContact, setIsEditingLastContact] = useState(false);
   const [lastContactDraft, setLastContactDraft] = useState('');
   const [isSavingLastContact, setIsSavingLastContact] = useState(false);
-  const [showAddNote, setShowAddNote] = useState(false);
-  const [noteDraft, setNoteDraft] = useState<{
-    session_date: string;
-    stage: 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
-    notes: string;
-    next_actions: string;
-  }>({
-    session_date: new Date().toISOString().split('T')[0],
-    stage: 'IC',
-    notes: '',
-    next_actions: '',
-  });
-  const [isSavingNote, setIsSavingNote] = useState(false);
   const [fathomSessions, setFathomSessions] = useState<Array<{
     id: number;
     client_id: string | null;
@@ -674,12 +672,15 @@ function ClientDetailModal({
   const [manualSessionDate, setManualSessionDate] = useState(() =>
     localCalendarDateYyyyMmDd()
   );
+  const [manualSessionStage, setManualSessionStage] = useState<PipelineStageCode>('IC');
+  const [manualSessionDuration, setManualSessionDuration] = useState('');
   const [manualSessionNotes, setManualSessionNotes] = useState('');
   const [manualSessionSaving, setManualSessionSaving] = useState(false);
   const [manualSessionScheduledInAdvance, setManualSessionScheduledInAdvance] =
     useState(true);
-  const [manualSessionConfirm, setManualSessionConfirm] = useState<string | null>(
-    null
+  const [sessionLogAddedAck, setSessionLogAddedAck] = useState(false);
+  const [fathomNotesExpanded, setFathomNotesExpanded] = useState<Record<number, boolean>>(
+    {}
   );
   const [placementPocReached, setPlacementPocReached] = useState<string | null>(
     null
@@ -728,6 +729,12 @@ function ClientDetailModal({
     const t = window.setTimeout(() => setAhaToast(null), 3000);
     return () => clearTimeout(t);
   }, [ahaToast]);
+
+  useEffect(() => {
+    if (!sessionLogAddedAck) return;
+    const t = window.setTimeout(() => setSessionLogAddedAck(false), 4000);
+    return () => clearTimeout(t);
+  }, [sessionLogAddedAck]);
 
   useEffect(() => {
     setAhaModalOpen(false);
@@ -808,8 +815,10 @@ function ClientDetailModal({
     if (!client) return;
     setManualSessionDate(localCalendarDateYyyyMmDd());
     setManualSessionNotes('');
+    setManualSessionDuration('');
     setManualSessionScheduledInAdvance(true);
-    setManualSessionConfirm(null);
+    setSessionLogAddedAck(false);
+    setFathomNotesExpanded({});
   }, [client?.id]);
 
   useEffect(() => {
@@ -857,9 +866,9 @@ function ClientDetailModal({
 
   useEffect(() => {
     if (client) {
-      const stageForDraft =
-        parsePipelineStageCode(client.inferred_stage) ?? 'IC';
-      setNoteDraft((prev) => ({ ...prev, stage: stageForDraft }));
+      const stageResolved =
+        resolvePipelineStageCode(client.inferred_stage) ?? 'IC';
+      setManualSessionStage(stageResolved);
       getStageReadiness(client.id).then(setReadiness);
       getAllStageReadiness()
         .then((allReadiness) => {
@@ -1078,7 +1087,6 @@ function ClientDetailModal({
       setFathomSessions([]);
       setFathomSessionCount(0);
       setIsEditingContact(false);
-      setShowAddNote(false);
       setLastContactDateDb(null);
       setIsEditingLastContact(false);
       setLastContactDraft('');
@@ -1108,20 +1116,6 @@ function ClientDetailModal({
       : getStageDisplayName(client.inferred_stage?.trim() ?? '');
   const stageCompartmentSubtitle =
     stageCardCompartmentSubtitle(resolvedPipelineCode);
-
-  const c1ShowRateLine = useMemo(() => {
-    if (resolvedPipelineCode !== 'C1') return null;
-    const c1Sessions = fathomSessions.filter((s) => (s.stage ?? '').trim() === 'C1');
-    const scheduled = c1Sessions.filter((s) => Number(s.session_scheduled ?? 0) === 1)
-      .length;
-    const held = c1Sessions.length;
-    if (scheduled === 0) return null;
-    const pct = Math.round((held / scheduled) * 1000) / 10;
-    let color = '#dc2626';
-    if (pct >= 75) color = '#22c55e';
-    else if (pct >= 50) color = '#D97706';
-    return { scheduled, held, pct, color };
-  }, [resolvedPipelineCode, fathomSessions]);
 
   const persistedVisionText = (client.visionStatement.paragraph ?? '').trim();
   const visionIsApproved = client.vision_approved === 1;
@@ -1303,48 +1297,26 @@ function ClientDetailModal({
     }
   };
 
-  const handleSaveNote = async () => {
-    setIsSavingNote(true);
-    try {
-      await dbExecute(
-        `INSERT INTO coaching_sessions
-         (client_id, session_date, stage, notes, next_actions)
-         VALUES (?, ?, ?, ?, ?)`,
-        [client.id, noteDraft.session_date, noteDraft.stage, noteDraft.notes, noteDraft.next_actions]
-      );
-      await loadFathomSessions();
-      setShowAddNote(false);
-      setNoteDraft({
-        session_date: new Date().toISOString().split('T')[0],
-        stage: parsePipelineStageCode(client.inferred_stage) ?? 'IC',
-        notes: '',
-        next_actions: '',
-      });
-    } finally {
-      setIsSavingNote(false);
-    }
-  };
-
   const handleAddManualSession = async () => {
     if (!client) return;
     const dateStr = manualSessionDate.trim();
     if (!dateStr) return;
     setManualSessionSaving(true);
-    setManualSessionConfirm(null);
+    setSessionLogAddedAck(false);
     try {
       const countRows = await dbSelect<{ c: number }>(
         `SELECT COUNT(*) as c FROM coaching_sessions WHERE client_id = ?`,
         [client.id]
       );
       const nextSessionNumber = Number(countRows[0]?.c ?? 0) + 1;
-      const stageCode =
-        resolvePipelineStageCode(client.inferred_stage) ?? 'IC';
+      const stageCode = manualSessionStage;
       const notesVal = manualSessionNotes.trim() || null;
+      const durationVal = manualSessionDuration.trim() || null;
       const now = new Date().toISOString();
       await dbExecute(
         `INSERT INTO coaching_sessions
-         (client_id, session_date, session_number, stage, notes, next_actions, updated_at, session_scheduled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (client_id, session_date, session_number, stage, notes, next_actions, updated_at, session_scheduled, call_duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           client.id,
           dateStr,
@@ -1354,6 +1326,7 @@ function ClientDetailModal({
           null,
           now,
           manualSessionScheduledInAdvance ? 1 : 0,
+          durationVal,
         ]
       );
       await dbExecute(
@@ -1370,10 +1343,10 @@ function ClientDetailModal({
         'deterministic'
       );
       await loadFathomSessions();
-      const friendly = formatLastContactDisplay(dateStr);
-      setManualSessionConfirm(friendly || dateStr);
+      setSessionLogAddedAck(true);
       setManualSessionDate(localCalendarDateYyyyMmDd());
       setManualSessionNotes('');
+      setManualSessionDuration('');
       setManualSessionScheduledInAdvance(true);
     } catch (e) {
       console.error('manual session add failed:', e);
@@ -1863,6 +1836,260 @@ function ClientDetailModal({
   const parseSessionBlock = (raw: string | null): Record<string, unknown> | null => {
     const parsed = safeParseJson(raw ?? '');
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+  };
+
+  const fathomSessionPlainNotes = (sess: (typeof fathomSessions)[number]): string => {
+    const parsed = safeParseJson(sess.notes ?? '');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const sum = String((parsed as { summary?: unknown }).summary ?? '').trim();
+      if (sum) return sum;
+    }
+    const raw = (sess.notes ?? '').trim();
+    if (!raw || raw === '{}') return '';
+    return raw;
+  };
+
+  const fathomClearBadgeStyle = (score: number) => {
+    if (score >= 4) return { background: '#DCFCE7', color: '#166534' };
+    if (score >= 3) return { background: '#FEF3C7', color: '#B45309' };
+    return { background: '#FEE2E2', color: '#B91C1C' };
+  };
+
+  const renderFathomStructuredSection = (
+    s: (typeof fathomSessions)[number],
+    def: (typeof blockDefinitions)[number]
+  ) => {
+    switch (def.key) {
+      case 'block_opening': {
+        const opening = parseSessionBlock(s.block_opening);
+        if (!opening) return null;
+        return (
+          <details key={def.key} open className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-1 text-sm">
+              <div>
+                Energy:{' '}
+                <Badge variant="outline">{toDisplayValue(opening?.client_energy as string | undefined)}</Badge>
+              </div>
+              <div>Contracting: {opening?.contracting_done ? '✓' : '✗'}</div>
+              <div>Client set agenda: {opening?.client_set_agenda ? '✓' : '✗'}</div>
+              <p>{toDisplayValue(opening?.opening_summary as string | undefined)}</p>
+            </div>
+          </details>
+        );
+      }
+      case 'block_emotional': {
+        const emotional = parseSessionBlock(s.block_emotional);
+        if (!emotional) return null;
+        return (
+          <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-2 text-sm">
+              <div className="flex flex-wrap gap-2">
+                {parseListField(emotional?.emotions_expressed).map((v, i) => (
+                  <Badge key={`e-${i}`} className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+                    {v}
+                  </Badge>
+                ))}
+              </div>
+              <ul className="list-inside list-disc">
+                {parseListField(emotional?.fears_mentioned).map((v, i) => (
+                  <li key={`f-${i}`}>{v}</li>
+                ))}
+              </ul>
+              <blockquote className="border-l-2 pl-2 text-slate-700">
+                {parseListField(emotional?.identity_statements).join(' | ') || '—'}
+              </blockquote>
+            </div>
+          </details>
+        );
+      }
+      case 'block_life_context': {
+        const life = parseSessionBlock(s.block_life_context);
+        if (!life) return null;
+        return (
+          <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-1 text-sm">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">{toDisplayValue(life?.spouse_sentiment as string | undefined)}</Badge>
+                <Badge variant="outline">{toDisplayValue(life?.current_job_situation as string | undefined)}</Badge>
+                <Badge variant="outline">{toDisplayValue(life?.financial_comfort as string | undefined)}</Badge>
+              </div>
+              <p>{toDisplayValue(life?.personal_circumstances as string | undefined)}</p>
+            </div>
+          </details>
+        );
+      }
+      case 'block_vision': {
+        const vision = parseSessionBlock(s.block_vision);
+        if (!vision) return null;
+        return (
+          <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-1 text-sm">
+              <div>Future described: {vision?.future_life_described ? '✓' : '✗'}</div>
+              <ul className="list-inside list-disc">
+                {parseListField(vision?.lifestyle_details).map((v, i) => (
+                  <li key={`l-${i}`}>{v}</li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap gap-2">
+                {parseListField(vision?.business_models_discussed).map((v, i) => (
+                  <Badge key={`bm-${i}`} variant="secondary">
+                    {v}
+                  </Badge>
+                ))}
+              </div>
+              <div>
+                Ownership identity:{' '}
+                <Badge variant="outline">{toDisplayValue(vision?.ownership_identity as string | undefined)}</Badge>
+              </div>
+            </div>
+          </details>
+        );
+      }
+      case 'block_disc_signals': {
+        const discB = parseSessionBlock(s.block_disc_signals);
+        if (!discB) return null;
+        return (
+          <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-1 text-sm">
+              <div>
+                Observed style:{' '}
+                <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100">
+                  {toDisplayValue(discB?.observed_style as string | undefined)}
+                </Badge>
+              </div>
+              <ul className="list-inside list-disc">
+                {parseListField(discB?.style_observations).map((v, i) => (
+                  <li key={`so-${i}`}>{v}</li>
+                ))}
+              </ul>
+              <div>Matches profile: {discB?.matches_profile ? '✓' : '✗'}</div>
+              <p className="italic">{toDisplayValue(discB?.coaching_note as string | undefined)}</p>
+            </div>
+          </details>
+        );
+      }
+      case 'block_objections': {
+        const objections = parseSessionBlock(s.block_objections);
+        if (!objections) return null;
+        return (
+          <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-1 text-sm">
+              <ul className="list-inside list-disc">
+                {parseListField(objections?.objections).map((v, i) => (
+                  <li key={`o-${i}`}>{v}</li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap gap-2">
+                {parseListField(objections?.pink_flag_language).map((v, i) => (
+                  <Badge key={`pfl-${i}`} className="bg-red-100 text-red-800 hover:bg-red-100">
+                    {v}
+                  </Badge>
+                ))}
+              </div>
+              <p className="font-medium">
+                Repeat: {parseListField(objections?.repeat_objections).join(', ') || '—'}
+              </p>
+            </div>
+          </details>
+        );
+      }
+      case 'block_commitments': {
+        const commitments = parseSessionBlock(s.block_commitments);
+        if (!commitments) return null;
+        return (
+          <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-1 text-sm">
+              <ul className="list-inside list-disc">
+                {parseListField(commitments?.client_commitments).map((v, i) => (
+                  <li key={`cc-${i}`}>{v}</li>
+                ))}
+              </ul>
+              <div>Client chose action: {commitments?.client_chose_action ? '✓' : '✗'}</div>
+              <div>Next call: {toDisplayValue(commitments?.next_call_date as string | undefined)}</div>
+            </div>
+          </details>
+        );
+      }
+      case 'block_reflection_block': {
+        const reflection = parseSessionBlock(s.block_reflection_block);
+        if (!reflection) return null;
+        return (
+          <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-1 text-sm">
+              <blockquote className="border-l-2 pl-2">
+                {toDisplayValue(reflection?.insight_surfaced as string | undefined)}
+              </blockquote>
+              <p>{toDisplayValue(reflection?.mindset_shift as string | undefined)}</p>
+              <Badge variant="outline">
+                {toDisplayValue(reflection?.engagement_quality as string | undefined)}
+              </Badge>
+            </div>
+          </details>
+        );
+      }
+      case 'block_coach_assessment': {
+        const assessment = parseSessionBlock(s.block_coach_assessment);
+        if (!assessment) return null;
+        return (
+          <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+            <summary className={`cursor-pointer font-medium ${def.color}`}>
+              {def.icon} {def.title}
+            </summary>
+            <div className="mt-2 space-y-2 text-sm">
+              <Badge
+                className={
+                  String(assessment?.recommendation ?? '') === 'VALIDATE'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-100'
+                    : String(assessment?.recommendation ?? '') === 'PAUSE'
+                      ? 'bg-slate-200 text-slate-800 hover:bg-slate-200'
+                      : 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+                }
+              >
+                {toDisplayValue(assessment?.recommendation as string | undefined)}
+              </Badge>
+              <p>
+                {String(assessment?.readiness_direction ?? '') === 'improving'
+                  ? '↑ '
+                  : String(assessment?.readiness_direction ?? '') === 'declining'
+                    ? '↓ '
+                    : '→ '}
+                {toDisplayValue(assessment?.readiness_direction as string | undefined)}
+              </p>
+              <p>{toDisplayValue(assessment?.next_call_focus as string | undefined)}</p>
+              <div className="rounded bg-blue-50 p-2 text-blue-900">
+                {toDisplayValue(assessment?.priority_question as string | undefined)}
+              </div>
+            </div>
+          </details>
+        );
+      }
+      default:
+        return null;
+    }
   };
 
   const discUi = CI_DISC_STYLE[client.disc.style];
@@ -3244,69 +3471,107 @@ function ClientDetailModal({
           </TabsContent>
 
           <TabsContent value="fathom" className="h-full min-h-0 mt-0">
-            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
-            {c1ShowRateLine ? (
-              <p
-                className="text-xs font-semibold"
-                style={{ color: c1ShowRateLine.color }}
+            <div className="h-full max-h-[75vh] overflow-y-auto p-6">
+              {/* SECTION 1 — Add Session */}
+              <div
+                style={{
+                  marginBottom: 20,
+                  background: '#F4F7F8',
+                  border: '1px solid #C8E8E5',
+                  borderRadius: 12,
+                  padding: '16px 20px',
+                }}
               >
-                C1 Show Rate: {c1ShowRateLine.pct}% ({c1ShowRateLine.held} held of{' '}
-                {c1ShowRateLine.scheduled} scheduled)
-              </p>
-            ) : null}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Add Session Manually</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <Label htmlFor="manual-session-date">Session Date</Label>
-                  <Input
-                    id="manual-session-date"
-                    type="date"
-                    className="mt-1 w-full max-w-xs"
-                    value={manualSessionDate}
-                    onChange={(e) => {
-                      setManualSessionDate(e.target.value);
-                      setManualSessionConfirm(null);
-                    }}
-                  />
+                <h3 className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                  Log a Session
+                </h3>
+                <p className="mt-1" style={{ color: '#7A8F95', fontSize: 11 }}>
+                  Add sessions manually until Fathom transcripts are uploaded
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <div>
+                    <Label htmlFor="manual-session-date" style={{ color: '#2D4459' }}>
+                      Session date
+                    </Label>
+                    <Input
+                      id="manual-session-date"
+                      type="date"
+                      className="mt-1 w-full"
+                      value={manualSessionDate}
+                      onChange={(e) => {
+                        setManualSessionDate(e.target.value);
+                        setSessionLogAddedAck(false);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="manual-session-stage" style={{ color: '#2D4459' }}>
+                      Stage
+                    </Label>
+                    <select
+                      id="manual-session-stage"
+                      className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={manualSessionStage}
+                      onChange={(e) =>
+                        setManualSessionStage(e.target.value as PipelineStageCode)
+                      }
+                    >
+                      {(['IC', 'C1', 'C2', 'C3', 'C4', 'C5'] as const).map((code) => (
+                        <option key={code} value={code}>
+                          {getStageDisplayName(code)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="manual-session-duration" style={{ color: '#2D4459' }}>
+                      Duration (optional)
+                    </Label>
+                    <Input
+                      id="manual-session-duration"
+                      className="mt-1 w-full"
+                      placeholder="45 min"
+                      value={manualSessionDuration}
+                      onChange={(e) => setManualSessionDuration(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="manual-session-notes">
-                    Session Notes (optional)
-                  </Label>
-                  <Textarea
-                    id="manual-session-notes"
-                    rows={2}
-                    className="mt-1 w-full"
-                    placeholder="Brief notes about this session"
-                    value={manualSessionNotes}
-                    onChange={(e) => {
-                      setManualSessionNotes(e.target.value);
-                      setManualSessionConfirm(null);
-                    }}
-                  />
-                </div>
-                <div className="flex items-start gap-2 pt-1">
+                <div className="mt-3 flex items-start gap-2">
                   <Checkbox
                     id="manual-session-scheduled"
                     checked={manualSessionScheduledInAdvance}
-                    onCheckedChange={(v) =>
-                      setManualSessionScheduledInAdvance(v === true)
-                    }
+                    onCheckedChange={(v) => setManualSessionScheduledInAdvance(v === true)}
                     className="mt-0.5"
                   />
                   <Label
                     htmlFor="manual-session-scheduled"
-                    className="cursor-pointer text-sm font-normal leading-snug text-slate-700"
+                    className="cursor-pointer text-xs font-normal leading-snug"
+                    style={{ color: '#2D4459' }}
                   >
-                    This session was scheduled in advance (not a walk-in or same-day)
+                    This session was scheduled
+                    <br />
+                    in advance
                   </Label>
+                </div>
+                <div className="mt-3">
+                  <Label htmlFor="manual-session-notes" style={{ color: '#2D4459' }}>
+                    Session notes (optional)
+                  </Label>
+                  <Textarea
+                    id="manual-session-notes"
+                    rows={2}
+                    className="mt-1 w-full resize-none"
+                    placeholder={
+                      'Key topics, client energy, what came up...'
+                    }
+                    value={manualSessionNotes}
+                    onChange={(e) => setManualSessionNotes(e.target.value)}
+                  />
                 </div>
                 <Button
                   type="button"
-                  className="bg-teal-600 hover:bg-teal-700 text-white"
+                  className="mt-4 w-full font-bold text-white hover:opacity-95"
+                  style={{ background: '#3BBFBF', borderRadius: 8, padding: '10px 20px', fontSize: 13 }}
                   onClick={() => {
                     void handleAddManualSession();
                   }}
@@ -3314,320 +3579,170 @@ function ClientDetailModal({
                 >
                   {manualSessionSaving ? 'Adding…' : 'Add Session'}
                 </Button>
-                {manualSessionConfirm ? (
-                  <p className="text-sm font-medium text-green-600">
-                    Session added for {manualSessionConfirm}
+                {sessionLogAddedAck ? (
+                  <p className="mt-3 text-center text-sm font-semibold text-green-600">
+                    Session added ✓
                   </p>
                 ) : null}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Fathom Notes</CardTitle>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAddNote((v) => !v)}
-                  >
-                    {showAddNote ? 'Cancel' : 'Add Note'}
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {showAddNote && (
-                  <div className="mb-4 p-3 rounded-lg border bg-white space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <Label>Session Date</Label>
-                        <Input
-                          type="date"
-                          value={noteDraft.session_date}
-                          onChange={(e) => setNoteDraft((prev) => ({ ...prev, session_date: e.target.value }))}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label>Stage</Label>
-                        <select
-                          className="mt-1 w-full border rounded-md h-10 px-3 text-sm"
-                          value={noteDraft.stage}
-                          onChange={(e) =>
-                            setNoteDraft((prev) => ({
-                              ...prev,
-                              stage: e.target.value as 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5',
-                            }))
-                          }
-                        >
-                          {(
-                            [
-                              'IC',
-                              'C1',
-                              'C2',
-                              'C3',
-                              'C4',
-                              'C5',
-                            ] as const
-                          ).map((code) => (
-                            <option key={code} value={code}>
-                              {getStageDisplayName(code)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <Label>Notes</Label>
-                      <Textarea
-                        rows={3}
-                        value={noteDraft.notes}
-                        onChange={(e) => setNoteDraft((prev) => ({ ...prev, notes: e.target.value }))}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>Next Steps</Label>
-                      <Textarea
-                        rows={2}
-                        value={noteDraft.next_actions}
-                        onChange={(e) => setNoteDraft((prev) => ({ ...prev, next_actions: e.target.value }))}
-                        className="mt-1"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      className="bg-teal-600 hover:bg-teal-700 text-white"
-                      onClick={handleSaveNote}
-                      disabled={isSavingNote}
-                    >
-                      {isSavingNote ? 'Saving...' : 'Save'}
-                    </Button>
-                  </div>
-                )}
-                {fathomSessionCount === 0 ? (
-                  <p className="text-slate-600">No sessions recorded yet.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {fathomSessions.map((s, idx) => {
-                      const opening = parseSessionBlock(s.block_opening);
-                      const emotional = parseSessionBlock(s.block_emotional);
-                      const life = parseSessionBlock(s.block_life_context);
-                      const vision = parseSessionBlock(s.block_vision);
-                      const disc = parseSessionBlock(s.block_disc_signals);
-                      const objections = parseSessionBlock(s.block_objections);
-                      const commitments = parseSessionBlock(s.block_commitments);
-                      const reflection = parseSessionBlock(s.block_reflection_block);
-                      const assessment = parseSessionBlock(s.block_coach_assessment);
-                      const isStructured = [opening, emotional, life, vision, disc, objections, commitments, reflection, assessment]
-                        .some((v) => v !== null);
-                      const blocksComplete = Number(s.blocks_complete ?? 0);
-                      const missingForSession = blockDefinitions.filter((d) => parseSessionBlock(s[d.key]) === null);
-                      const parsedNotes = safeParseJson(s.notes ?? '');
-                      const legacySummary =
-                        parsedNotes && typeof parsedNotes === 'object'
-                          ? String((parsedNotes as { summary?: unknown }).summary ?? '').trim()
-                          : '';
-                      const legacyNotes = legacySummary
-                        || (s.notes && s.notes.trim() !== '{}' ? s.notes : '')
-                        || 'No notes recorded for this session.';
+              </div>
 
-                      return (
-                        <div key={`${s.id}-${idx}`} className="p-3 rounded-lg bg-slate-50 border border-slate-100 space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-semibold text-slate-900">
-                              {s.session_date || 'Date not recorded'} |{' '}
-                              {getStageDisplayName(
-                                String(s.stage ?? '').trim()
-                              )}{' '}
-                              | {blocksComplete}/9 blocks
+              {/* SECTION 2 — Session History */}
+              <h3 className="mb-3 font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                Session History
+              </h3>
+              {fathomSessionCount === 0 ? (
+                <div
+                  className="flex flex-col items-center justify-center rounded-xl border py-10 text-center"
+                  style={{ borderColor: '#C8E8E5', background: 'white' }}
+                >
+                  <Calendar className="h-8 w-8" style={{ color: '#C8E8E5' }} aria-hidden />
+                  <p className="mt-3 font-medium" style={{ color: '#2D4459' }}>
+                    No sessions yet.
+                  </p>
+                  <p className="mt-2 max-w-sm px-4 text-center whitespace-pre-line" style={{ color: '#7A8F95', fontSize: 13 }}>
+                    {`Add your first session above\nor upload a Fathom transcript\nin Admin Streamliner.`}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {fathomSessions.map((s, idx) => {
+                    const plainNotes = fathomSessionPlainNotes(s);
+                    const hasNext = (s.next_actions ?? '').trim().length > 0;
+                    const blocksWithContent = blockDefinitions.filter((d) =>
+                      parseSessionBlock(s[d.key as keyof typeof s] as string | null)
+                    );
+                    const hasStructured = blocksWithContent.length > 0;
+                    const isEmptyShell = !hasStructured && !plainNotes && !hasNext;
+                    const clearScore =
+                      s.overall_clear_score != null ? Number(s.overall_clear_score) : null;
+                    const clearStyle =
+                      clearScore != null && !Number.isNaN(clearScore)
+                        ? fathomClearBadgeStyle(clearScore)
+                        : null;
+                    const sessionNumLabel =
+                      s.session_number != null ? `Session ${s.session_number}` : `Session ${idx + 1}`;
+                    const dur = (s.call_duration ?? '').trim();
+                    const expanded = Boolean(fathomNotesExpanded[s.id]);
+                    const showMoreToggle = plainNotes.length > 140;
+
+                    return (
+                      <div
+                        key={`${s.id}-${idx}`}
+                        className="mb-2"
+                        style={{
+                          background: 'white',
+                          border: '1px solid #C8E8E5',
+                          borderRadius: 10,
+                          padding: '14px 18px',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                              {formatFathomSessionCardDate(s.session_date)}
                             </p>
-                            <div className="flex items-center gap-2">
-                              {!isStructured && (
-                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-                                  Pre-structure session
-                                </Badge>
-                              )}
-                              {s.overall_clear_score !== null && (
-                                <Badge variant="outline" className="text-xs">
-                                  CLEAR {Number(s.overall_clear_score).toFixed(1)}
-                                </Badge>
-                              )}
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <span
+                                className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                                style={{ background: '#F4F7F8', color: '#2D4459' }}
+                              >
+                                {getStageDisplayName(String(s.stage ?? '').trim())}
+                              </span>
+                              {dur ? (
+                                <span className="text-[11px]" style={{ color: '#7A8F95' }}>
+                                  {dur}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
+                          <div className="flex shrink-0 flex-col items-end gap-1">
+                            {clearScore != null && clearStyle ? (
+                              <span
+                                className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums"
+                                style={clearStyle}
+                              >
+                                {clearScore.toFixed(1)} / 5.0
+                              </span>
+                            ) : null}
+                            <span className="text-[11px]" style={{ color: '#7A8F95' }}>
+                              {sessionNumLabel}
+                            </span>
+                          </div>
+                        </div>
 
-                          {!isStructured ? (
-                            <div className="space-y-2">
-                              <p className="text-sm text-slate-700">{legacyNotes}</p>
-                              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-                                <p className="text-sm font-semibold text-amber-900">NEXT CALL PLANNING</p>
-                                <p className="text-sm text-amber-800 mb-2">Missing from last session — address next call:</p>
-                                <ul className="space-y-1">
-                                  {blockDefinitions.map((block) => (
-                                    <li key={block.key} className="text-sm text-amber-900 flex items-start gap-2">
-                                      <span>- [ ]</span>
-                                      <span>{block.checklist}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              <details open className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-blue-700">🎯 Session Opening</summary>
-                                <div className="mt-2 text-sm space-y-1">
-                                  <div>Energy: <Badge variant="outline">{toDisplayValue(opening?.client_energy)}</Badge></div>
-                                  <div>Contracting: {opening?.contracting_done ? '✓' : '✗'}</div>
-                                  <div>Client set agenda: {opening?.client_set_agenda ? '✓' : '✗'}</div>
-                                  <p>{toDisplayValue(opening?.opening_summary)}</p>
-                                </div>
-                              </details>
-                              <details className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-purple-700">💭 Emotional Discovery</summary>
-                                <div className="mt-2 text-sm space-y-2">
-                                  <div className="flex flex-wrap gap-2">
-                                    {parseListField(emotional?.emotions_expressed).map((v, i) => <Badge key={`e-${i}`} className="bg-purple-100 text-purple-800 hover:bg-purple-100">{v}</Badge>)}
-                                  </div>
-                                  <ul className="list-disc list-inside">{parseListField(emotional?.fears_mentioned).map((v, i) => <li key={`f-${i}`}>{v}</li>)}</ul>
-                                  <blockquote className="border-l-2 pl-2 text-slate-700">{parseListField(emotional?.identity_statements).join(' | ') || '—'}</blockquote>
-                                </div>
-                              </details>
-                              <details className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-green-700">🏠 Life Context</summary>
-                                <div className="mt-2 text-sm space-y-1">
-                                  <div className="flex gap-2 flex-wrap">
-                                    <Badge variant="outline">{toDisplayValue(life?.spouse_sentiment)}</Badge>
-                                    <Badge variant="outline">{toDisplayValue(life?.current_job_situation)}</Badge>
-                                    <Badge variant="outline">{toDisplayValue(life?.financial_comfort)}</Badge>
-                                  </div>
-                                  <p>{toDisplayValue(life?.personal_circumstances)}</p>
-                                </div>
-                              </details>
-                              <details className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-amber-700">🌟 Vision and Possibility</summary>
-                                <div className="mt-2 text-sm space-y-1">
-                                  <div>Future described: {vision?.future_life_described ? '✓' : '✗'}</div>
-                                  <ul className="list-disc list-inside">{parseListField(vision?.lifestyle_details).map((v, i) => <li key={`l-${i}`}>{v}</li>)}</ul>
-                                  <div className="flex flex-wrap gap-2">{parseListField(vision?.business_models_discussed).map((v, i) => <Badge key={`bm-${i}`} variant="secondary">{v}</Badge>)}</div>
-                                  <div>Ownership identity: <Badge variant="outline">{toDisplayValue(vision?.ownership_identity)}</Badge></div>
-                                </div>
-                              </details>
-                              <details className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-teal-700">🧠 DISC Signals</summary>
-                                <div className="mt-2 text-sm space-y-1">
-                                  <div>Observed style: <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100">{toDisplayValue(disc?.observed_style)}</Badge></div>
-                                  <ul className="list-disc list-inside">{parseListField(disc?.style_observations).map((v, i) => <li key={`so-${i}`}>{v}</li>)}</ul>
-                                  <div>Matches profile: {disc?.matches_profile ? '✓' : '✗'}</div>
-                                  <p className="italic">{toDisplayValue(disc?.coaching_note)}</p>
-                                </div>
-                              </details>
-                              <details className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-red-700">⚠️ Objections and Blockers</summary>
-                                <div className="mt-2 text-sm space-y-1">
-                                  <ul className="list-disc list-inside">{parseListField(objections?.objections).map((v, i) => <li key={`o-${i}`}>{v}</li>)}</ul>
-                                  <div className="flex flex-wrap gap-2">{parseListField(objections?.pink_flag_language).map((v, i) => <Badge key={`pfl-${i}`} className="bg-red-100 text-red-800 hover:bg-red-100">{v}</Badge>)}</div>
-                                  <p className="font-medium">Repeat: {parseListField(objections?.repeat_objections).join(', ') || '—'}</p>
-                                </div>
-                              </details>
-                              <details className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-green-700">✅ Commitments</summary>
-                                <div className="mt-2 text-sm space-y-1">
-                                  <ul className="list-disc list-inside">{parseListField(commitments?.client_commitments).map((v, i) => <li key={`cc-${i}`}>{v}</li>)}</ul>
-                                  <div>Client chose action: {commitments?.client_chose_action ? '✓' : '✗'}</div>
-                                  <div>Next call: {toDisplayValue(commitments?.next_call_date)}</div>
-                                </div>
-                              </details>
-                              <details className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-yellow-700">💡 Reflection</summary>
-                                <div className="mt-2 text-sm space-y-1">
-                                  <blockquote className="border-l-2 pl-2">{toDisplayValue(reflection?.insight_surfaced)}</blockquote>
-                                  <p>{toDisplayValue(reflection?.mindset_shift)}</p>
-                                  <Badge variant="outline">{toDisplayValue(reflection?.engagement_quality)}</Badge>
-                                </div>
-                              </details>
-                              <details className="rounded border p-2 bg-white">
-                                <summary className="font-medium text-blue-700">📊 Coach Assessment</summary>
-                                <div className="mt-2 text-sm space-y-2">
-                                  <Badge
-                                    className={
-                                      String(assessment?.recommendation ?? '') === 'VALIDATE'
-                                        ? 'bg-green-100 text-green-800 hover:bg-green-100'
-                                        : String(assessment?.recommendation ?? '') === 'PAUSE'
-                                          ? 'bg-slate-200 text-slate-800 hover:bg-slate-200'
-                                          : 'bg-amber-100 text-amber-800 hover:bg-amber-100'
+                        {isEmptyShell ? (
+                          <p className="mt-2 text-[13px]" style={{ color: '#7A8F95' }}>
+                            No notes recorded
+                          </p>
+                        ) : (
+                          <>
+                            {plainNotes ? (
+                              <div className="mt-2">
+                                <p
+                                  className={cn(
+                                    'text-[13px] leading-[1.5]',
+                                    !expanded && showMoreToggle && 'line-clamp-3'
+                                  )}
+                                  style={{ color: '#2D4459' }}
+                                >
+                                  {plainNotes}
+                                </p>
+                                {showMoreToggle ? (
+                                  <button
+                                    type="button"
+                                    className="mt-1 text-xs font-semibold underline"
+                                    style={{ color: '#3BBFBF' }}
+                                    onClick={() =>
+                                      setFathomNotesExpanded((prev) => ({
+                                        ...prev,
+                                        [s.id]: !prev[s.id],
+                                      }))
                                     }
                                   >
-                                    {toDisplayValue(assessment?.recommendation)}
-                                  </Badge>
-                                  <p>
-                                    {String(assessment?.readiness_direction ?? '') === 'improving'
-                                      ? '↑ '
-                                      : String(assessment?.readiness_direction ?? '') === 'declining'
-                                        ? '↓ '
-                                        : '→ '}
-                                    {toDisplayValue(assessment?.readiness_direction)}
-                                  </p>
-                                  <p>{toDisplayValue(assessment?.next_call_focus)}</p>
-                                  <div className="rounded bg-blue-50 p-2 text-blue-900">
-                                    {toDisplayValue(assessment?.priority_question)}
-                                  </div>
-                                </div>
-                              </details>
-
-                              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                                <p className="text-sm font-semibold text-slate-900">NEXT CALL PLANNING</p>
-                                {missingForSession.length > 0 ? (
-                                  <>
-                                    <p className="text-sm text-slate-700 mb-2">Missing from last session — address next call:</p>
-                                    <ul className="space-y-1">
-                                      {missingForSession.map((block) => (
-                                        <li key={block.key} className="text-sm text-slate-800 flex items-start gap-2">
-                                          <span>- [ ]</span>
-                                          <span>{block.checklist}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </>
-                                ) : (
-                                  <p className="text-sm text-green-700">✓ Complete session record</p>
-                                )}
+                                    {expanded ? 'Show less' : 'Show more'}
+                                  </button>
+                                ) : null}
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                            ) : null}
+                            {blocksWithContent.length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {blocksWithContent.map((def) => renderFathomStructuredSection(s, def))}
+                              </div>
+                            ) : null}
+                            {hasNext ? (
+                              <div className="mt-3">
+                                <p className="text-[11px] font-medium" style={{ color: '#7A8F95' }}>
+                                  Next call
+                                </p>
+                                <p className="text-[13px] leading-relaxed" style={{ color: '#2D4459' }}>
+                                  {(s.next_actions ?? '').trim()}
+                                </p>
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-                    {(() => {
-                      const last = fathomSessions[0];
-                      if (!last) return null;
-                      const missingLast = blockDefinitions.filter((d) => parseSessionBlock(last[d.key]) === null);
-                      return (
-                        <div className="rounded-md border border-slate-300 bg-white p-4">
-                          <p className="text-sm font-semibold text-slate-900">NEXT CALL PLANNING</p>
-                          {missingLast.length > 0 ? (
-                            <>
-                              <p className="text-sm text-slate-700 mb-2">Missing from last session — address next call:</p>
-                              <ul className="space-y-1">
-                                {missingLast.map((block) => (
-                                  <li key={`last-${block.key}`} className="text-sm text-slate-800 flex items-start gap-2">
-                                    <span>- [ ]</span>
-                                    <span>{block.checklist}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </>
-                          ) : (
-                            <p className="text-sm text-green-700">✓ Complete session record</p>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              {/* SECTION 3 — Upload prompt */}
+              <div
+                className="mt-6 text-center text-xs leading-relaxed"
+                style={{
+                  background: '#F4F7F8',
+                  border: '1px dashed #C8E8E5',
+                  borderRadius: 10,
+                  padding: '12px 16px',
+                  color: '#7A8F95',
+                  fontSize: 12,
+                }}
+              >
+                Have Fathom transcripts? Upload them in Admin Streamliner → Import to get richer session
+                data.
+              </div>
             </div>
           </TabsContent>
 
