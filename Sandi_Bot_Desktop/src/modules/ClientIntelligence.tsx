@@ -1221,6 +1221,18 @@ function ClientDetailModal({
         'deterministic'
       );
 
+      localStorage.setItem('pipeline_updated', Date.now().toString());
+      localStorage.setItem(
+        'last_stage_move',
+        JSON.stringify({
+          client_id: client.id,
+          client_name: client.name,
+          from_stage: fromRaw,
+          to_stage: target,
+          moved_at: new Date().toISOString(),
+        })
+      );
+
       setStageMoveDialog(null);
       await onStageMoved?.(client.id);
 
