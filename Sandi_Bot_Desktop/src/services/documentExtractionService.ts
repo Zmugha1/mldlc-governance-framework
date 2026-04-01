@@ -761,7 +761,10 @@ export async function extractYou2Profile(
 
     if (
       deterministic.one_year_vision &&
-      deterministic.one_year_vision.length > 20
+      deterministic.one_year_vision.length > 20 &&
+      deterministic.dangers.length > 0 &&
+      deterministic.strengths.length > 0 &&
+      deterministic.opportunities.length > 0
     ) {
       // Skip LLM entirely — deterministic succeeded
       const firstLine = workingText.split(/\r?\n/)[0]?.trim() || '';
