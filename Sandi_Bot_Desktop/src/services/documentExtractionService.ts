@@ -920,9 +920,43 @@ REASONS FOR CHANGE (TUMAY Question 3):
 Extract ONLY items marked Yes.
 Never include No items.
 
-SKILLS (TUMAY Question 6):
-Extract only items marked Yes
-as a plain string array.
+SKILLS (from TUMAY Question 6 —
+"Which of the following skills do
+you possess?"):
+Extract ALL items marked Yes as a
+plain string array.
+Common skills in this document:
+  Strategic thinking
+  Project management
+  Structured execution
+  Sound decision-making
+  Analytical thinking
+  Data interpretation
+  Cross-functional collaboration
+  Process improvement
+  Relationship building
+  Leadership development
+  Needs-based solutions
+  Mentoring and training
+  Adaptability
+  Embracing change
+  Sales and business development
+  Financial management
+  Operations management
+  Marketing and brand building
+  Customer service excellence
+  Team building and motivation
+Extract only items explicitly marked
+Yes or checked. Return as array of
+plain strings.
+If no skills section found extract
+any skills mentioned in the vision
+text or reasons for change.
+Never return empty array if the
+person clearly has professional
+experience — infer at least 3 skills
+from their career background described
+in the vision text.
 
 SPOUSE DATA:
 spouse_role: "owner" if Yes owner
