@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useRef, type ChangeEvent } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import PptxGenJS from 'pptxgenjs';
 import {
   Briefcase,
   Mail,
@@ -12,6 +14,8 @@ import {
   Calendar,
   Loader2,
   Users,
+  FileDown,
+  FileText,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -38,11 +42,6 @@ import {
   type Recommendation,
   type StageReadiness,
 } from '@/services/stageReadinessService';
-import {
-  generateVisionStatement,
-  saveVisionStatement,
-  approveVisionStatement,
-} from '../services/visionGenerationService';
 import { getDiscProfilesMap } from '@/services/dashboardService';
 import { cn } from '@/lib/utils';
 
@@ -373,6 +372,139 @@ function formatVisionApprovedDateLabel(raw: string | null | undefined): string {
   });
 }
 
+function formatVisionMonthYearLabel(raw: string | null | undefined): string {
+  const t = (raw ?? '').trim();
+  if (!t) {
+    return new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) {
+    return new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function escapeHtmlVision(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function safeVisionFilenamePart(name: string): string {
+  return name.replace(/[^\w\-]+/g, '_').replace(/_+/g, '_').slice(0, 80) || 'Client';
+}
+
+function formatCommunicationDosForPrompt(raw: string | null | undefined): string {
+  const t = (raw ?? '').trim();
+  if (!t) return '—';
+  try {
+    const p = JSON.parse(t) as unknown;
+    if (Array.isArray(p)) {
+      return p
+        .map((x) => String(x).trim())
+        .filter(Boolean)
+        .join('; ');
+    }
+  } catch {
+    /* use raw */
+  }
+  return t;
+}
+
+function visionBodyToThreeParagraphs(text: string): [string, string, string] {
+  const t = text.trim();
+  if (!t) return ['', '', ''];
+  const parts = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 3) {
+    return [parts[0] ?? '', parts[1] ?? '', parts.slice(2).join('\n\n')];
+  }
+  if (parts.length === 2) return [parts[0] ?? '', parts[1] ?? '', ''];
+  const lines = t.split(/\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length >= 3) {
+    const n = Math.ceil(lines.length / 3);
+    return [
+      lines.slice(0, n).join(' '),
+      lines.slice(n, n * 2).join(' '),
+      lines.slice(n * 2).join(' '),
+    ];
+  }
+  return [t, '', ''];
+}
+
+function buildVisionStatementOllamaPrompt(args: {
+  clientName: string;
+  primaryStyleLabel: string;
+  discLetter: 'D' | 'I' | 'S' | 'C' | null;
+  naturalSummary: string;
+  communicationDos: string;
+  oneYearVision: string;
+  dangersText: string;
+  strengthsText: string;
+  opportunitiesText: string;
+  netWorth: string;
+  launchTimeline: string;
+  timeCommitment: string;
+  spouseName: string;
+  spouseRole: string;
+  reasonsForChange: string;
+  priorBusinessExperience: string;
+  selfSufficiencyExcitement: string;
+  areasOfInterest: string;
+  lastSessionNotes: string;
+}): string {
+  const coaching =
+    args.discLetter != null
+      ? DISC_STYLE_DESCRIPTIONS[args.discLetter]
+      : 'Use a balanced coaching tone.';
+  return `You are a franchise career coach writing a personalized vision statement for a client.
+Write exactly THREE paragraphs.
+Use warm, aspirational, first-person language. Ground every sentence in the client's actual data. Never be generic.
+
+CLIENT DATA:
+Name: ${args.clientName}
+DISC Style: ${args.primaryStyleLabel || '—'}
+${coaching}
+Natural profile summary: ${args.naturalSummary}
+Communication dos (coaching cues): ${args.communicationDos}
+One Year Vision: ${args.oneYearVision}
+Dangers they face:
+${args.dangersText}
+Strengths they have:
+${args.strengthsText}
+Opportunities ahead:
+${args.opportunitiesText}
+Financial profile:
+Net worth ${args.netWorth}
+Timeline ${args.launchTimeline}
+Commitment ${args.timeCommitment}
+Spouse/partner: ${args.spouseName} (${args.spouseRole})
+Reasons for change:
+${args.reasonsForChange}
+Prior business experience: ${args.priorBusinessExperience}
+Self-sufficiency / excitement: ${args.selfSufficiencyExcitement}
+Areas of interest: ${args.areasOfInterest}
+Last session notes:
+${args.lastSessionNotes}
+
+Write THREE paragraphs:
+PARAGRAPH 1 — Professional:
+Their career transition, business ownership goals, income and growth aspirations. Ground in their DISC style and specific financial goals.
+PARAGRAPH 2 — Personal:
+Family, lifestyle, values, what success means to them beyond money. Reference their specific personal motivations.
+PARAGRAPH 3 — Desires:
+Specific experiences they want — travel, time freedom, legacy, impact. Make it vivid and personal.
+
+Write in first person as the client. Warm, confident, specific. No generic phrases like "I will achieve success". Every sentence must be grounded in their actual data.`;
+}
+
 function formatLastContactDisplay(raw: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
@@ -676,6 +808,7 @@ function ClientDetailModal({
   const [you2Vision, setYou2Vision] = useState('');
   const [you2Details, setYou2Details] = useState<{
     spouse_name: string;
+    spouse_role: string;
     financial_net_worth_range: string;
     credit_score: number | null;
     launch_timeline: string;
@@ -837,8 +970,12 @@ function ClientDetailModal({
     setVisionGenError(null);
     setVisionApproveMsg(null);
     setVisionDraftMode(false);
-    setVisionEditText((client.visionStatement.paragraph ?? '').trim());
   }, [client?.id]);
+
+  useEffect(() => {
+    if (!client?.id) return;
+    setVisionEditText((client.visionStatement.paragraph ?? '').trim());
+  }, [client?.id, client.visionStatement.paragraph]);
 
   useEffect(() => {
     if (!ahaToast) return;
@@ -851,6 +988,12 @@ function ClientDetailModal({
     const t = window.setTimeout(() => setSessionLogAddedAck(false), 4000);
     return () => clearTimeout(t);
   }, [sessionLogAddedAck]);
+
+  useEffect(() => {
+    if (!visionApproveMsg) return;
+    const t = window.setTimeout(() => setVisionApproveMsg(null), 5000);
+    return () => clearTimeout(t);
+  }, [visionApproveMsg]);
 
   useEffect(() => {
     setAhaModalOpen(false);
@@ -1085,6 +1228,7 @@ function ClientDetailModal({
           setYou2Vision(String(row.one_year_vision ?? '').trim());
           setYou2Details({
             spouse_name: String(row.spouse_name ?? ''),
+            spouse_role: String(row.spouse_role ?? ''),
             financial_net_worth_range: String(row.financial_net_worth_range ?? ''),
             credit_score:
               typeof row.credit_score === 'number'
@@ -1249,6 +1393,38 @@ function ClientDetailModal({
 
   const persistedVisionText = (client.visionStatement.paragraph ?? '').trim();
   const visionIsApproved = client.vision_approved === 1;
+
+  const latestSessionNotesPlain = useMemo(() => {
+    const first = fathomSessions[0];
+    if (!first) return '';
+    const n = first.notes ?? '';
+    const parsed = safeParseJson(n);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const sum = String((parsed as { summary?: unknown }).summary ?? '').trim();
+      if (sum) return sum;
+    }
+    const raw = n.trim();
+    if (!raw || raw === '{}') return '';
+    return raw;
+  }, [fathomSessions]);
+
+  const visionDataChecklist = useMemo(
+    () => ({
+      disc: !!(
+        discScores &&
+        discScores.d + discScores.i + discScores.s + discScores.c > 0
+      ),
+      you2Vision: you2Vision.trim().length > 10,
+      dangersOpps: !!(
+        you2Details &&
+        you2Details.dangers.length > 0 &&
+        you2Details.opportunities.length > 0
+      ),
+      tumay: tumayData != null,
+      lastSession: latestSessionNotesPlain.trim().length > 0,
+    }),
+    [discScores, you2Vision, you2Details, tumayData, latestSessionNotesPlain]
+  );
 
   const allPinkParsed = parseClientPinkFlagsJson(localPinkFlagsJson);
   const { activeFlags: activePinkFlags, resolvedFlags: resolvedPinkFlags } =
@@ -1931,15 +2107,129 @@ function ClientDetailModal({
     }
   };
 
+  const runVisionOllamaGeneration = async (): Promise<string> => {
+    if (!client?.id) throw new Error('No client');
+    const discRows = await dbSelect<{
+      natural_d: number | null;
+      natural_i: number | null;
+      natural_s: number | null;
+      natural_c: number | null;
+      primary_style_label: string | null;
+      communication_dos: string | null;
+    }>(
+      `SELECT natural_d, natural_i, natural_s, natural_c, primary_style_label, communication_dos
+       FROM client_disc_profiles WHERE client_id = $1 LIMIT 1`,
+      [client.id]
+    );
+    const dr = discRows[0];
+    const d = Number(dr?.natural_d ?? 0);
+    const i = Number(dr?.natural_i ?? 0);
+    const s = Number(dr?.natural_s ?? 0);
+    const c = Number(dr?.natural_c ?? 0);
+    const letter =
+      dr && d + i + s + c > 0
+        ? deriveStyleLetter(d, i, s, c)
+        : null;
+    const primaryStyle =
+      (dr?.primary_style_label ?? '').trim() || discStyleLabel;
+    const naturalSummary = `Natural scores — D:${d} I:${i} S:${s} C:${c}`;
+    const commDos = formatCommunicationDosForPrompt(dr?.communication_dos ?? null);
+
+    const dangersText =
+      you2Details?.dangers?.length
+        ? you2Details.dangers.map((x) => `• ${x}`).join('\n')
+        : '—';
+    const strengthsText =
+      you2Details?.strengths?.length
+        ? you2Details.strengths.map((x) => `• ${x}`).join('\n')
+        : '—';
+    const opportunitiesText =
+      you2Details?.opportunities?.length
+        ? you2Details.opportunities.map((x) => `• ${x}`).join('\n')
+        : '—';
+
+    const reasonsForChange =
+      tumayData != null
+        ? parseListField(tumayData.reasons_for_change).join('; ') ||
+          (you2Details?.reasons_for_change.length
+            ? you2Details.reasons_for_change.join('; ')
+            : '—')
+        : you2Details?.reasons_for_change.length
+          ? you2Details.reasons_for_change.join('; ')
+          : '—';
+
+    const priorBiz =
+      tumayData != null
+        ? String(tumayData.prior_business_experience ?? '').trim() || '—'
+        : '—';
+    const selfSuff =
+      tumayData != null
+        ? String(tumayData.self_sufficiency_excitement ?? '').trim() || '—'
+        : '—';
+    const areasInt =
+      tumayData != null
+        ? parseListField(tumayData.areas_of_interest).join('; ') ||
+          (you2Details?.areas_of_interest.length
+            ? you2Details.areas_of_interest.join('; ')
+            : '—')
+        : you2Details?.areas_of_interest.length
+          ? you2Details.areas_of_interest.join('; ')
+          : '—';
+
+    const lastNotes =
+      latestSessionNotesPlain.trim() || 'No sessions yet';
+
+    const prompt = buildVisionStatementOllamaPrompt({
+      clientName: client.name,
+      primaryStyleLabel: primaryStyle,
+      discLetter: letter,
+      naturalSummary,
+      communicationDos: commDos,
+      oneYearVision: you2Vision.trim() || '—',
+      dangersText,
+      strengthsText,
+      opportunitiesText,
+      netWorth:
+        you2Details?.financial_net_worth_range?.trim() ||
+        String(tumayData?.financial_net_worth_range ?? '').trim() ||
+        '—',
+      launchTimeline:
+        you2Details?.launch_timeline?.trim() ||
+        String(tumayData?.launch_timeline ?? '').trim() ||
+        '—',
+      timeCommitment:
+        you2Details?.time_commitment?.trim() ||
+        String(tumayData?.time_commitment ?? '').trim() ||
+        '—',
+      spouseName: you2Details?.spouse_name?.trim() || '—',
+      spouseRole: you2Details?.spouse_role?.trim() || '—',
+      reasonsForChange,
+      priorBusinessExperience: priorBiz,
+      selfSufficiencyExcitement: selfSuff,
+      areasOfInterest: areasInt,
+      lastSessionNotes: lastNotes,
+    });
+
+    return invoke<string>('ollama_generate', {
+      prompt,
+      system: ' ',
+      model: 'qwen2.5:7b',
+    });
+  };
+
   const handleGenerateVision = async () => {
     if (!client?.id) return;
     setVisionGenError(null);
     setVisionApproveMsg(null);
     setVisionGenerating(true);
     try {
-      const result = await generateVisionStatement(client.id);
-      await saveVisionStatement(client.id, result);
-      setVisionEditText(result.trim());
+      const result = (await runVisionOllamaGeneration()).trim();
+      if (!result) throw new Error('empty');
+      await dbExecute(
+        `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [result, client.id]
+      );
+      setVisionEditText(result);
       setVisionDraftMode(true);
       onVisionUpdated?.();
     } catch {
@@ -1955,9 +2245,13 @@ function ClientDetailModal({
     setVisionApproveMsg(null);
     setVisionGenerating(true);
     try {
-      const result = await generateVisionStatement(client.id);
-      setVisionEditText(result.trim());
-      await saveVisionStatement(client.id, result.trim());
+      const result = (await runVisionOllamaGeneration()).trim();
+      if (!result) throw new Error('empty');
+      setVisionEditText(result);
+      await dbExecute(
+        `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [result, client.id]
+      );
       onVisionUpdated?.();
     } catch {
       setVisionGenError('Generation failed. Is Ollama running?');
@@ -1969,15 +2263,228 @@ function ClientDetailModal({
   const handleApproveVision = async () => {
     if (!client?.id) return;
     setVisionGenError(null);
+    const text = visionEditText.trim();
+    if (!text) {
+      setVisionGenError('Add vision text before approving.');
+      return;
+    }
     try {
-      await approveVisionStatement(client.id, visionEditText.trim());
+      await dbExecute(
+        `UPDATE clients SET vision_statement = $1, vision_approved = 1, vision_approved_date = datetime('now'), updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [text, client.id]
+      );
+      await dbExecute(
+        `INSERT INTO audit_log
+         (action_type, client_id, input_data, output_data, reasoning, model_used)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          'vision_approved',
+          client.id,
+          null,
+          text.slice(0, 100),
+          null,
+          'deterministic',
+        ]
+      );
       setVisionDraftMode(false);
-      setVisionApproveMsg('Vision statement approved and saved');
+      setVisionApproveMsg(
+        `${client.name}'s vision statement approved and saved ✓`
+      );
       onVisionUpdated?.();
     } catch (e) {
       console.error(e);
       setVisionGenError('Could not approve vision. Try again.');
     }
+  };
+
+  const handleDownloadVisionPptx = async () => {
+    if (!client?.id) return;
+    const body = (persistedVisionText || visionEditText).trim();
+    if (!body) return;
+    const pptx = new PptxGenJS();
+    pptx.layout = 'LAYOUT_16x9';
+    const dateSlide1 = formatVisionMonthYearLabel(client.vision_approved_date);
+    const footDate =
+      formatVisionApprovedDateLabel(client.vision_approved_date) ||
+      localCalendarDateYyyyMmDd();
+
+    const slide1 = pptx.addSlide({ background: { color: '2D4459' } });
+    slide1.addText(client.name, {
+      x: 0.5,
+      y: 1.6,
+      w: 9,
+      h: 1.2,
+      fontSize: 36,
+      bold: true,
+      color: 'FFFFFF',
+      align: 'center',
+    });
+    slide1.addText(dateSlide1, {
+      x: 0.5,
+      y: 3,
+      w: 9,
+      h: 0.5,
+      fontSize: 18,
+      color: 'B3FFFFFF',
+      align: 'center',
+    });
+    slide1.addShape(pptx.ShapeType.rect, {
+      x: 0,
+      y: 5.35,
+      w: 10,
+      h: 0.06,
+      fill: { color: '3BBFBF' },
+      line: { width: 0 },
+    });
+
+    const [para1, para2, para3] = visionBodyToThreeParagraphs(body);
+    const slide2 = pptx.addSlide({ background: { color: 'FFFFFF' } });
+    slide2.addText('Vision Statement', {
+      x: 0.5,
+      y: 0.35,
+      w: 5,
+      h: 0.55,
+      fontSize: 24,
+      bold: true,
+      color: '2D4459',
+    });
+    slide2.addText(para1, {
+      x: 0.5,
+      y: 1.05,
+      w: 9,
+      h: 1.35,
+      fontSize: 14,
+      color: '2D4459',
+      lineSpacingMultiple: 1.2,
+    });
+    slide2.addText(para2, {
+      x: 0.5,
+      y: 2.55,
+      w: 9,
+      h: 1.35,
+      fontSize: 14,
+      color: '2D4459',
+      lineSpacingMultiple: 1.2,
+    });
+    slide2.addText(para3, {
+      x: 0.5,
+      y: 4.05,
+      w: 9,
+      h: 1.35,
+      fontSize: 14,
+      color: '2D4459',
+      lineSpacingMultiple: 1.2,
+    });
+    slide2.addText(`${client.name} · ${footDate}`, {
+      x: 0.5,
+      y: 5.35,
+      w: 9,
+      h: 0.35,
+      fontSize: 10,
+      color: '7A8F95',
+    });
+
+    const dangersCol =
+      you2Details?.dangers?.length
+        ? you2Details.dangers.join('\n')
+        : '—';
+    const strengthsCol =
+      you2Details?.strengths?.length
+        ? you2Details.strengths.join('\n')
+        : '—';
+    const oppsCol =
+      you2Details?.opportunities?.length
+        ? you2Details.opportunities.join('\n')
+        : '—';
+
+    const slide3 = pptx.addSlide({ background: { color: 'F4F7F8' } });
+    slide3.addText('Your Path Forward', {
+      x: 0.5,
+      y: 0.35,
+      w: 9,
+      h: 0.5,
+      fontSize: 20,
+      bold: true,
+      color: '2D4459',
+    });
+    slide3.addText('Dangers', {
+      x: 0.4,
+      y: 1,
+      w: 2.9,
+      h: 0.35,
+      fontSize: 14,
+      bold: true,
+      color: 'F05F57',
+    });
+    slide3.addText(dangersCol, {
+      x: 0.4,
+      y: 1.45,
+      w: 2.9,
+      h: 3.8,
+      fontSize: 12,
+      color: '2D4459',
+    });
+    slide3.addText('Strengths', {
+      x: 3.55,
+      y: 1,
+      w: 2.9,
+      h: 0.35,
+      fontSize: 14,
+      bold: true,
+      color: '3BBFBF',
+    });
+    slide3.addText(strengthsCol, {
+      x: 3.55,
+      y: 1.45,
+      w: 2.9,
+      h: 3.8,
+      fontSize: 12,
+      color: '2D4459',
+    });
+    slide3.addText('Opportunities', {
+      x: 6.7,
+      y: 1,
+      w: 2.9,
+      h: 0.35,
+      fontSize: 14,
+      bold: true,
+      color: 'C8613F',
+    });
+    slide3.addText(oppsCol, {
+      x: 6.7,
+      y: 1.45,
+      w: 2.9,
+      h: 3.8,
+      fontSize: 12,
+      color: '2D4459',
+    });
+
+    const fname = `${safeVisionFilenamePart(client.name)}-Vision-Statement.pptx`;
+    await pptx.writeFile({ fileName: fname });
+  };
+
+  const handlePrintVisionPdf = () => {
+    if (!client?.id) return;
+    const body = (persistedVisionText || visionEditText).trim();
+    if (!body) return;
+    const dateLine =
+      formatVisionApprovedDateLabel(client.vision_approved_date) ||
+      localCalendarDateYyyyMmDd();
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Vision — ${escapeHtmlVision(client.name)}</title>
+<style>
+  body { font-family: system-ui, Segoe UI, sans-serif; font-size: 14px; line-height: 1.8; color: #2D4459; background: #fff; padding: 24px; max-width: 720px; margin: 0 auto; }
+  .meta { color: #7A8F95; font-size: 12px; margin-bottom: 20px; }
+  .body { white-space: pre-wrap; }
+</style></head><body>
+  <div class="meta">${escapeHtmlVision(client.name)} · ${escapeHtmlVision(dateLine)}</div>
+  <div class="body">${escapeHtmlVision(body)}</div>
+</body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
   };
 
   const handleMarkPinkFlagResolved = async (flagName: string) => {
@@ -3560,137 +4067,292 @@ function ClientDetailModal({
           </TabsContent>
 
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
-            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-semibold text-slate-900">
-                  Current Vision Statement
-                </h3>
-                {visionIsApproved ? (
-                  <Badge className="border-green-200 bg-green-100 text-green-800 hover:bg-green-100">
-                    Approved
-                  </Badge>
-                ) : null}
-              </div>
-              {visionIsApproved &&
-              formatVisionApprovedDateLabel(client.vision_approved_date) ? (
-                <p className="text-xs text-slate-500">
-                  {formatVisionApprovedDateLabel(client.vision_approved_date)}
-                </p>
-              ) : null}
-              {!persistedVisionText ? (
-                <p className="text-sm text-slate-500">
-                  No vision statement yet.
-                  <br />
-                  Click Generate to create one from this client&apos;s DISC, You 2.0, and
-                  Fathom data.
-                </p>
-              ) : (
+            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold text-slate-900">
+                    Territory Check
+                  </CardTitle>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Paste territory check results here before generating the vision
+                    statement.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <Label htmlFor="territory-check-results">
+                      Territory Check Results
+                    </Label>
+                    <Textarea
+                      id="territory-check-results"
+                      rows={6}
+                      className="mt-1 w-full min-h-0 resize-y"
+                      placeholder={TERRITORY_CHECK_TEXTAREA_PLACEHOLDER}
+                      value={territoryCheckDraft}
+                      onChange={(e) => {
+                        setTerritoryCheckDraft(e.target.value);
+                        setTerritoryCheckSavedMsg(false);
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    className="bg-teal-600 hover:bg-teal-700 text-white"
+                    onClick={handleSaveTerritoryCheck}
+                  >
+                    Save Territory Notes
+                  </Button>
+                  {territoryCheckSavedMsg ? (
+                    <p className="text-sm font-medium text-green-600">
+                      Territory notes saved. These will be included when you
+                      generate the vision statement.
+                    </p>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              {visionIsApproved && !visionDraftMode ? (
                 <div
-                  className="rounded-lg border border-[#e2e8f0] text-[14px] leading-[1.7] text-slate-800 whitespace-pre-wrap"
-                  style={{ background: '#f8fafc', padding: '16px 20px', borderRadius: 8 }}
+                  className="relative space-y-4"
+                  style={{
+                    background: '#F4F7F8',
+                    border: '1px solid #C8E8E5',
+                    borderLeft: '4px solid #3BBFBF',
+                    borderRadius: 12,
+                    padding: '24px 28px',
+                  }}
                 >
-                  {persistedVisionText}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p
+                        className="font-semibold uppercase tracking-wide"
+                        style={{
+                          color: '#7A8F95',
+                          fontSize: 10,
+                          letterSpacing: 1,
+                        }}
+                      >
+                        APPROVED VISION STATEMENT
+                      </p>
+                      {formatVisionApprovedDateLabel(client.vision_approved_date) ? (
+                        <p style={{ color: '#7A8F95', fontSize: 11, marginTop: 4 }}>
+                          Approved{' '}
+                          {formatVisionApprovedDateLabel(client.vision_approved_date)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-sm font-semibold underline-offset-2 hover:underline"
+                      style={{ color: '#3BBFBF' }}
+                      onClick={() => setVisionDraftMode(true)}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div
+                    className="whitespace-pre-wrap"
+                    style={{
+                      color: '#2D4459',
+                      fontSize: 14,
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    {persistedVisionText}
+                  </div>
+                  <div className="flex flex-wrap gap-3 pt-2">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 font-bold transition-opacity hover:opacity-90"
+                      style={{
+                        background: '#2D4459',
+                        color: 'white',
+                        borderRadius: 8,
+                        padding: '10px 20px',
+                        fontSize: 13,
+                        border: 'none',
+                      }}
+                      onClick={() => void handleDownloadVisionPptx()}
+                    >
+                      <FileDown className="h-4 w-4" aria-hidden />
+                      Download PowerPoint
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 font-bold transition-opacity hover:opacity-90"
+                      style={{
+                        background: 'white',
+                        color: '#2D4459',
+                        border: '1px solid #2D4459',
+                        borderRadius: 8,
+                        padding: '10px 20px',
+                        fontSize: 13,
+                      }}
+                      onClick={handlePrintVisionPdf}
+                    >
+                      <FileText className="h-4 w-4" aria-hidden />
+                      Download PDF
+                    </button>
+                  </div>
+                </div>
+              ) : !visionIsApproved &&
+                !persistedVisionText &&
+                !visionDraftMode ? (
+                <div
+                  className="space-y-4"
+                  style={{
+                    background: 'white',
+                    border: '1px solid #C8E8E5',
+                    borderLeft: '4px solid #3BBFBF',
+                    borderRadius: 12,
+                    padding: '24px 28px',
+                  }}
+                >
+                  <h3
+                    className="font-bold"
+                    style={{ color: '#2D4459', fontSize: 16 }}
+                  >
+                    Generate Vision Statement
+                  </h3>
+                  <p style={{ color: '#7A8F95', fontSize: 13, lineHeight: 1.55 }}>
+                    Coach Bot will generate a personalized vision statement using this
+                    client&apos;s DISC profile, You 2.0 goals, TUMAY data, and most recent
+                    session notes.
+                  </p>
+                  <ul className="space-y-2 text-sm" style={{ listStyle: 'none', padding: 0 }}>
+                    {(
+                      [
+                        {
+                          ok: visionDataChecklist.disc,
+                          label: 'DISC profile',
+                        },
+                        {
+                          ok: visionDataChecklist.you2Vision,
+                          label: 'You 2.0 vision',
+                        },
+                        {
+                          ok: visionDataChecklist.dangersOpps,
+                          label: 'Dangers and opportunities',
+                        },
+                        {
+                          ok: visionDataChecklist.tumay,
+                          label: 'TUMAY data',
+                        },
+                        {
+                          ok: visionDataChecklist.lastSession,
+                          label: 'Last session',
+                        },
+                      ] as const
+                    ).map((row) => (
+                      <li
+                        key={row.label}
+                        style={{
+                          color: row.ok ? '#3BBFBF' : '#F05F57',
+                        }}
+                      >
+                        {row.ok ? '✓' : '✗'} {row.label}{' '}
+                        {row.ok ? '— available' : '— not found'}
+                      </li>
+                    ))}
+                  </ul>
+                  {visionGenerating ? (
+                    <p
+                      className="flex items-center gap-2 italic"
+                      style={{ color: '#7A8F95', fontSize: 13 }}
+                    >
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      Coach Bot is writing {client.name}&apos;s vision statement...
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="w-full font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
+                    style={{
+                      background: '#3BBFBF',
+                      color: 'white',
+                      borderRadius: 8,
+                      padding: '10px 24px',
+                      fontSize: 14,
+                      border: 'none',
+                    }}
+                    disabled={visionGenerating || !client.id}
+                    onClick={() => void handleGenerateVision()}
+                  >
+                    Generate Vision Statement
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p style={{ color: '#7A8F95', fontSize: 12 }}>
+                    Review and edit your client&apos;s vision statement
+                  </p>
+                  <Textarea
+                    rows={12}
+                    className="w-full min-h-[300px] resize-y border font-sans outline-none focus:ring-2 focus:ring-[#3BBFBF]/30"
+                    style={{
+                      borderColor: '#C8E8E5',
+                      borderRadius: 8,
+                      padding: 16,
+                      fontSize: 14,
+                      color: '#2D4459',
+                      lineHeight: 1.8,
+                      background: '#FEFAF5',
+                    }}
+                    value={visionEditText}
+                    onChange={(e) => setVisionEditText(e.target.value)}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      className="font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+                      style={{
+                        background: 'white',
+                        border: '1px solid #C8E8E5',
+                        color: '#7A8F95',
+                        borderRadius: 8,
+                        padding: '8px 20px',
+                        fontSize: 14,
+                      }}
+                      disabled={visionGenerating}
+                      onClick={() => void handleRegenerateVision()}
+                    >
+                      Regenerate
+                    </button>
+                    <button
+                      type="button"
+                      className="font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
+                      style={{
+                        background: '#3BBFBF',
+                        color: 'white',
+                        borderRadius: 8,
+                        padding: '8px 20px',
+                        fontSize: 13,
+                        border: 'none',
+                      }}
+                      disabled={visionGenerating}
+                      onClick={() => void handleApproveVision()}
+                    >
+                      Approve &amp; Save
+                    </button>
+                  </div>
+                  {visionGenerating ? (
+                    <p
+                      className="flex items-center gap-2 italic"
+                      style={{ color: '#7A8F95', fontSize: 13 }}
+                    >
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      Coach Bot is writing {client.name}&apos;s vision statement...
+                    </p>
+                  ) : null}
                 </div>
               )}
-            </div>
 
-            <div className="space-y-3">
-              <h3 className="text-base font-semibold text-slate-900">
-                Generate / Edit
-              </h3>
-              <Button
-                type="button"
-                onClick={() => void handleGenerateVision()}
-                disabled={visionGenerating || !client.id}
-              >
-                {visionGenerating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  'Generate Vision Statement'
-                )}
-              </Button>
               {visionGenError ? (
                 <p className="text-sm text-red-600">{visionGenError}</p>
               ) : null}
               {visionApproveMsg ? (
                 <p className="text-sm font-medium text-green-600">{visionApproveMsg}</p>
               ) : null}
-              {visionDraftMode ? (
-                <div className="space-y-3">
-                  <Textarea
-                    rows={12}
-                    className="w-full min-h-0 resize-y font-sans text-sm leading-relaxed"
-                    value={visionEditText}
-                    onChange={(e) => setVisionEditText(e.target.value)}
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      className="bg-green-600 text-white hover:bg-green-700"
-                      onClick={() => void handleApproveVision()}
-                      disabled={visionGenerating}
-                    >
-                      Approve Vision
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void handleRegenerateVision()}
-                      disabled={visionGenerating}
-                    >
-                      Regenerate
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg font-bold text-slate-900">
-                  Territory Check
-                </CardTitle>
-                <p className="text-sm text-slate-500 mt-1">
-                  Paste territory check results here before generating the vision
-                  statement.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <Label htmlFor="territory-check-results">
-                    Territory Check Results
-                  </Label>
-                  <Textarea
-                    id="territory-check-results"
-                    rows={6}
-                    className="mt-1 w-full min-h-0 resize-y"
-                    placeholder={TERRITORY_CHECK_TEXTAREA_PLACEHOLDER}
-                    value={territoryCheckDraft}
-                    onChange={(e) => {
-                      setTerritoryCheckDraft(e.target.value);
-                      setTerritoryCheckSavedMsg(false);
-                    }}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  className="bg-teal-600 hover:bg-teal-700 text-white"
-                  onClick={handleSaveTerritoryCheck}
-                >
-                  Save Territory Notes
-                </Button>
-                {territoryCheckSavedMsg ? (
-                  <p className="text-sm font-medium text-green-600">
-                    Territory notes saved. These will be included when you
-                    generate the vision statement.
-                  </p>
-                ) : null}
-              </CardContent>
-            </Card>
             </div>
           </TabsContent>
 
