@@ -105,3 +105,43 @@ pub fn migration_58() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 59: normalize legacy `clients.inferred_stage` labels to IC / C1–C5 codes.
+pub fn migration_59() -> Migration {
+    Migration {
+        version: 59,
+        description: "normalize_inferred_stage_to_pipeline_codes",
+        sql: "UPDATE clients
+              SET inferred_stage = 'C4'
+              WHERE inferred_stage = 'Career 2.0'
+                 OR inferred_stage = 'career_2_0'
+                 OR inferred_stage = 'career2'
+                 OR inferred_stage = 'Initial Validation';
+              UPDATE clients
+              SET inferred_stage = 'C5'
+              WHERE inferred_stage = 'Business Purchase'
+                 OR inferred_stage = 'business_purchase'
+                 OR inferred_stage = 'Closed'
+                 OR inferred_stage = 'closed'
+                 OR inferred_stage = 'Continued Validation';
+              UPDATE clients
+              SET inferred_stage = 'IC'
+              WHERE inferred_stage = 'Initial Contact'
+                 OR inferred_stage = 'initial_contact';
+              UPDATE clients
+              SET inferred_stage = 'C1'
+              WHERE inferred_stage = 'Seeker Connection'
+                 OR inferred_stage = 'seeker_connection'
+                 OR inferred_stage = 'Seeker Conn.';
+              UPDATE clients
+              SET inferred_stage = 'C2'
+              WHERE inferred_stage = 'Seeker Clarification'
+                 OR inferred_stage = 'seeker_clarification'
+                 OR inferred_stage = 'Seeker Clarif.';
+              UPDATE clients
+              SET inferred_stage = 'C3'
+              WHERE inferred_stage = 'Possibilities'
+                 OR inferred_stage = 'possibilities';",
+        kind: MigrationKind::Up,
+    }
+}
