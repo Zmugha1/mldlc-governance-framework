@@ -70,17 +70,37 @@ const ADD_CLIENT_STAGE_OPTIONS: { code: NewClientStageCode; label: string }[] = 
   { code: 'C5', label: 'Business Purchase (C5)' },
 ];
 
-const STAGE_DISPLAY_NAMES: Record<string, string> = {
-  IC: 'Initial Contact',
-  C1: 'Seeker Connection',
-  C2: 'Seeker Clarification',
-  C3: 'Possibilities',
-  C4: 'Client Career 2.0',
-  C5: 'Business Purchase',
-};
+function getStageDisplay(
+  stage: string | null
+): { code: string; label: string } {
+  const map: Record<string, { code: string; label: string }> = {
+    IC: { code: 'IC', label: 'Initial Contact' },
+    C1: { code: 'C1', label: 'Seeker Connection' },
+    C2: { code: 'C2', label: 'Seeker Clarification' },
+    C3: { code: 'C3', label: 'Possibilities' },
+    C4: { code: 'C4', label: 'Initial Validation' },
+    C5: { code: 'C5', label: 'Continued Validation' },
+    'Initial Contact': { code: 'IC', label: 'Initial Contact' },
+    'Seeker Connection': { code: 'C1', label: 'Seeker Connection' },
+    'Seeker Clarification': { code: 'C2', label: 'Seeker Clarification' },
+    Possibilities: { code: 'C3', label: 'Possibilities' },
+    'Career 2.0': { code: 'C4', label: 'Initial Validation' },
+    'Initial Validation': { code: 'C4', label: 'Initial Validation' },
+    'Business Purchase': { code: 'C5', label: 'Continued Validation' },
+    'Continued Validation': { code: 'C5', label: 'Continued Validation' },
+    Closed: { code: 'C5', label: 'Continued Validation' },
+  };
+  const result = map[stage ?? ''];
+  return (
+    result ?? {
+      code: stage ?? '?',
+      label: stage ?? 'Unknown',
+    }
+  );
+}
 
 function getStageDisplayName(stage: string): string {
-  return STAGE_DISPLAY_NAMES[stage] ?? 'Unknown Stage';
+  return getStageDisplay(stage).label;
 }
 
 const BUCKET_DISPLAY_NAMES: Record<string, string> = {
@@ -122,7 +142,11 @@ const DISPLAY_LABEL_TO_PIPELINE_CODE: Record<string, PipelineStageCode> = {
   Possibilities: 'C3',
   'Coach Client Collaboration': 'C3',
   'Client Career 2.0': 'C4',
+  'Career 2.0': 'C4',
+  'Initial Validation': 'C4',
   'Business Purchase': 'C5',
+  'Continued Validation': 'C5',
+  Closed: 'C5',
 };
 
 function resolvePipelineStageCode(
@@ -207,12 +231,25 @@ function forwardMoveDocumentWarning(
   return null;
 }
 
-function getStageBadgeColor(stageCode: string): string {
-  const label = getStageDisplayName(stageCode);
-  if (label === 'Unknown Stage') return '#E2E8F0';
-  return (
-    stageConfig[label as keyof typeof stageConfig]?.color ?? '#E2E8F0'
+const PIPELINE_CODE_TO_STAGE_CONFIG_KEY: Record<
+  PipelineStageCode,
+  keyof typeof stageConfig
+> = {
+  IC: 'Initial Contact',
+  C1: 'Seeker Connection',
+  C2: 'Seeker Clarification',
+  C3: 'Possibilities',
+  C4: 'Client Career 2.0',
+  C5: 'Business Purchase',
+};
+
+function getStageBadgeColor(stageRaw: string | null | undefined): string {
+  const code = resolvePipelineStageCode(
+    stageRaw === null || stageRaw === undefined ? '' : String(stageRaw)
   );
+  if (!code) return '#E2E8F0';
+  const key = PIPELINE_CODE_TO_STAGE_CONFIG_KEY[code];
+  return stageConfig[key]?.color ?? '#E2E8F0';
 }
 
 const PINK_FLAG_LABELS: Record<string, string> = {
@@ -1833,10 +1870,9 @@ function ClientDetailModal({
   }, [lastContactDateDb, mostRecentSessionDate]);
 
   const resolvedPipelineCode = resolvePipelineStageCode(client.inferred_stage);
-  const stageLabel =
-    resolvedPipelineCode != null
-      ? STAGE_DISPLAY_NAMES[resolvedPipelineCode]
-      : getStageDisplayName(client.inferred_stage?.trim() ?? '');
+  const stageDisplay = getStageDisplay(client.inferred_stage);
+  const stageHeaderBadgeText = `${stageDisplay.code} · ${stageDisplay.label}`;
+  const stageLabel = stageDisplay.label;
   const stageCompartmentSubtitle =
     stageCardCompartmentSubtitle(resolvedPipelineCode);
 
@@ -2158,9 +2194,10 @@ function ClientDetailModal({
       setStageMoveDialog(null);
       await onStageMoved?.(client.id);
 
-      const targetDisplay =
-        STAGE_DISPLAY_NAMES[target] ?? getStageDisplayName(target);
-      onStageMoveToast?.(`${client.name} moved to ${targetDisplay}`);
+      const targetDisplay = getStageDisplay(target);
+      onStageMoveToast?.(
+        `${client.name} moved to ${targetDisplay.code} · ${targetDisplay.label}`
+      );
 
       void getStageReadiness(client.id).then(setReadiness);
     } catch (e) {
@@ -3660,7 +3697,7 @@ function ClientDetailModal({
                   backgroundColor: getStageBadgeColor(client.inferred_stage?.trim() ?? ''),
                 }}
               >
-                {getStageDisplayName(client.inferred_stage?.trim() ?? '')}
+                {stageHeaderBadgeText}
               </Badge>
               <Badge variant="outline" className="text-xs">
                 {getBucketDisplayName(client.outcome_bucket)}
@@ -3836,18 +3873,15 @@ function ClientDetailModal({
                   <CardTitle className="text-sm text-slate-500">Stage</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Badge
-                    className="text-slate-800"
-                    style={{
-                      backgroundColor: getStageBadgeColor(
-                        resolvedPipelineCode ??
-                          client.inferred_stage?.trim() ??
-                          ''
-                      ),
-                    }}
+                  <p
+                    className="font-bold"
+                    style={{ color: '#2D4459', fontSize: 24 }}
                   >
-                    {stageLabel}
-                  </Badge>
+                    {stageDisplay.code}
+                  </p>
+                  <p style={{ color: '#7A8F95', fontSize: 13, marginTop: 4 }}>
+                    {stageDisplay.label}
+                  </p>
                   <p className="text-xs text-slate-500 mt-2">
                     {stageCompartmentSubtitle}
                   </p>
@@ -6433,10 +6467,12 @@ Use reminders for:
             <div className="mt-4 space-y-3">
               <p className="text-sm" style={{ color: '#2D4459' }}>
                 Move from{' '}
-                <span className="font-semibold">{stageLabel}</span> to{' '}
+                <span className="font-semibold">{stageHeaderBadgeText}</span> to{' '}
                 <span className="font-semibold">
-                  {STAGE_DISPLAY_NAMES[stageMoveDialog.target] ??
-                    getStageDisplayName(stageMoveDialog.target)}
+                  {(() => {
+                    const t = getStageDisplay(stageMoveDialog.target);
+                    return `${t.code} · ${t.label}`;
+                  })()}
                 </span>
                 ?
               </p>
@@ -6749,7 +6785,7 @@ export default function ClientIntelligence() {
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
       const stageCode = newClientStage;
-      const displayStage = STAGE_DISPLAY_NAMES[stageCode] ?? 'Initial Contact';
+      const displayStage = getStageDisplay(stageCode).label;
       const email = newClientEmail.trim() || null;
       const phone = newClientPhone.trim() || null;
       const company = newClientCompany.trim() || null;
