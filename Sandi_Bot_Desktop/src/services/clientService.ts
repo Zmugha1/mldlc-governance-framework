@@ -468,6 +468,56 @@ export async function seedConvertedClientDates(): Promise<void> {
        AND outcome_bucket = 'converted'`,
     []
   );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-01-15'
+     WHERE name = 'David Van Abbema'
+       AND (
+         last_contact_date IS NULL
+         OR last_contact_date < '2024-01-01'
+       )`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-01-20'
+     WHERE name = 'Kevin Lynch'
+       AND (
+         last_contact_date IS NULL
+         OR last_contact_date < '2024-01-01'
+       )`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-02-01'
+     WHERE name = 'Mike Cain'
+       AND (
+         last_contact_date IS NULL
+         OR last_contact_date < '2024-01-01'
+       )`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET last_contact_date = '2026-01-10'
+     WHERE name = 'Mike Brooks'
+       AND (
+         last_contact_date IS NULL
+         OR last_contact_date < '2024-01-01'
+       )`,
+    []
+  );
+  await dbExecute(
+    `UPDATE clients
+     SET email = COALESCE(
+       NULLIF(email, ''),
+       'not provided'
+     )
+     WHERE name = 'Mike Brooks'
+       AND (email IS NULL OR email = '')`,
+    []
+  );
   console.log('Converted client dates seeded');
 }
 
@@ -645,9 +695,10 @@ export async function clearPlaceholderSessions(): Promise<void> {
   console.log('Placeholder sessions cleared');
 }
 
-// ONE-TIME SEED — remove after confirmed
-// Sets purchase dates for 3 converted clients
-// so Placement Tracker shows 3 of 11
+// ONE-TIME SEED — last_contact_date
+// for converted and paused clients
+// missing 2026 dates
+// (also placement dates for 3 converted clients — Placement Tracker)
 void (async () => {
   try {
     await seedConvertedClientDates();
