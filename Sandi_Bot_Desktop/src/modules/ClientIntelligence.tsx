@@ -319,12 +319,28 @@ function goneQuietTipFromNaturalScores(
   return GONE_QUIET_REENGAGEMENT_TIPS[style] ?? null;
 }
 
+function daysSince(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length !== 3) return null;
+  const past = new Date(
+    parseInt(parts[0]!, 10),
+    parseInt(parts[1]!, 10) - 1,
+    parseInt(parts[2]!, 10)
+  );
+  past.setHours(0, 0, 0, 0);
+  const diff = today.getTime() - past.getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
 function formatGoneQuietLabel(days: number | null | undefined): string {
   const base = 'Gone Quiet';
-  if (days != null && days > 0) {
-    return `${base} · ${days}d`;
-  }
-  return base;
+  if (days == null || days <= 0) return base;
+  if (days < 30) return `${base} · ${days}d`;
+  const mo = Math.floor(days / 30);
+  return `${base} · ${mo}mo`;
 }
 
 const GONE_QUIET_SESSION_DISCLAIMER =
@@ -3894,7 +3910,9 @@ function ClientDetailModal({
                             className="mr-1 h-3.5 w-3.5 shrink-0"
                             aria-hidden
                           />
-                          {formatGoneQuietLabel(client.gone_quiet_days)}
+                          {formatGoneQuietLabel(
+                            daysSince(lastContactDateDb)
+                          )}
                         </Badge>
                         <div className="mt-2 max-w-md space-y-1.5">
                           <Label
