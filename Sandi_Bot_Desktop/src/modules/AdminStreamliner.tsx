@@ -663,7 +663,6 @@ export default function AdminStreamliner() {
           dangers === 'OK' &&
           opportunities === 'OK' &&
           strengths === 'OK' &&
-          skills === 'OK' &&
           disc === 'OK' &&
           realCount >= 1;
 
