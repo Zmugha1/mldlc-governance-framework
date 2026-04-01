@@ -976,8 +976,26 @@ CREDIT SCORE: Extract the number only.
 LAUNCH TIMELINE: Extract as written.
   Example: "6 - 12 months"
 
-TIME COMMITMENT: Concatenate all
-  selections with semicolons.
+TIME COMMITMENT:
+Extract ALL selected options and
+concatenate with semicolons.
+The document may have multiple
+selections checked.
+Common options:
+  Full-Time Owner Operated
+  Semi-Absentee at Launch
+  Semi-Absentee after 2 years
+  Absentee Owner
+  Part-Time
+Extract every option that is checked
+or marked Yes.
+Concatenate all with " ; " separator.
+Example output:
+  "Full-Time Owner Operated ;
+  Semi-Absentee at Launch ;
+  Semi-Absentee after 2 years"
+Never return only one option if
+multiple are checked.
 
 Return this exact JSON structure:
 {
