@@ -145,3 +145,24 @@ pub fn migration_59() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 60: readiness-related client fields, ZOR session flag, franchise JSON,
+/// and `user_preferences` onboarding / practice name.
+///
+/// Each `ALTER` is a separate statement (semicolon-separated). The SQL plugin runs
+/// the migration once per DB version; re-apply safety for duplicate columns is handled
+/// at the application / startup layer if needed.
+pub fn migration_60() -> Migration {
+    Migration {
+        version: 60,
+        description: "readiness_big_overlay_ilwe_zor_franchise_prefs",
+        sql: "ALTER TABLE clients ADD COLUMN big_overlay_completed INTEGER DEFAULT 0;
+              ALTER TABLE clients ADD COLUMN ilwe_key_motivators TEXT;
+              ALTER TABLE clients ADD COLUMN zor_learning_notes TEXT;
+              ALTER TABLE clients ADD COLUMN franchise_recommendations TEXT;
+              ALTER TABLE coaching_sessions ADD COLUMN is_zor_session INTEGER DEFAULT 0;
+              ALTER TABLE user_preferences ADD COLUMN onboarding_complete INTEGER DEFAULT 0;
+              ALTER TABLE user_preferences ADD COLUMN practice_name TEXT DEFAULT 'My Practice';",
+        kind: MigrationKind::Up,
+    }
+}
