@@ -257,6 +257,49 @@ function inferSessionDate(rawText: string): string {
   return `${y}-${mm}-${dd}`;
 }
 
+function baseFileNameFromPathOrName(
+  fileNameOrPath: string
+): string {
+  const parts = fileNameOrPath.split(/[/\\]/);
+  return parts[parts.length - 1] ?? fileNameOrPath;
+}
+
+/** Coach/Sandi output decks — not source intake PDFs. Case-insensitive. */
+function isVisionStatementOutputFileName(
+  fileName: string
+): boolean {
+  const base = baseFileNameFromPathOrName(fileName);
+  const lower = base.toLowerCase();
+  if (lower.includes('vision statement')) return true;
+  if (lower.includes('vision_statement')) return true;
+  const compact = lower.replace(/[^a-z0-9]/g, '');
+  return compact.includes('visionstatement');
+}
+
+function isOfficeDocExcludedExtension(
+  filePathOrName: string
+): boolean {
+  const lower = filePathOrName.toLowerCase();
+  return (
+    lower.endsWith('.pptx') ||
+    lower.endsWith('.ppt') ||
+    lower.endsWith('.docx')
+  );
+}
+
+/** PDF for DISC / You2 / TUMAY / Fathom / vision; .txt only for Fathom. */
+function isAllowedExtractorExtension(
+  documentType: DocumentType | string,
+  filePath: string
+): boolean {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith('.pdf')) return true;
+  if (documentType === 'fathom' && lower.endsWith('.txt')) {
+    return true;
+  }
+  return false;
+}
+
 async function recordExtraction(
   clientId: string,
   documentType: string,
@@ -1390,6 +1433,29 @@ export async function handleVisionStatement(
   filePath: string,
   rawText: string
 ): Promise<ExtractionResult<null>> {
+  const baseName = baseFileNameFromPathOrName(fileName);
+  if (isVisionStatementOutputFileName(baseName)) {
+    console.log(
+      'Skipping Vision Statement file — not a source document:',
+      baseName
+    );
+    return {
+      success: false,
+      data: null,
+      error:
+        'Skipped: Vision Statement file is not a source document',
+      extraction_status: 'skipped',
+    };
+  }
+  if (isOfficeDocExcludedExtension(filePath)) {
+    return {
+      success: false,
+      data: null,
+      error: 'Skipped: PPTX/PPT/DOCX are not extracted',
+      extraction_status: 'skipped',
+    };
+  }
+
   const extractedText = await extractVisionText(filePath, rawText);
   const normalizedText = extractedText.trim();
   const textLength = normalizedText.length;
@@ -1511,6 +1577,17 @@ async function extractVisionFromFile(
   clientId: string,
   filePath: string
 ): Promise<boolean> {
+  const vBase = baseFileNameFromPathOrName(filePath);
+  if (isVisionStatementOutputFileName(vBase)) {
+    console.log(
+      'Skipping Vision Statement file — not a source document:',
+      vBase
+    );
+    return false;
+  }
+  if (isOfficeDocExcludedExtension(filePath)) {
+    return false;
+  }
   try {
     const text = await invoke<string>(
       'extract_text', { filePath }
@@ -1536,6 +1613,20 @@ async function extractTumayFromFile(
   clientId: string,
   filePath: string
 ): Promise<boolean> {
+  const tumayBase = baseFileNameFromPathOrName(filePath);
+  if (isVisionStatementOutputFileName(tumayBase)) {
+    console.log(
+      'Skipping Vision Statement file — not a source document:',
+      tumayBase
+    );
+    return false;
+  }
+  if (
+    isOfficeDocExcludedExtension(filePath) ||
+    !filePath.toLowerCase().endsWith('.pdf')
+  ) {
+    return false;
+  }
   try {
     const TUMAY_PROMPT = `Extract these fields
 from the TUMAY franchise coaching intake
@@ -1784,6 +1875,19 @@ export async function bulkReExtractVisionAndTumay(
       }
 
       for (const filePath of clientFiles) {
+        const bulkBase =
+          filePath.split(/[/\\]/).pop() ?? filePath;
+        if (isVisionStatementOutputFileName(bulkBase)) {
+          console.log(
+            'Skipping Vision Statement file — not a source document:',
+            bulkBase
+          );
+          continue;
+        }
+        if (isOfficeDocExcludedExtension(filePath)) {
+          continue;
+        }
+
         const lower = filePath.toLowerCase();
 
         if (!visionDone &&
@@ -1966,9 +2070,21 @@ Transcript:
             const fileName = lower.split('\\').pop()
               ?? lower.split('/').pop()
               ?? '';
+            const origBase =
+              filePath.split(/[/\\]/).pop() ?? filePath;
+            if (isVisionStatementOutputFileName(origBase)) {
+              console.log(
+                'Skipping Vision Statement file — not a source document:',
+                origBase
+              );
+              return false;
+            }
+            if (isOfficeDocExcludedExtension(filePath)) {
+              return false;
+            }
             const isFathomLike = (
-              fileName.toLowerCase().includes('convo') ||
-              fileName.toLowerCase().includes('fathom')
+              fileName.includes('convo') ||
+              fileName.includes('fathom')
             ) && fileName.endsWith('.pdf');
             return isFathomLike;
           });
@@ -2187,6 +2303,51 @@ export async function processDocument(
     DiscProfile | You2Profile | FathomSession | null
   >
 > {
+  const routedType = documentType as string;
+
+  const baseName = baseFileNameFromPathOrName(fileName);
+  if (isVisionStatementOutputFileName(baseName)) {
+    console.log(
+      'Skipping Vision Statement file — not a source document:',
+      baseName
+    );
+    return {
+      success: false,
+      data: null,
+      error:
+        'Skipped: Vision Statement file is not a source document',
+      extraction_status: 'skipped',
+    };
+  }
+
+  if (isOfficeDocExcludedExtension(filePath)) {
+    return {
+      success: false,
+      data: null,
+      error: 'Skipped: PPTX/PPT/DOCX are not extracted',
+      extraction_status: 'skipped',
+    };
+  }
+
+  if (routedType === 'tumay') {
+    if (!filePath.toLowerCase().endsWith('.pdf')) {
+      return {
+        success: false,
+        data: null,
+        error: 'TUMAY extraction requires a PDF file',
+        extraction_status: 'skipped',
+      };
+    }
+  } else if (!isAllowedExtractorExtension(documentType, filePath)) {
+    return {
+      success: false,
+      data: null,
+      error:
+        'Only PDF is supported for this extractor (TXT allowed for Fathom only)',
+      extraction_status: 'skipped',
+    };
+  }
+
   // Truncate to fit model context — shorter = faster, fewer timeouts
   const MAX_CHARS = 4000;
   const truncatedText = rawText.length > MAX_CHARS
