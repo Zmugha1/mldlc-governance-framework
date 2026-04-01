@@ -360,6 +360,72 @@ function territoryCheckStorageKey(clientId: string): string {
 const TERRITORY_CHECK_TEXTAREA_PLACEHOLDER =
   'Paste your territory check results here. This information will be included when generating the vision statement PowerPoint.';
 
+type StoredFranchiseRec = {
+  name: string;
+  rank: number;
+  zor_call_date: string;
+  notes: string;
+  added_at: string;
+};
+
+function franchiseRecsStorageKey(clientId: string): string {
+  return `franchise_recs_${clientId}`;
+}
+
+function loadFranchiseRecsFromStorage(clientId: string): StoredFranchiseRec[] {
+  try {
+    const raw = localStorage.getItem(franchiseRecsStorageKey(clientId));
+    if (!raw?.trim()) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((x) => x != null && typeof x === 'object')
+      .map((x) => {
+        const o = x as Record<string, unknown>;
+        const rankNum = Number(o.rank);
+        return {
+          name: String(o.name ?? '').trim(),
+          rank:
+            rankNum === 2 ? 2 : rankNum === 3 ? 3 : 1,
+          zor_call_date: String(o.zor_call_date ?? '').trim(),
+          notes: String(o.notes ?? '').trim(),
+          added_at: String(
+            o.added_at ?? new Date().toISOString()
+          ),
+        };
+      })
+      .filter((r) => r.name.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function saveFranchiseRecsToStorage(
+  clientId: string,
+  items: StoredFranchiseRec[]
+): void {
+  localStorage.setItem(
+    franchiseRecsStorageKey(clientId),
+    JSON.stringify(items)
+  );
+}
+
+function formatZorCallDisplay(isoOrDate: string): string {
+  const t = isoOrDate.trim();
+  if (!t) return '';
+  const slice = /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t;
+  const d = new Date(slice);
+  if (Number.isNaN(d.getTime())) return t;
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+const FRANCHISE_NOTES_PLACEHOLDER =
+  'What is the client learning? What are their pros and cons? What questions are they asking?';
+
 function formatVisionApprovedDateLabel(raw: string | null | undefined): string {
   const t = (raw ?? '').trim();
   if (!t) return '';
@@ -953,6 +1019,15 @@ function ClientDetailModal({
   >(null);
   const [territoryCheckDraft, setTerritoryCheckDraft] = useState('');
   const [territoryCheckSavedMsg, setTerritoryCheckSavedMsg] = useState(false);
+  const [franchiseRecs, setFranchiseRecs] = useState<StoredFranchiseRec[]>([]);
+  const [franchiseFormOpen, setFranchiseFormOpen] = useState(false);
+  const [franchiseEditIndex, setFranchiseEditIndex] = useState<number | null>(
+    null
+  );
+  const [franchiseFormName, setFranchiseFormName] = useState('');
+  const [franchiseFormRank, setFranchiseFormRank] = useState<1 | 2 | 3>(1);
+  const [franchiseFormZorDate, setFranchiseFormZorDate] = useState('');
+  const [franchiseFormNotes, setFranchiseFormNotes] = useState('');
   const [visionGenerating, setVisionGenerating] = useState(false);
   const [visionGenError, setVisionGenError] = useState<string | null>(null);
   const [visionDraftMode, setVisionDraftMode] = useState(false);
@@ -976,6 +1051,20 @@ function ClientDetailModal({
     if (!client?.id) return;
     setVisionEditText((client.visionStatement.paragraph ?? '').trim());
   }, [client?.id, client.visionStatement.paragraph]);
+
+  useEffect(() => {
+    if (!client?.id) {
+      setFranchiseRecs([]);
+      return;
+    }
+    setFranchiseRecs(loadFranchiseRecsFromStorage(client.id));
+    setFranchiseFormOpen(false);
+    setFranchiseEditIndex(null);
+    setFranchiseFormName('');
+    setFranchiseFormRank(1);
+    setFranchiseFormZorDate('');
+    setFranchiseFormNotes('');
+  }, [client?.id]);
 
   useEffect(() => {
     if (!ahaToast) return;
@@ -1434,6 +1523,85 @@ function ClientDetailModal({
     shouldShowGoneQuietBadge(client) && discScores
       ? goneQuietTipFromNaturalScores(discScores)
       : null;
+
+  const showFranchiseRecommendationsSection =
+    resolvedPipelineCode === 'C4' || resolvedPipelineCode === 'C5';
+
+  const displayFranchiseRecsSorted = useMemo(
+    () =>
+      franchiseRecs
+        .map((item, originalIndex) => ({ item, originalIndex }))
+        .sort(
+          (a, b) =>
+            a.item.rank - b.item.rank ||
+            new Date(a.item.added_at).getTime() -
+              new Date(b.item.added_at).getTime()
+        ),
+    [franchiseRecs]
+  );
+
+  const resetFranchiseFormFields = () => {
+    setFranchiseFormName('');
+    setFranchiseFormRank(1);
+    setFranchiseFormZorDate('');
+    setFranchiseFormNotes('');
+    setFranchiseEditIndex(null);
+  };
+
+  const handleFranchiseFormCancel = () => {
+    setFranchiseFormOpen(false);
+    resetFranchiseFormFields();
+  };
+
+  const handleStartAddFranchise = () => {
+    resetFranchiseFormFields();
+    setFranchiseFormOpen(true);
+  };
+
+  const handleEditFranchiseRec = (originalIndex: number) => {
+    const r = franchiseRecs[originalIndex];
+    if (!r) return;
+    setFranchiseEditIndex(originalIndex);
+    setFranchiseFormName(r.name);
+    setFranchiseFormRank(
+      r.rank === 2 ? 2 : r.rank === 3 ? 3 : 1
+    );
+    const z = r.zor_call_date.trim();
+    setFranchiseFormZorDate(
+      /^\d{4}-\d{2}-\d{2}/.test(z) ? z.slice(0, 10) : z
+    );
+    setFranchiseFormNotes(r.notes);
+    setFranchiseFormOpen(true);
+  };
+
+  const handleSaveFranchiseRec = () => {
+    if (!client?.id) return;
+    const name = franchiseFormName.trim();
+    if (!name) return;
+    const wasEdit = franchiseEditIndex != null;
+    const rec: StoredFranchiseRec = {
+      name,
+      rank: franchiseFormRank,
+      zor_call_date: franchiseFormZorDate.trim(),
+      notes: franchiseFormNotes.trim(),
+      added_at:
+        wasEdit && franchiseEditIndex != null
+          ? franchiseRecs[franchiseEditIndex]?.added_at ??
+            new Date().toISOString()
+          : new Date().toISOString(),
+    };
+    const next =
+      wasEdit && franchiseEditIndex != null
+        ? franchiseRecs.map((x, i) =>
+            i === franchiseEditIndex ? rec : x
+          )
+        : [...franchiseRecs, rec];
+    saveFranchiseRecsToStorage(client.id, next);
+    setFranchiseRecs(next);
+    setFranchiseFormOpen(false);
+    resetFranchiseFormFields();
+    setAhaToast(wasEdit ? 'Changes saved ✓' : 'Franchise added ✓');
+  };
 
   const handleConfirmStageMove = async () => {
     if (!stageMoveDialog) return;
@@ -3269,6 +3437,236 @@ function ClientDetailModal({
                 )}
               </CardContent>
             </Card>
+
+            {showFranchiseRecommendationsSection ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3
+                      className="font-bold"
+                      style={{ color: '#2D4459', fontSize: 15 }}
+                    >
+                      Franchise Recommendations
+                    </h3>
+                    <p style={{ color: '#7A8F95', fontSize: 12, marginTop: 4 }}>
+                      Businesses presented during Initial Validation
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 font-bold transition-opacity hover:opacity-90"
+                    style={{
+                      background: '#3BBFBF',
+                      color: 'white',
+                      borderRadius: 8,
+                      padding: '6px 14px',
+                      fontSize: 12,
+                      border: 'none',
+                    }}
+                    onClick={handleStartAddFranchise}
+                  >
+                    + Add Franchise
+                  </button>
+                </div>
+
+                {franchiseFormOpen ? (
+                  <div
+                    className="space-y-3 rounded-lg border p-4"
+                    style={{ borderColor: '#C8E8E5', background: '#FEFAF5' }}
+                  >
+                    <div>
+                      <Label
+                        htmlFor="franchise-name-input"
+                        style={{ color: '#2D4459', fontSize: 13 }}
+                      >
+                        Franchise name
+                      </Label>
+                      <Input
+                        id="franchise-name-input"
+                        className="mt-1"
+                        value={franchiseFormName}
+                        onChange={(e) => setFranchiseFormName(e.target.value)}
+                        placeholder="e.g. Tumbles for Kids"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label
+                        htmlFor="franchise-rank-select"
+                        style={{ color: '#2D4459', fontSize: 13 }}
+                      >
+                        Client ranking
+                      </Label>
+                      <select
+                        id="franchise-rank-select"
+                        className="mt-1 flex h-10 w-full max-w-md rounded-md border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
+                        style={{ borderColor: '#C8E8E5' }}
+                        value={franchiseFormRank}
+                        onChange={(e) =>
+                          setFranchiseFormRank(
+                            Number(e.target.value) === 2
+                              ? 2
+                              : Number(e.target.value) === 3
+                                ? 3
+                                : 1
+                          )
+                        }
+                      >
+                        <option value={1}>1 - Top Choice</option>
+                        <option value={2}>2 - Second Choice</option>
+                        <option value={3}>3 - Third Choice</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label
+                        htmlFor="franchise-zor-date"
+                        style={{ color: '#2D4459', fontSize: 13 }}
+                      >
+                        ZOR call date
+                      </Label>
+                      <Input
+                        id="franchise-zor-date"
+                        type="date"
+                        className="mt-1 max-w-md"
+                        value={franchiseFormZorDate}
+                        onChange={(e) =>
+                          setFranchiseFormZorDate(e.target.value)
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label
+                        htmlFor="franchise-notes"
+                        style={{ color: '#2D4459', fontSize: 13 }}
+                      >
+                        Notes
+                      </Label>
+                      <Textarea
+                        id="franchise-notes"
+                        rows={3}
+                        className="mt-1 resize-y"
+                        placeholder={FRANCHISE_NOTES_PLACEHOLDER}
+                        value={franchiseFormNotes}
+                        onChange={(e) =>
+                          setFranchiseFormNotes(e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Button
+                        type="button"
+                        className="font-semibold text-white"
+                        style={{ background: '#3BBFBF' }}
+                        onClick={handleSaveFranchiseRec}
+                        disabled={!franchiseFormName.trim()}
+                      >
+                        Save
+                      </Button>
+                      <button
+                        type="button"
+                        className="text-sm font-semibold underline-offset-2 hover:underline"
+                        style={{ color: '#3BBFBF' }}
+                        onClick={handleFranchiseFormCancel}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {displayFranchiseRecsSorted.length === 0 &&
+                !franchiseFormOpen ? (
+                  <p
+                    className="text-center italic"
+                    style={{ color: '#7A8F95', fontSize: 12 }}
+                  >
+                    No franchises presented yet. Add the businesses you presented
+                    to this client.
+                  </p>
+                ) : null}
+
+                {displayFranchiseRecsSorted.map(
+                  ({ item: fr, originalIndex }) => (
+                    <div
+                      key={`${fr.added_at}-${originalIndex}`}
+                      style={{
+                        background: 'white',
+                        border: '1px solid #C8E8E5',
+                        borderRadius: 10,
+                        padding: '14px 18px',
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <span
+                          className="font-bold"
+                          style={{ color: '#2D4459', fontSize: 14 }}
+                        >
+                          {fr.name}
+                        </span>
+                        <span
+                          className="shrink-0 rounded-md px-2.5 py-1 font-medium"
+                          style={
+                            fr.rank === 1
+                              ? {
+                                  background: '#3BBFBF',
+                                  color: 'white',
+                                  fontSize: 11,
+                                }
+                              : fr.rank === 2
+                                ? {
+                                    background: '#C8E8E5',
+                                    color: '#2D4459',
+                                    fontSize: 11,
+                                  }
+                                : {
+                                    background: '#F4F7F8',
+                                    color: '#7A8F95',
+                                    fontSize: 11,
+                                  }
+                          }
+                        >
+                          {fr.rank === 1
+                            ? 'Top Choice ★'
+                            : fr.rank === 2
+                              ? 'Second Choice'
+                              : 'Third Choice'}
+                        </span>
+                      </div>
+                      {fr.notes.trim() ? (
+                        <p
+                          className="mt-2"
+                          style={{
+                            color: '#7A8F95',
+                            fontSize: 13,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {fr.notes}
+                        </p>
+                      ) : null}
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <span style={{ color: '#7A8F95', fontSize: 11 }}>
+                          {fr.zor_call_date.trim()
+                            ? `ZOR call: ${formatZorCallDisplay(fr.zor_call_date)}`
+                            : ''}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-[11px] font-semibold underline-offset-2 hover:underline"
+                          style={{ color: '#3BBFBF' }}
+                          onClick={() =>
+                            handleEditFranchiseRec(originalIndex)
+                          }
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            ) : null}
 
             <Card>
               <CardHeader>
