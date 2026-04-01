@@ -423,6 +423,22 @@ function formatZorCallDisplay(isoOrDate: string): string {
   });
 }
 
+function sandiReadinessStatusLabel(pct: number): {
+  text: string;
+  color: string;
+} {
+  if (pct >= 90) return { text: 'Ready', color: '#3BBFBF' };
+  if (pct >= 70) return { text: 'Nearly Ready', color: '#C8613F' };
+  if (pct >= 50) return { text: 'Building', color: '#C8613F' };
+  return { text: 'Needs Attention', color: '#F05F57' };
+}
+
+function sandiReadinessOverallBarColor(pct: number): string {
+  if (pct >= 70) return '#3BBFBF';
+  if (pct >= 50) return '#C8613F';
+  return '#F05F57';
+}
+
 const FRANCHISE_NOTES_PLACEHOLDER =
   'What is the client learning? What are their pros and cons? What questions are they asking?';
 
@@ -871,6 +887,10 @@ function ClientDetailModal({
   onStageMoveToast?: (message: string) => void;
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null);
+  const [clientReadinessDbFields, setClientReadinessDbFields] = useState<{
+    zor_learning_notes: string | null;
+    franchise_recommendations: string | null;
+  }>({ zor_learning_notes: null, franchise_recommendations: null });
   const [you2Vision, setYou2Vision] = useState('');
   const [you2Details, setYou2Details] = useState<{
     spouse_name: string;
@@ -887,7 +907,6 @@ function ClientDetailModal({
     reasons_for_change: string[];
   } | null>(null);
   const [tumayData, setTumayData] = useState<Record<string, unknown> | null>(null);
-  const [readinessScorePct, setReadinessScorePct] = useState(0);
   const [contact, setContact] = useState<{ email: string | null; phone: string | null; company: string | null }>({
     email: null,
     phone: null,
@@ -1220,12 +1239,26 @@ function ClientDetailModal({
         resolvePipelineStageCode(client.inferred_stage) ?? 'IC';
       setManualSessionStage(stageResolved);
       getStageReadiness(client.id).then(setReadiness);
-      getAllStageReadiness()
-        .then((allReadiness) => {
-          const matched = allReadiness.find((r) => r.client_id === client.id);
-          setReadinessScorePct(matched?.readiness_score ?? 0);
+      dbSelect<{
+        zor_learning_notes: string | null;
+        franchise_recommendations: string | null;
+      }>(
+        `SELECT zor_learning_notes, franchise_recommendations FROM clients WHERE id = ?`,
+        [client.id]
+      )
+        .then((rows) => {
+          setClientReadinessDbFields({
+            zor_learning_notes: rows[0]?.zor_learning_notes ?? null,
+            franchise_recommendations:
+              rows[0]?.franchise_recommendations ?? null,
+          });
         })
-        .catch(() => setReadinessScorePct(0));
+        .catch(() => {
+          setClientReadinessDbFields({
+            zor_learning_notes: null,
+            franchise_recommendations: null,
+          });
+        });
       dbSelect<{
         email: string | null;
         phone: string | null;
@@ -1433,7 +1466,10 @@ function ClientDetailModal({
       setYou2Vision('');
       setYou2Details(null);
       setTumayData(null);
-      setReadinessScorePct(0);
+      setClientReadinessDbFields({
+        zor_learning_notes: null,
+        franchise_recommendations: null,
+      });
       setContact({ email: null, phone: null, company: null });
       setContactDraft({ email: '', phone: '', company: '' });
       setDiscStyleLabel('—');
@@ -1482,6 +1518,86 @@ function ClientDetailModal({
 
   const persistedVisionText = (client.visionStatement.paragraph ?? '').trim();
   const visionIsApproved = client.vision_approved === 1;
+
+  const sandiReadinessDimensions = useMemo(() => {
+    const code = resolvedPipelineCode;
+    const isC4C5 = code === 'C4' || code === 'C5';
+
+    const hasDisc =
+      discScores != null &&
+      discScores.d + discScores.i + discScores.s + discScores.c > 0;
+    const hasYou2Vision = you2Vision.trim().length > 10;
+    const hasFathom = fathomSessionCount >= 1;
+
+    let identity = 0;
+    if (hasDisc) identity += 10;
+    if (hasYou2Vision) identity += 10;
+    if (hasFathom) identity += 5;
+
+    let commitment = 0;
+    if (client.vision_approved === 1) commitment += 10;
+    if ((you2Details?.launch_timeline ?? '').trim().length > 0) {
+      commitment += 8;
+    }
+    if ((you2Details?.spouse_role ?? '').trim().length > 0) {
+      commitment += 7;
+    }
+
+    let financial = 0;
+    if ((you2Details?.financial_net_worth_range ?? '').trim().length > 0) {
+      financial += 10;
+    }
+    const cs = you2Details?.credit_score;
+    if (cs != null && cs > 0) financial += 8;
+    if ((you2Details?.time_commitment ?? '').trim().length > 0) {
+      financial += 7;
+    }
+
+    let discovery = 0;
+    const discoveryLocked = !isC4C5;
+    if (isC4C5) {
+      if (
+        (clientReadinessDbFields.zor_learning_notes ?? '').trim().length > 10
+      ) {
+        discovery += 10;
+      }
+      if (
+        (clientReadinessDbFields.franchise_recommendations ?? '').trim()
+          .length > 0
+      ) {
+        discovery += 8;
+      }
+      if (hasDisc && hasYou2Vision && hasFathom) discovery += 7;
+    }
+
+    const maxTotal = isC4C5 ? 100 : 75;
+    const total =
+      identity +
+      commitment +
+      financial +
+      (discoveryLocked ? 0 : discovery);
+    const pctRaw = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
+    const pct = Math.round(pctRaw * 10) / 10;
+
+    return {
+      identity,
+      commitment,
+      financial,
+      discovery,
+      discoveryLocked,
+      maxTotal,
+      total,
+      pct,
+    };
+  }, [
+    resolvedPipelineCode,
+    discScores,
+    you2Vision,
+    fathomSessionCount,
+    you2Details,
+    client.vision_approved,
+    clientReadinessDbFields,
+  ]);
 
   const latestSessionNotesPlain = useMemo(() => {
     const first = fathomSessions[0];
@@ -1656,12 +1772,6 @@ function ClientDetailModal({
       onStageMoveToast?.(`${client.name} moved to ${targetDisplay}`);
 
       void getStageReadiness(client.id).then(setReadiness);
-      void getAllStageReadiness()
-        .then((allReadiness) => {
-          const matched = allReadiness.find((r) => r.client_id === client.id);
-          setReadinessScorePct(matched?.readiness_score ?? 0);
-        })
-        .catch(() => {});
     } catch (e) {
       console.error('stage move failed:', e);
     } finally {
@@ -3328,16 +3438,316 @@ function ClientDetailModal({
                   <CardTitle className="text-sm text-slate-500">Readiness</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-slate-700">Readiness Score</span>
-                      <span className="text-sm font-bold text-slate-900">{readinessScorePct}%</span>
+                  <div className="space-y-3">
+                    <div>
+                      <p
+                        className="font-semibold uppercase tracking-wide"
+                        style={{ color: '#7A8F95', fontSize: 11 }}
+                      >
+                        Readiness Score
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <span
+                          style={{
+                            color: '#2D4459',
+                            fontSize: 24,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {sandiReadinessDimensions.total} /{' '}
+                          {sandiReadinessDimensions.maxTotal}
+                        </span>
+                        <span
+                          style={{
+                            color: '#2D4459',
+                            fontSize: 24,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {sandiReadinessDimensions.pct}%
+                        </span>
+                      </div>
+                      <p
+                        className="mt-1 font-semibold"
+                        style={{
+                          color: sandiReadinessStatusLabel(
+                            sandiReadinessDimensions.pct
+                          ).color,
+                        }}
+                      >
+                        {
+                          sandiReadinessStatusLabel(sandiReadinessDimensions.pct)
+                            .text
+                        }
+                      </p>
                     </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="overflow-hidden"
+                      style={{
+                        height: 8,
+                        background: '#F4F7F8',
+                        borderRadius: 4,
+                      }}
+                    >
                       <div
-                        className="h-full bg-blue-500 rounded-full transition-all"
-                        style={{ width: `${Math.max(0, Math.min(100, readinessScorePct))}%` }}
+                        className="h-full transition-all"
+                        style={{
+                          width: `${Math.min(100, sandiReadinessDimensions.pct)}%`,
+                          background: sandiReadinessOverallBarColor(
+                            sandiReadinessDimensions.pct
+                          ),
+                          borderRadius: 4,
+                        }}
                       />
+                    </div>
+
+                    <div className="space-y-2 pt-1">
+                      <div
+                        className="flex items-center gap-2"
+                        style={{
+                          background: 'white',
+                          border: '1px solid #C8E8E5',
+                          borderRadius: 10,
+                          padding: '12px 16px',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <div style={{ flex: '0 0 40%', minWidth: 0 }}>
+                          <div
+                            style={{
+                              color: '#2D4459',
+                              fontSize: 13,
+                              fontWeight: 700,
+                            }}
+                          >
+                            Identity
+                          </div>
+                          <div style={{ color: '#7A8F95', fontSize: 11 }}>
+                            DISC + You 2.0 + Fathom
+                          </div>
+                        </div>
+                        <div
+                          style={{ flex: '0 0 40%', minWidth: 0 }}
+                          className="px-1"
+                        >
+                          <div
+                            className="overflow-hidden"
+                            style={{
+                              height: 6,
+                              background: '#F4F7F8',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${(sandiReadinessDimensions.identity / 25) * 100}%`,
+                                height: '100%',
+                                background: '#3BBFBF',
+                                borderRadius: 3,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            flex: '0 0 20%',
+                            textAlign: 'right',
+                            color: '#2D4459',
+                            fontSize: 13,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {sandiReadinessDimensions.identity} / 25
+                        </div>
+                      </div>
+
+                      <div
+                        className="flex items-center gap-2"
+                        style={{
+                          background: 'white',
+                          border: '1px solid #C8E8E5',
+                          borderRadius: 10,
+                          padding: '12px 16px',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <div style={{ flex: '0 0 40%', minWidth: 0 }}>
+                          <div
+                            style={{
+                              color: '#2D4459',
+                              fontSize: 13,
+                              fontWeight: 700,
+                            }}
+                          >
+                            Commitment
+                          </div>
+                          <div style={{ color: '#7A8F95', fontSize: 11 }}>
+                            Vision + Timeline + Spouse
+                          </div>
+                        </div>
+                        <div
+                          style={{ flex: '0 0 40%', minWidth: 0 }}
+                          className="px-1"
+                        >
+                          <div
+                            className="overflow-hidden"
+                            style={{
+                              height: 6,
+                              background: '#F4F7F8',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${(sandiReadinessDimensions.commitment / 25) * 100}%`,
+                                height: '100%',
+                                background: '#2D4459',
+                                borderRadius: 3,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            flex: '0 0 20%',
+                            textAlign: 'right',
+                            color: '#2D4459',
+                            fontSize: 13,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {sandiReadinessDimensions.commitment} / 25
+                        </div>
+                      </div>
+
+                      <div
+                        className="flex items-center gap-2"
+                        style={{
+                          background: 'white',
+                          border: '1px solid #C8E8E5',
+                          borderRadius: 10,
+                          padding: '12px 16px',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <div style={{ flex: '0 0 40%', minWidth: 0 }}>
+                          <div
+                            style={{
+                              color: '#2D4459',
+                              fontSize: 13,
+                              fontWeight: 700,
+                            }}
+                          >
+                            Financial
+                          </div>
+                          <div style={{ color: '#7A8F95', fontSize: 11 }}>
+                            Net worth + Credit + Timeline
+                          </div>
+                        </div>
+                        <div
+                          style={{ flex: '0 0 40%', minWidth: 0 }}
+                          className="px-1"
+                        >
+                          <div
+                            className="overflow-hidden"
+                            style={{
+                              height: 6,
+                              background: '#F4F7F8',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${(sandiReadinessDimensions.financial / 25) * 100}%`,
+                                height: '100%',
+                                background: '#C8613F',
+                                borderRadius: 3,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            flex: '0 0 20%',
+                            textAlign: 'right',
+                            color: '#2D4459',
+                            fontSize: 13,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {sandiReadinessDimensions.financial} / 25
+                        </div>
+                      </div>
+
+                      <div
+                        className="flex items-center gap-2"
+                        style={{
+                          background: 'white',
+                          border: '1px solid #C8E8E5',
+                          borderRadius: 10,
+                          padding: '12px 16px',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <div style={{ flex: '0 0 40%', minWidth: 0 }}>
+                          <div
+                            style={{
+                              color: '#2D4459',
+                              fontSize: 13,
+                              fontWeight: 700,
+                            }}
+                          >
+                            Discovery
+                          </div>
+                          <div style={{ color: '#7A8F95', fontSize: 11 }}>
+                            ZOR + Franchise + Profile
+                          </div>
+                        </div>
+                        <div
+                          style={{ flex: '0 0 40%', minWidth: 0 }}
+                          className="flex items-center justify-center px-1"
+                        >
+                          {sandiReadinessDimensions.discoveryLocked ? (
+                            <span
+                              className="italic"
+                              style={{ color: '#7A8F95', fontSize: 11 }}
+                            >
+                              Unlocks at C4
+                            </span>
+                          ) : (
+                            <div
+                              className="w-full overflow-hidden"
+                              style={{
+                                height: 6,
+                                background: '#F4F7F8',
+                                borderRadius: 3,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${(sandiReadinessDimensions.discovery / 25) * 100}%`,
+                                  height: '100%',
+                                  background: '#F05F57',
+                                  borderRadius: 3,
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            flex: '0 0 20%',
+                            textAlign: 'right',
+                            color: '#2D4459',
+                            fontSize: 13,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {sandiReadinessDimensions.discoveryLocked
+                            ? ''
+                            : `${sandiReadinessDimensions.discovery} / 25`}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
