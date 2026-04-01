@@ -389,6 +389,51 @@ export function getSupportiveSpouseClients(
   return clients.filter((c) => c.tumay?.spouse?.supportive === true);
 }
 
+function parseNetWorthMoneyToken(
+  numStr: string,
+  unit: string | undefined
+): number {
+  let n = parseFloat(numStr);
+  if (Number.isNaN(n)) return NaN;
+  const u = (unit ?? '').toLowerCase();
+  if (u === 'k') n *= 1000;
+  if (u === 'm') n *= 1_000_000;
+  return n;
+}
+
+/**
+ * True when stored You 2.0 net worth range is strictly below the ~$250k band
+ * (e.g. "50k - 250k"), not at/above it (e.g. "250k - 500k").
+ */
+export function isNetWorthBelowThreshold(
+  netWorthRange: string | null
+): boolean {
+  if (!netWorthRange) return false;
+  const normalized = netWorthRange
+    .toLowerCase()
+    .replace(/,/g, '')
+    .trim();
+
+  if (normalized.includes('50k - 250k')) return true;
+  if (normalized.includes('below 250')) return true;
+  if (normalized.includes('under 250')) return true;
+  if (normalized === '50k-250k') return true;
+
+  const rangeMatch = normalized.match(
+    /^(\d+\.?\d*)\s*(k|m)?\s*[-–]\s*(\d+\.?\d*)\s*(k|m)?/
+  );
+  if (rangeMatch) {
+    const upper = parseNetWorthMoneyToken(
+      rangeMatch[3],
+      rangeMatch[4]
+    );
+    if (!Number.isNaN(upper) && upper <= 250_000) return true;
+    return false;
+  }
+
+  return false;
+}
+
 export async function seedConvertedClientDates(): Promise<void> {
   await dbExecute(
     `UPDATE clients

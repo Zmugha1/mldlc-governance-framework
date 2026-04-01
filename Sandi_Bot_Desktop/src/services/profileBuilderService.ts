@@ -1,5 +1,6 @@
 import { dbSelect, dbExecute } from './db';
 import type { Client } from '../types';
+import { isNetWorthBelowThreshold } from './clientService';
 import { getRecommendation } from './recommendationService';
 import {
   updateClientStage,
@@ -59,9 +60,7 @@ async function detectPinkFlags(
     }
   }
 
-  const nw = (you2.financial_net_worth_range || '').toLowerCase();
-  if (nw && !nw.includes('250k') && !nw.includes('500k') &&
-      !nw.includes('1m')) {
+  if (isNetWorthBelowThreshold(you2.financial_net_worth_range)) {
     flags.push('Net worth below $250k — validate funding path early');
   }
 
