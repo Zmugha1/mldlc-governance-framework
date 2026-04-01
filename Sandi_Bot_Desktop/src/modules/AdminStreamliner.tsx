@@ -43,9 +43,11 @@ import { Progress } from '@/components/ui/progress';
 import { knowledgeGraph } from '@/data/sampleClients';
 import { bulkImportFolder, bulkImportRetryFailed, type BulkImportResult, type ImportProgress } from '@/services/bulkImportService';
 import {
-  bulkReExtractVisionAndTumay,
+  extractYou2Profile,
+  processDocument,
   bulkReExtractFathomSessions
 } from '@/services/documentExtractionService';
+import type { DocumentType } from '@/types/extractions';
 import { getAllClients, getRankedClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
 import { getAuditLog, auditEntriesToActivityLogs, logEntry } from '@/services/auditService';
 import { dbSelect, dbExecute } from '@/services/db';
@@ -86,6 +88,39 @@ function truncateFeedbackText(s: string | null | undefined, maxLen: number): str
   const t = (s ?? '').trim();
   if (t.length <= maxLen) return t;
   return `${t.slice(0, maxLen)}…`;
+}
+
+function baseFileNameFromPathOrName(fileNameOrPath: string): string {
+  const parts = fileNameOrPath.split(/[/\\]/);
+  return parts[parts.length - 1] ?? fileNameOrPath;
+}
+
+function isVisionStatementOutputFileName(fileName: string): boolean {
+  const base = baseFileNameFromPathOrName(fileName);
+  const lower = base.toLowerCase();
+  if (lower.includes('vision statement')) return true;
+  if (lower.includes('vision_statement')) return true;
+  const compact = lower.replace(/[^a-z0-9]/g, '');
+  return compact.includes('visionstatement');
+}
+
+function isOfficeDocExcludedExtension(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  return (
+    lower.endsWith('.pptx') ||
+    lower.endsWith('.ppt') ||
+    lower.endsWith('.docx')
+  );
+}
+
+function looksLikeYou2PdfPath(lower: string): boolean {
+  if (!lower.endsWith('.pdf') || lower.includes('tumay')) return false;
+  return (
+    lower.includes('you2') ||
+    lower.includes('you2.0') ||
+    lower.includes('you 2') ||
+    lower.includes('you_2')
+  );
 }
 
 function feedbackTypeBadgeClass(feedbackType: string): string {
@@ -374,7 +409,7 @@ export default function AdminStreamliner() {
   const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
   const [reExtractRunning, setReExtractRunning] = useState(false);
   const [reExtractResult, setReExtractResult] = useState<{
-    vision_success: number;
+    you2_success: number;
     tumay_success: number;
     errors: string[];
   } | null>(null);
@@ -905,9 +940,20 @@ ${workingText}`;
     }
   };
 
-  const handleReExtractVisionTumay = async () => {
+  const handleReExtractYou2AndTumay = async () => {
     setReExtractRunning(true);
     setReExtractResult(null);
+    const BASE =
+      'C:\\Users\\zumah\\SandiBot\\clients';
+    const BUCKETS: Record<string, string> = {
+      active: 'Active',
+      converted: 'WIN',
+      paused: 'Paused',
+    };
+    let you2_success = 0;
+    let tumay_success = 0;
+    const errors: string[] = [];
+
     try {
       const allClients = await dbSelect<{
         id: string;
@@ -918,11 +964,124 @@ ${workingText}`;
          FROM clients ORDER BY name`,
         []
       );
-      const result = await bulkReExtractVisionAndTumay(allClients);
-      setReExtractResult(result);
+
+      for (const client of allClients) {
+        const bucket = BUCKETS[client.outcome_bucket] ?? 'Active';
+        const folderName =
+          client.name.replace(/\s+/g, '_');
+        const searchPaths = [
+          `${BASE}\\${bucket}\\${folderName}`,
+          `${BASE}\\${bucket}`,
+        ];
+
+        let you2Done = false;
+        let tumayDone = false;
+
+        for (const searchPath of searchPaths) {
+          let files: string[] = [];
+          try {
+            files = await invoke<string[]>(
+              'list_directory',
+              { path: searchPath }
+            );
+          } catch (e) {
+            errors.push(
+              `[You2/TUMAY] list_directory failed for ${searchPath}: ${String(e)}`
+            );
+            continue;
+          }
+
+          const clientFiles = files.filter((f) => {
+            const fname =
+              f.split('\\').pop() ??
+              f.split('/').pop() ??
+              '';
+            const normalizedName =
+              client.name.toLowerCase().trim();
+            const normalizedFileName =
+              fname.toLowerCase().trim();
+            const normalizedPath = f.toLowerCase();
+            return (
+              normalizedFileName.startsWith(
+                normalizedName
+              ) || normalizedPath.includes(normalizedName)
+            );
+          });
+
+          for (const filePath of clientFiles) {
+            const bulkBase =
+              filePath.split(/[/\\]/).pop() ??
+              filePath;
+            if (isVisionStatementOutputFileName(bulkBase)) {
+              console.log(
+                'Skipping Vision Statement file — not a source document:',
+                bulkBase
+              );
+              continue;
+            }
+            if (isOfficeDocExcludedExtension(filePath)) {
+              continue;
+            }
+
+            const lower = filePath.toLowerCase();
+
+            if (
+              !you2Done &&
+              looksLikeYou2PdfPath(lower)
+            ) {
+              const res = await extractYou2Profile(
+                client.id,
+                '',
+                bulkBase,
+                filePath
+              );
+              if (res.success) {
+                you2_success++;
+                you2Done = true;
+              } else {
+                errors.push(
+                  `You2 failed: ${client.name} — ${res.error ?? 'unknown'}`
+                );
+              }
+            }
+
+            if (
+              !tumayDone &&
+              lower.includes('tumay') &&
+              lower.endsWith('.pdf')
+            ) {
+              const r = await processDocument(
+                client.id,
+                'tumay' as DocumentType,
+                '',
+                bulkBase,
+                filePath
+              );
+              if (r.success) {
+                tumay_success++;
+                tumayDone = true;
+              } else {
+                errors.push(
+                  `TUMAY failed: ${client.name}`
+                );
+              }
+            }
+          }
+        }
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, 500)
+        );
+      }
+
+      setReExtractResult({
+        you2_success,
+        tumay_success,
+        errors,
+      });
     } catch (err) {
       setReExtractResult({
-        vision_success: 0,
+        you2_success: 0,
         tumay_success: 0,
         errors: [String(err)],
       });
@@ -1151,10 +1310,10 @@ ${workingText}`;
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={handleReExtractVisionTumay}
+                  onClick={handleReExtractYou2AndTumay}
                   disabled={reExtractRunning || importRunning}
                 >
-                  Re-Extract Vision & TUMAY
+                  Re-Extract You 2.0 & TUMAY
                 </Button>
                 <Button
                   variant="outline"
@@ -1365,7 +1524,7 @@ ${workingText}`;
               )}
               {reExtractResult && !reExtractRunning && (
                 <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
-                  <p className="font-medium text-slate-800">Vision: {reExtractResult.vision_success}/17 extracted</p>
+                  <p className="font-medium text-slate-800">You 2.0: {reExtractResult.you2_success}/17 extracted</p>
                   <p className="font-medium text-slate-800">TUMAY: {reExtractResult.tumay_success}/17 extracted</p>
                   {reExtractResult.errors.length > 0 && (
                     <div>
