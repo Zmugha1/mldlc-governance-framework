@@ -345,6 +345,54 @@ async fn check_ollama_status() -> bool {
         .unwrap_or(false)
 }
 
+#[tauri::command]
+async fn ollama_embed(
+    text: String,
+    model: Option<String>,
+) -> Result<Vec<f64>, String> {
+    let model_name = model
+        .unwrap_or_else(|| "nomic-embed-text".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let body = serde_json::json!({
+        "model": model_name,
+        "prompt": text
+    });
+
+    let response = client
+        .post("http://localhost:11434/api/embeddings")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Ollama embed request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Ollama embed error: {}", response.status()));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let embedding = json["embedding"]
+        .as_array()
+        .ok_or("No embedding in response")?
+        .iter()
+        .filter_map(|v| v.as_f64())
+        .collect::<Vec<f64>>();
+
+    if embedding.is_empty() {
+        return Err("Empty embedding returned".to_string());
+    }
+
+    Ok(embedding)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // ─────────────────────────────────────────────
@@ -1007,6 +1055,7 @@ pub fn run() {
             parse_tumay,
             ollama_generate,
             check_ollama_status,
+            ollama_embed,
             bulk_import_folder,
             pdf_parser::parse_pdf,
             file_watcher::watch_folder,
