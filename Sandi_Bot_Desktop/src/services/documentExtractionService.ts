@@ -1078,6 +1078,60 @@ Schema:
 // FATHOM EXTRACTION
 // ─────────────────────────────────────
 
+async function countCoachingSessionNearDuplicates(
+  clientId: string,
+  sessionDate: string,
+  incomingNotes: string | null
+): Promise<number> {
+  const rows = await dbSelect<{ count: number }>(
+    `SELECT COUNT(*) as count
+     FROM coaching_sessions
+     WHERE client_id = ?
+       AND session_date = ?
+       AND ABS(
+         LENGTH(COALESCE(notes, '')) -
+         LENGTH(?)
+       ) < 50`,
+    [clientId, sessionDate, incomingNotes ?? '']
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+async function runFathomSessionDuplicateCleanups(): Promise<void> {
+  try {
+    await dbExecute(
+      `DELETE FROM coaching_sessions
+       WHERE id NOT IN (
+         SELECT MIN(id)
+         FROM coaching_sessions
+         GROUP BY
+           client_id,
+           session_date,
+           SUBSTR(COALESCE(notes,''), 1, 100)
+       )
+       AND client_id IN (
+         SELECT id FROM clients
+         WHERE outcome_bucket != 'inactive'
+       )`,
+      []
+    );
+    await dbExecute(
+      `DELETE FROM coaching_sessions
+       WHERE session_date = '2026-02-19'
+         AND stage = 'Possibilities'
+         AND (
+           notes IS NULL
+           OR notes = ''
+           OR LENGTH(notes) < 20
+         )`,
+      []
+    );
+    console.log('Duplicate session cleanup complete');
+  } catch (e) {
+    console.error('[FATHOM-BULK] duplicate cleanup failed:', e);
+  }
+}
+
 export async function extractFathomSession(
   clientId: string,
   rawText: string,
@@ -1148,6 +1202,30 @@ export async function extractFathomSession(
       )?.insight_surfaced
       ?? null;
 
+    const sessionDate = inferSessionDate(transcriptText);
+    const dupCount = await countCoachingSessionNearDuplicates(
+      clientId,
+      sessionDate,
+      summary
+    );
+    if (dupCount > 0) {
+      const nm = await dbSelect<{ name: string }>(
+        'SELECT name FROM clients WHERE id = ? LIMIT 1',
+        [clientId]
+      );
+      console.log(
+        'Skipping duplicate session for',
+        nm[0]?.name ?? clientId,
+        'on',
+        sessionDate
+      );
+      return {
+        success: true,
+        data: parsed as unknown as FathomSession,
+        extraction_status: 'complete',
+      };
+    }
+
     const insertResult = await dbExecute(
       `INSERT INTO coaching_sessions
        (client_id, session_date, session_number, stage,
@@ -1155,7 +1233,7 @@ export async function extractFathomSession(
        VALUES ($1,$2,$3,$4,$5,$6,CURRENT_TIMESTAMP)`,
       [
         clientId,
-        inferSessionDate(transcriptText),
+        sessionDate,
         null,
         stage,
         summary,
@@ -1691,6 +1769,7 @@ export async function bulkReExtractFathomSessions(): Promise<{
   errors: string[];
 }> {
   console.log('[FATHOM-BULK] starting');
+  await runFathomSessionDuplicateCleanups();
   const FATHOM_SYSTEM_PROMPT =
     'You extract structured coaching ' +
     'intelligence from franchise coaching ' +
@@ -1924,6 +2003,35 @@ Transcript:
         ?? 'IC';
 
       if (targetSessionId === null) {
+        const summary =
+          (
+            parsed.block_reflection as
+              | { mindset_shift?: string; insight_surfaced?: string }
+              | null
+          )?.mindset_shift
+          ?? (
+            parsed.block_reflection as
+              | { mindset_shift?: string; insight_surfaced?: string }
+              | null
+          )?.insight_surfaced
+          ?? null;
+
+        const dupCount = await countCoachingSessionNearDuplicates(
+          client.id,
+          inferredDate,
+          summary
+        );
+        if (dupCount > 0) {
+          console.log(
+            'Skipping duplicate session for',
+            client.name,
+            'on',
+            inferredDate
+          );
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
+
         await dbExecute(
           `INSERT INTO coaching_sessions
            (client_id, session_date, stage,
