@@ -848,73 +848,61 @@ export async function extractYou2Profile(
 
     // PASS 2 — LLM fallback only if deterministic returned empty vision
     let profile: You2Profile | null = null;
-    {
-      const prompt = await loadPrompt('you2_extraction');
-
-      const systemPrompt = `${prompt}
-
-You are extracting data from TES You 2.0 and TUMAY intake forms.
-The text may be from one or both documents concatenated.
-Return ONLY valid JSON. No explanation. No markdown. JSON only.
-
-CRITICAL EXTRACTION RULES:
+    try {
+      const prompt = `You are extracting data
+from TES You 2.0 and TUMAY intake forms.
+Return ONLY valid JSON. No explanation.
+No markdown. JSON only.
 
 ONE-YEAR VISION:
-The answer to "If we looked at your life a year from today..."
-may be one paragraph or two separate lines (professional + personal).
-Concatenate all lines into a single one_year_vision string.
+The answer to "If we looked at your life
+a year from today..." may be one paragraph
+or two separate lines. Concatenate all
+lines into a single one_year_vision string.
 
-DANGERS, STRENGTHS, OPPORTUNITIES — CRITICAL RULE:
-ALWAYS extract from the "Top 3 Dangers & Goals",
-"Top 3 Strengths & Goals", and "Top 3 Opportunities & Goals"
-sections. These are always present and contain the real data.
-Do NOT rely on the Yes/No checkbox list above these sections.
-Clients frequently check No on all standard items and write
-freeform entries in the Top 3 sections only.
-Format: each item has a "Danger/Strength/Opportunity:" line
-followed by a "Goal:" line. Extract both as paired objects.
+DANGERS, STRENGTHS, OPPORTUNITIES:
+ALWAYS extract from "Top 3 Dangers & Goals"
+"Top 3 Strengths & Goals" and
+"Top 3 Opportunities & Goals" sections.
+Do NOT use the Yes/No checkbox list.
+Each item has a "Danger/Strength/
+Opportunity:" line followed by "Goal:".
+Extract both as paired objects.
+If no labeled sections found extract
+the three most prominent pain points
+strengths and opportunities from
+the vision text itself.
+
+REASONS FOR CHANGE (TUMAY Question 3):
+Extract ONLY items marked Yes.
+Never include No items.
+
+SKILLS (TUMAY Question 6):
+Extract only items marked Yes
+as a plain string array.
 
 SPOUSE DATA:
-spouse_role: map "Unsure" → "unsure", "Yes" → "owner", "No" → "none"
-spouse_on_calls: from "Will they be involved in future calls"
-spouse_mindset_verbatim: exact text from "Their mindset" field
+spouse_role: "owner" if Yes owner
+  "employee" if Yes employee
+  "unsure" if Unsure
+  "none" if No or blank
+spouse_on_calls: from "Will they be
+  involved in future calls"
+  "yes" or "no"
 
-REASONS FOR CHANGE (from TUMAY Question 3):
-Extract only the items marked Yes.
-Labels: "I'm tired of the corporate world", "I want more
-independence", "Improving my lifestyle is important", etc.
+NET WORTH: Extract exactly as written.
+  Example: "250k - 500k" or "1M+"
 
-SKILLS (from TUMAY Question 6):
-Extract only items marked Yes as a string array.
+CREDIT SCORE: Extract the number only.
+  Use 0 if not provided.
 
-LOCATION PREFERENCE:
-Extract the item with the LOWEST rank number (1 = most favorite).
-If two items share the lowest rank, concatenate both
-e.g. "Home-based / Mobile".
-If no item is ranked 1, use the item with the lowest
-rank number present.
+LAUNCH TIMELINE: Extract as written.
+  Example: "6 - 12 months"
 
-TIME COMMITMENT:
-May be multiple selections. Concatenate all with semicolons.
-e.g. "Full-Time Owner Operated; Semi-Absentee at Launch"
+TIME COMMITMENT: Concatenate all
+  selections with semicolons.
 
-NET WORTH:
-Extract exactly as written. Do not reformat.
-e.g. "50k - 250k" or "1M+" — keep as-is.
-
-PRIOR BUSINESS EXPERIENCE (TUMAY Question 8, first field):
-Extract the freeform explanation. Empty string if blank.
-
-SELF SUFFICIENCY EXCITEMENT (TUMAY Question 8, second field):
-"As you explore Your Career 2.0, what excites you..."
-Extract the freeform explanation. Empty string if blank.
-
-ADDITIONAL STAKEHOLDERS (TUMAY Question 2):
-"Is there anyone else that would potentially have a role..."
-Extract name and relationship for each person listed.
-Empty array if none.
-
-Schema:
+Return this exact JSON structure:
 {
   "client_name": "string",
   "one_year_vision": "string",
@@ -923,22 +911,34 @@ Schema:
   "spouse_on_calls": "yes|no",
   "spouse_mindset_verbatim": "string",
   "financial_net_worth_range": "string",
-  "credit_score": number,
+  "credit_score": 0,
   "launch_timeline": "string",
   "time_commitment": "string",
-  "dangers": [{ "danger": "string", "goal": "string" }],
-  "strengths": [{ "strength": "string", "goal": "string" }],
-  "opportunities": [{ "opportunity": "string", "goal": "string" }],
+  "dangers": [
+    {"danger": "string", "goal": "string"}
+  ],
+  "strengths": [
+    {"strength": "string", "goal": "string"}
+  ],
+  "opportunities": [
+    {"opportunity": "string", "goal": "string"}
+  ],
   "areas_of_interest": ["string"],
   "reasons_for_change": ["string"],
   "location_preference": "string",
   "skills": ["string"],
   "prior_business_experience": "string",
   "self_sufficiency_excitement": "string",
-  "additional_stakeholders": [{ "name": "string", "relationship": "string" }]
+  "additional_stakeholders": [
+    {"name": "string", "relationship": "string"}
+  ]
 }`;
 
-      const rawResponse = await callOllamaYou2(systemPrompt, workingText, YOU2_FORMAT_SCHEMA);
+      const rawResponse = await callOllamaYou2(
+        prompt,
+        workingText,
+        YOU2_FORMAT_SCHEMA
+      );
       profile = parseExtractionResponse<You2Profile>(rawResponse);
 
       // Override with deterministic top 3 if LLM missed them
@@ -949,6 +949,74 @@ Schema:
         if (deterministic.one_year_vision && !profile.one_year_vision) {
           profile.one_year_vision = deterministic.one_year_vision;
         }
+      }
+    } catch (llmError) {
+      console.warn(
+        'You2 LLM failed, using deterministic:',
+        llmError
+      );
+      if (deterministic.one_year_vision) {
+        const fallbackProfile: You2Profile = {
+          client_name:
+            workingText.split(/\r?\n/)[0]?.trim() || '',
+          one_year_vision: deterministic.one_year_vision,
+          spouse_name: '',
+          spouse_role: 'none',
+          spouse_on_calls: 'no',
+          spouse_mindset_verbatim: '',
+          financial_net_worth_range: '',
+          credit_score: 0,
+          launch_timeline: '',
+          time_commitment: '',
+          dangers: deterministic.dangers,
+          strengths: deterministic.strengths,
+          opportunities: deterministic.opportunities,
+          areas_of_interest: [],
+          reasons_for_change: [],
+          location_preference: '',
+          skills: [],
+          prior_business_experience: '',
+          self_sufficiency_excitement: '',
+          additional_stakeholders: [],
+        };
+        await dbExecute(
+          `INSERT OR REPLACE INTO client_you2_profiles
+           (client_id, one_year_vision, spouse_name, spouse_role,
+            spouse_on_calls, spouse_mindset, financial_net_worth_range,
+            credit_score, launch_timeline, time_commitment, dangers,
+            strengths, opportunities, areas_of_interest,
+            reasons_for_change, location_preference, skills,
+            prior_business_experience, self_sufficiency_excitement,
+            additional_stakeholders, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,CURRENT_TIMESTAMP)`,
+          [
+            clientId,
+            fallbackProfile.one_year_vision,
+            fallbackProfile.spouse_name,
+            fallbackProfile.spouse_role,
+            fallbackProfile.spouse_on_calls,
+            fallbackProfile.spouse_mindset_verbatim,
+            fallbackProfile.financial_net_worth_range,
+            fallbackProfile.credit_score,
+            fallbackProfile.launch_timeline,
+            fallbackProfile.time_commitment,
+            JSON.stringify(fallbackProfile.dangers),
+            JSON.stringify(fallbackProfile.strengths),
+            JSON.stringify(fallbackProfile.opportunities),
+            JSON.stringify(fallbackProfile.areas_of_interest),
+            JSON.stringify(fallbackProfile.reasons_for_change),
+            fallbackProfile.location_preference,
+            JSON.stringify(fallbackProfile.skills),
+            fallbackProfile.prior_business_experience,
+            fallbackProfile.self_sufficiency_excitement,
+            JSON.stringify(fallbackProfile.additional_stakeholders),
+          ]
+        );
+        return {
+          success: true,
+          data: fallbackProfile,
+          extraction_status: 'complete',
+        };
       }
     }
 
