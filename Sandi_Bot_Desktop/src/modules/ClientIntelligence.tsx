@@ -1875,15 +1875,34 @@ function ClientDetailModal({
       commitment += 7;
     }
 
-    let financial = 0;
-    if ((you2Details?.financial_net_worth_range ?? '').trim().length > 0) {
-      financial += 10;
+    let financialScore = 0;
+    const you2Profile = you2Details;
+    const netWorth = you2Profile?.financial_net_worth_range;
+    const creditScore = you2Profile?.credit_score;
+    const timeCommit = you2Profile?.time_commitment;
+
+    if (
+      netWorth &&
+      netWorth !== '' &&
+      netWorth !== 'null' &&
+      netWorth !== '0'
+    ) {
+      financialScore += 10;
     }
-    const cs = you2Details?.credit_score;
-    if (cs != null && cs > 0) financial += 8;
-    if ((you2Details?.time_commitment ?? '').trim().length > 0) {
-      financial += 7;
+
+    if (creditScore && Number(creditScore) > 0) {
+      financialScore += 8;
     }
+
+    if (
+      timeCommit &&
+      timeCommit !== '' &&
+      timeCommit !== 'null'
+    ) {
+      financialScore += 7;
+    }
+
+    const financial = financialScore;
 
     let discovery = 0;
     const discoveryLocked = !isC4C5;
