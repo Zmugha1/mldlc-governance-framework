@@ -1214,20 +1214,6 @@ export default function ExecutiveDashboard() {
     atRiskGreetingCount,
   ]);
 
-  const draftContactedNum = Math.max(0, Math.floor(Number(seekerContactedInput) || 0));
-  const draftRespondedNum = Math.max(0, Math.floor(Number(seekerRespondedInput) || 0));
-  const engagementPreviewPct =
-    draftContactedNum > 0
-      ? Math.round((draftRespondedNum / draftContactedNum) * 1000) / 10
-      : null;
-
-  const persistedEngagementPct =
-    contactedLogged != null &&
-    contactedLogged > 0 &&
-    respondedLogged !== undefined
-      ? Math.round((respondedLogged / contactedLogged) * 1000) / 10
-      : null;
-
   const persistWeeklySeekerEntries = useCallback(async (next: WeeklySeekerEntry[]) => {
     if (!anchorSeekerLogClientId) return;
     const json = JSON.stringify(next);
@@ -1646,14 +1632,25 @@ export default function ExecutiveDashboard() {
               </span>
               {` — contacted ${contactedLogged}, responded ${respondedLogged}`}
             </span>
-            {persistedEngagementPct !== null ? (
-              <span
-                className="w-full font-semibold sm:w-auto"
-                style={{
-                  color: persistedEngagementPct >= 65 ? '#22C55E' : '#F05F57',
-                }}
-              >
-                This week: {persistedEngagementPct}% engagement rate
+            {contactedLogged != null &&
+            respondedLogged !== undefined ? (
+              <span className="flex w-full flex-col gap-0.5 font-semibold sm:w-auto">
+                <span
+                  style={{
+                    color:
+                      contactedLogged >= 15 ? '#3BBFBF' : '#F05F57',
+                  }}
+                >
+                  Scheduled: {contactedLogged} this week (target 15)
+                </span>
+                <span
+                  style={{
+                    color:
+                      respondedLogged >= 10 ? '#3BBFBF' : '#F05F57',
+                  }}
+                >
+                  Spoken To: {respondedLogged} this week (target 10)
+                </span>
               </span>
             ) : null}
             <button
@@ -1669,7 +1666,7 @@ export default function ExecutiveDashboard() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
               <div className="space-y-2">
                 <label className="block text-sm font-bold" style={{ color: '#2D4459' }} htmlFor="seeker-contacted-week">
-                  Seekers contacted
+                  Seekers Scheduled
                 </label>
                 <input
                   id="seeker-contacted-week"
@@ -1683,12 +1680,12 @@ export default function ExecutiveDashboard() {
                   style={{ borderColor: '#C8E8E5' }}
                 />
                 <p className="text-[12px]" style={{ color: '#7A8F95' }}>
-                  target: 22 per week
+                  target: 15 per week
                 </p>
               </div>
               <div className="space-y-2">
                 <label className="block text-sm font-bold" style={{ color: '#2D4459' }} htmlFor="seeker-responded-week">
-                  Seekers who replied or booked
+                  Seekers Spoken To
                 </label>
                 <input
                   id="seeker-responded-week"
@@ -1702,20 +1699,10 @@ export default function ExecutiveDashboard() {
                   style={{ borderColor: '#C8E8E5' }}
                 />
                 <p className="text-[12px]" style={{ color: '#7A8F95' }}>
-                  target: 65% engagement
+                  target: 10 per week
                 </p>
               </div>
             </div>
-            {engagementPreviewPct !== null ? (
-              <p
-                className="text-sm font-semibold"
-                style={{
-                  color: engagementPreviewPct >= 65 ? '#22C55E' : '#F05F57',
-                }}
-              >
-                This week: {engagementPreviewPct}% engagement rate
-              </p>
-            ) : null}
             <button
               type="button"
               onClick={() => void handleSaveSeekerWeek()}
