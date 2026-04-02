@@ -312,17 +312,28 @@ function filterPinkFlagsByKnownNetWorth(
   mergedNetWorthRange: string
 ): string[] {
   const netWorthRange = mergedNetWorthRange.trim();
-  const allowNetWorthFlag =
-    Boolean(netWorthRange) &&
-    netWorthRange !== '' &&
-    netWorthRange !== 'null' &&
-    netWorthRange !== 'Not provided' &&
-    netWorthRange !== '0' &&
-    isNetWorthBelowThreshold(netWorthRange);
   return flags.filter((f) => {
     if (!isNetWorthRangePinkFlag(f)) return true;
-    return allowNetWorthFlag;
+    if (
+      netWorthRange &&
+      netWorthRange !== '' &&
+      netWorthRange !== 'null' &&
+      netWorthRange !== 'Not provided' &&
+      netWorthRange !== '0' &&
+      isNetWorthBelowThreshold(netWorthRange)
+    ) {
+      return true;
+    }
+    return false;
   });
+}
+
+function displayTimeCommitmentText(
+  timeCommitment: string | null | undefined
+): string {
+  return (timeCommitment || '')
+    .replace(/@/g, ' ; ')
+    .replace(/;(\S)/g, '; $1');
 }
 
 function countActivePinkFlagsOnClient(client: Client): number {
@@ -1950,29 +1961,41 @@ function ClientDetailModal({
 
     const row = tumayReadinessProfile;
     const jd = tumayData;
-    const tumayNw =
-      (row?.financial_net_worth_range ?? '').trim() ||
-      (jd ? String(jd.financial_net_worth_range ?? '').trim() : '') ||
-      '';
-    const tumayTc =
-      (row?.time_commitment ?? '').trim() ||
-      (jd ? String(jd.time_commitment ?? '').trim() : '') ||
-      '';
     const tumayCsRow = row ? parseCreditRaw(row.credit_score) : 0;
     const tumayCsJson = jd ? parseCreditRaw(jd.credit_score) : 0;
-    const tumayCs = tumayCsRow > 0 ? tumayCsRow : tumayCsJson;
+    const tumayProfile = {
+      financial_net_worth_range:
+        (row?.financial_net_worth_range ?? '').trim() ||
+        (jd ? String(jd.financial_net_worth_range ?? '').trim() : '') ||
+        '',
+      credit_score: tumayCsRow > 0 ? tumayCsRow : tumayCsJson,
+      time_commitment:
+        (row?.time_commitment ?? '').trim() ||
+        (jd ? String(jd.time_commitment ?? '').trim() : '') ||
+        '',
+    };
 
     const you2Profile = you2Details;
     const netWorth =
-      (you2Profile?.financial_net_worth_range ?? '').trim() ||
-      tumayNw ||
-      '';
+      you2Profile?.financial_net_worth_range &&
+      you2Profile.financial_net_worth_range !== '' &&
+      you2Profile.financial_net_worth_range !== 'null' &&
+      you2Profile.financial_net_worth_range !== '0'
+        ? you2Profile.financial_net_worth_range
+        : tumayProfile.financial_net_worth_range || '';
+
     const creditScore =
-      you2Profile?.credit_score != null && you2Profile.credit_score > 0
-        ? you2Profile.credit_score
-        : tumayCs || 0;
+      you2Profile?.credit_score &&
+      Number(you2Profile.credit_score) > 0
+        ? Number(you2Profile.credit_score)
+        : Number(tumayProfile.credit_score) || 0;
+
     const timeCommit =
-      (you2Profile?.time_commitment ?? '').trim() || tumayTc || '';
+      you2Profile?.time_commitment &&
+      you2Profile.time_commitment !== '' &&
+      you2Profile.time_commitment !== 'null'
+        ? you2Profile.time_commitment
+        : tumayProfile.time_commitment || '';
 
     return { netWorth, creditScore, timeCommit };
   }, [you2Details, tumayReadinessProfile, tumayData]);
@@ -2016,7 +2039,7 @@ function ClientDetailModal({
       financialScore += 10;
     }
 
-    if (creditScore && Number(creditScore) > 0) {
+    if (creditScore > 0) {
       financialScore += 8;
     }
 
@@ -3005,10 +3028,15 @@ function ClientDetailModal({
         you2Details?.launch_timeline?.trim() ||
         String(tumayData?.launch_timeline ?? '').trim() ||
         '—',
-      timeCommitment:
-        you2Details?.time_commitment?.trim() ||
-        String(tumayData?.time_commitment ?? '').trim() ||
-        '—',
+      timeCommitment: (() => {
+        const merged =
+          you2Details?.time_commitment?.trim() ||
+          String(tumayData?.time_commitment ?? '').trim() ||
+          '';
+        return merged
+          ? displayTimeCommitmentText(merged)
+          : '—';
+      })(),
       spouseName: you2Details?.spouse_name?.trim() || '—',
       spouseRole: you2Details?.spouse_role?.trim() || '—',
       reasonsForChange,
@@ -5384,7 +5412,12 @@ function ClientDetailModal({
                   {you2Details.financial_net_worth_range && <p><span className="font-semibold">Net worth range:</span> {you2Details.financial_net_worth_range}</p>}
                   {you2Details.credit_score !== null && <p><span className="font-semibold">Credit score:</span> {you2Details.credit_score}</p>}
                   {you2Details.launch_timeline && <p><span className="font-semibold">Launch timeline:</span> {you2Details.launch_timeline}</p>}
-                  {you2Details.time_commitment && <p><span className="font-semibold">Time commitment:</span> {you2Details.time_commitment}</p>}
+                  {you2Details.time_commitment && (
+                    <p>
+                      <span className="font-semibold">Time commitment:</span>{' '}
+                      {displayTimeCommitmentText(you2Details.time_commitment)}
+                    </p>
+                  )}
                   {you2Details.areas_of_interest.length > 0 && (
                     <div>
                       <p className="font-semibold mb-1">Areas of interest:</p>
@@ -5482,7 +5515,14 @@ function ClientDetailModal({
                         <div><span className="font-medium">Phone:</span> {toDisplayValue(tumayData.phone ?? contact.phone)}</div>
                         <div><span className="font-medium">City + State:</span> {toDisplayValue([tumayData.city, tumayData.state].filter(Boolean).join(', '))}</div>
                         <div><span className="font-medium">Timeline:</span> {toDisplayValue(tumayData.launch_timeline)}</div>
-                        <div><span className="font-medium">Time Commitment:</span> {toDisplayValue(tumayData.time_commitment)}</div>
+                        <div>
+                          <span className="font-medium">Time Commitment:</span>{' '}
+                          {toDisplayValue(
+                            displayTimeCommitmentText(
+                              String(tumayData.time_commitment ?? '')
+                            )
+                          )}
+                        </div>
                       </div>
                     </div>
 
