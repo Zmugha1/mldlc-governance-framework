@@ -118,6 +118,8 @@ type GapRowDef = {
   actionLabel: string;
   onAction: () => void;
   nullTooltip?: string;
+  /** Shown below "—" when actual is null or 0 (Where to Focus). */
+  emptyHint?: string;
   /** C4 keeps legacy green; funnel rows use teal vs coral */
   colorMode?: 'funnel' | 'legacy';
 };
@@ -350,12 +352,12 @@ export default function BusinessGoals() {
     year: 'numeric',
   });
 
-  const c1ScheduledNullTip =
-    'Mark sessions as scheduled on client Fathom tabs to calculate your C1 show rate.';
-  const icScheduledNullTip =
-    'Mark sessions as scheduled on client Fathom tabs to calculate your IC session held rate.';
-  const movementNullTip =
-    'Move clients between stages to calculate this rate';
+  const IC_EMPTY_HINT =
+    'Mark IC sessions scheduled in Client Intelligence to calculate';
+  const C1_EMPTY_HINT =
+    'Mark C1 sessions scheduled in Client Intelligence to calculate';
+  const C2_EMPTY_HINT = 'Move C1 clients forward to calculate';
+  const C3_EMPTY_HINT = 'Move C2 clients forward to calculate';
 
   const gapRows: GapRowDef[] = [
     {
@@ -366,7 +368,8 @@ export default function BusinessGoals() {
       target: TARGET_IC,
       actionLabel: 'Mark sessions scheduled →',
       onAction: () => navigateToClientIntelligence(),
-      nullTooltip: icScheduledNullTip,
+      nullTooltip: IC_EMPTY_HINT,
+      emptyHint: IC_EMPTY_HINT,
       colorMode: 'funnel',
     },
     {
@@ -377,7 +380,8 @@ export default function BusinessGoals() {
       target: TARGET_C1,
       actionLabel: 'Mark sessions scheduled →',
       onAction: () => navigateToClientIntelligence(),
-      nullTooltip: c1ScheduledNullTip,
+      nullTooltip: C1_EMPTY_HINT,
+      emptyHint: C1_EMPTY_HINT,
       colorMode: 'funnel',
     },
     {
@@ -388,7 +392,8 @@ export default function BusinessGoals() {
       target: TARGET_C2,
       actionLabel: 'Review C1 clients →',
       onAction: () => navigateToClientIntelligence('C1'),
-      nullTooltip: movementNullTip,
+      nullTooltip: C2_EMPTY_HINT,
+      emptyHint: C2_EMPTY_HINT,
       colorMode: 'funnel',
     },
     {
@@ -399,7 +404,8 @@ export default function BusinessGoals() {
       target: TARGET_C3,
       actionLabel: 'Review C2 clients →',
       onAction: () => navigateToClientIntelligence('C2'),
-      nullTooltip: movementNullTip,
+      nullTooltip: C3_EMPTY_HINT,
+      emptyHint: C3_EMPTY_HINT,
       colorMode: 'funnel',
     },
     {
@@ -611,9 +617,14 @@ export default function BusinessGoals() {
         <div className="mt-2">
           {gapRows.map((row, idx) => {
             const mode = row.colorMode ?? 'funnel';
-            const met = row.actual !== null && row.actual >= row.target;
+            const showAsEmpty =
+              row.actual === null ||
+              (row.emptyHint != null && row.actual === 0);
+            const showEmptyHint = Boolean(row.emptyHint) && showAsEmpty;
+            const met =
+              !showAsEmpty && row.actual !== null && row.actual >= row.target;
             const actualColor =
-              row.actual === null
+              showAsEmpty
                 ? '#7A8F95'
                 : mode === 'legacy'
                   ? met
@@ -623,8 +634,8 @@ export default function BusinessGoals() {
                     ? '#3BBFBF'
                     : '#F05F57';
             const isLast = idx === gapRows.length - 1;
-            const actualCell =
-              row.actual === null ? (
+            const actualMain =
+              showAsEmpty ? (
                 row.nullTooltip ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -656,10 +667,23 @@ export default function BusinessGoals() {
                   <p style={{ fontSize: 11, color: '#7A8F95' }}>{row.description}</p>
                 </div>
                 <div
-                  className="w-full min-w-[72px] basis-[20%] text-left font-bold tabular-nums md:text-center"
+                  className="flex w-full min-w-[72px] basis-[20%] flex-col text-left md:items-center md:text-center"
                   style={{ fontSize: 20, color: actualColor }}
                 >
-                  {actualCell}
+                  <span className="font-bold tabular-nums">{actualMain}</span>
+                  {showEmptyHint ? (
+                    <p
+                      className="max-w-[min(100%,220px)] font-normal md:mx-auto"
+                      style={{
+                        fontSize: 11,
+                        color: '#7A8F95',
+                        fontStyle: 'italic',
+                        marginTop: 4,
+                      }}
+                    >
+                      {row.emptyHint}
+                    </p>
+                  ) : null}
                 </div>
                 <div
                   className="hidden w-full basis-[15%] justify-center text-center md:flex"
