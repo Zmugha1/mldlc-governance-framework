@@ -1081,22 +1081,13 @@ export default function ExecutiveDashboard() {
       const th = NEED_ATTENTION_GONE_QUIET_DAYS[code];
       if (contactDays <= th) continue;
 
-      const lastSess = sessionStatsByClient.get(cl.id)?.lastDate;
-      const sessTrimmed =
-        lastSess != null && String(lastSess).trim() !== ''
-          ? String(lastSess).trim()
-          : '';
-      const sessionDays = sessTrimmed
-        ? daysSinceCalendarLocal(sessTrimmed)
-        : null;
-
       const earlyStage =
         code === 'IC' ||
         code === 'C1' ||
         code === 'C2' ||
         code === 'C3';
       const reasonLine = earlyStage
-        ? `No session in ${sessionDays ?? contactDays}d — follow up needed`
+        ? `No session in ${contactDays}d — follow up needed`
         : `No contact in ${contactDays}d — validation check needed`;
 
       atRisk.push({
@@ -1162,7 +1153,7 @@ export default function ExecutiveDashboard() {
     for (const e of pinks) push(e);
     for (const e of goneQ) push(e);
     return ordered;
-  }, [clients, discLetterByProfileClientId, sessionStatsByClient]);
+  }, [clients, discLetterByProfileClientId]);
 
   const greetingPlacementRevenueYtd = useMemo(() => {
     let sum = 0;
