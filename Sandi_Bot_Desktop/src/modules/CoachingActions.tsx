@@ -44,6 +44,42 @@ function daysSinceReferenceLocal(isoOrSqlDate: string | null | undefined): numbe
   return Math.floor((today.getTime() - ref.getTime()) / 86_400_000);
 }
 
+/** Signals Needing Response — at-risk when days since last contact exceed this (strictly >). */
+const AT_RISK_LAST_CONTACT_DAYS: Record<PipelineStage, number> = {
+  IC: 14,
+  C1: 21,
+  C2: 14,
+  C3: 14,
+  C4: 60,
+  C5: 60,
+};
+
+function lastContactExceedsAtRiskThreshold(
+  stage: PipelineStage,
+  lastContactDate: string | null | undefined
+): boolean {
+  const threshold = AT_RISK_LAST_CONTACT_DAYS[stage];
+  const days = daysSinceReferenceLocal(lastContactDate);
+  if (days === null) return true;
+  return days > threshold;
+}
+
+function atRiskReasonLine(
+  stage: PipelineStage,
+  lastContactDate: string | null | undefined
+): string {
+  const days = daysSinceReferenceLocal(lastContactDate);
+  const isEarly = stage === 'IC' || stage === 'C1' || stage === 'C2' || stage === 'C3';
+  if (isEarly) {
+    return days === null
+      ? 'No session recorded — follow up needed'
+      : `No session in ${days}d — follow up needed`;
+  }
+  return days === null
+    ? 'No contact recorded — validation check needed'
+    : `No contact in ${days}d — validation check needed`;
+}
+
 function parsePinkFlagsJson(raw: string | null | undefined): string[] {
   try {
     const p = JSON.parse(raw ?? '[]');
@@ -110,7 +146,7 @@ type ClientSignalCard = {
   id: string;
   clientId: string;
   clientName: string;
-  /** 1 = at-risk C3/C4, 2 = 2+ pink, 3 = 1 pink, 4 = gone quiet (updated_at) */
+  /** 1 = at-risk (last contact), 2 = 2+ pink, 3 = 1 pink, 4 = gone quiet (updated_at) */
   sortTier: 1 | 2 | 3 | 4;
   borderColor: string;
   badgeLabel: string;
@@ -161,33 +197,6 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
   );
   const respondedKey = new Set(respondedToday.map((r) => `${r.client_id}:${r.signal_type}`));
 
-  const atRiskRows = await db.select<{
-    id: string;
-    name: string;
-    inferred_stage: string | null;
-    last_contact_date: string | null;
-    pink_flags: string | null;
-    natural_d: number | null;
-    natural_i: number | null;
-    natural_s: number | null;
-    natural_c: number | null;
-  }>(
-    `SELECT c.id, c.name, c.inferred_stage,
-       c.last_contact_date, c.pink_flags,
-       d.natural_d, d.natural_i,
-       d.natural_s, d.natural_c
-     FROM clients c
-     LEFT JOIN client_disc_profiles d
-       ON d.client_id = c.id
-     WHERE c.outcome_bucket = 'active'
-       AND c.inferred_stage IN ('C3', 'C4')
-       AND (
-         c.last_contact_date IS NULL
-         OR c.last_contact_date < date('now', '-14 days')
-       )`,
-    []
-  );
-
   type Acc = {
     clientId: string;
     clientName: string;
@@ -207,17 +216,12 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
     return a;
   }
 
-  for (const r of atRiskRows) {
-    if (respondedKey.has(`${r.id}:at_risk`)) continue;
-    const a = ensureAcc(r.id, r.name);
-    a.atRiskLine = 'No session in 14+ days — C3/C4 client needs attention';
-  }
-
   const clientRows = await db.select<{
     id: string;
     name: string;
     pink_flags: string | null;
     inferred_stage: string | null;
+    last_contact_date: string | null;
     updated_at: string | null;
     outcome_bucket: string | null;
     natural_d: number | null;
@@ -226,7 +230,7 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
     natural_c: number | null;
     gq_stale: number;
   }>(
-    `SELECT c.id, c.name, c.pink_flags, c.inferred_stage, c.updated_at, c.outcome_bucket,
+    `SELECT c.id, c.name, c.pink_flags, c.inferred_stage, c.last_contact_date, c.updated_at, c.outcome_bucket,
             p.natural_d, p.natural_i, p.natural_s, p.natural_c,
             CASE WHEN date(c.updated_at) < date('now', '-14 days') THEN 1 ELSE 0 END AS gq_stale
      FROM clients c
@@ -236,13 +240,21 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
   );
 
   for (const c of clientRows) {
+    const stageCode = normalizeStage(c.inferred_stage ?? '');
     const actPink = activePinkFlags(parsePinkFlagsJson(c.pink_flags));
     if (actPink.length > 0 && !respondedKey.has(`${c.id}:pink_flag`)) {
       const a = ensureAcc(c.id, c.name);
       a.pinkKeys = actPink;
     }
 
-    const stageCode = normalizeStage(c.inferred_stage ?? '');
+    if (
+      !respondedKey.has(`${c.id}:at_risk`) &&
+      lastContactExceedsAtRiskThreshold(stageCode, c.last_contact_date)
+    ) {
+      const a = ensureAcc(c.id, c.name);
+      a.atRiskLine = atRiskReasonLine(stageCode, c.last_contact_date);
+    }
+
     const isC234 = stageCode === 'C2' || stageCode === 'C3' || stageCode === 'C4';
     const staleUpdate =
       isC234 && Number(c.gq_stale) === 1 && !respondedKey.has(`${c.id}:gone_quiet`);
