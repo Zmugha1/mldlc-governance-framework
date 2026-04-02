@@ -8,7 +8,72 @@ import {
 } from './stageReadinessService';
 import type { DashboardStats } from '../types';
 
+const NET_WORTH_PINK_FLAG_TEXT =
+  'Net worth below $250k — validate funding path early';
+
+let netWorthPinkFlagCleanupOnce: Promise<void> | null = null;
+
+/**
+ * Removes stale net-worth pink flags from `clients.pink_flags` when You 2.0 range
+ * is at/above $250k (schema uses JSON on clients — there is no client_pink_flags table).
+ */
+async function cleanupIncorrectNetWorthPinkFlags(): Promise<void> {
+  const rows = await dbSelect<{
+    id: string;
+    pink_flags: string | null;
+    financial_net_worth_range: string | null;
+  }>(
+    `SELECT c.id, c.pink_flags, y.financial_net_worth_range
+     FROM clients c
+     LEFT JOIN client_you2_profiles y ON y.client_id = c.id
+     WHERE c.pink_flags IS NOT NULL
+       AND TRIM(COALESCE(c.pink_flags, '')) NOT IN ('', '[]')`,
+    []
+  );
+
+  for (const r of rows) {
+    const rangeRaw = r.financial_net_worth_range;
+    if (rangeRaw == null || String(rangeRaw).trim() === '') continue;
+    if (isNetWorthBelowThreshold(rangeRaw)) continue;
+
+    let flags: string[];
+    try {
+      const p = JSON.parse(r.pink_flags ?? '[]');
+      if (!Array.isArray(p)) continue;
+      flags = p.filter((x): x is string => typeof x === 'string');
+    } catch {
+      continue;
+    }
+
+    const filtered = flags.filter((f) => {
+      const low = f.toLowerCase();
+      if (low.includes('net worth below')) return false;
+      if (f === NET_WORTH_PINK_FLAG_TEXT) return false;
+      return true;
+    });
+
+    if (filtered.length === flags.length) continue;
+
+    await dbExecute(
+      `UPDATE clients SET pink_flags = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [JSON.stringify(filtered), r.id]
+    );
+  }
+}
+
+function ensureNetWorthPinkFlagCleanup(): Promise<void> {
+  if (!netWorthPinkFlagCleanupOnce) {
+    netWorthPinkFlagCleanupOnce = cleanupIncorrectNetWorthPinkFlags().catch(
+      (e) => {
+        console.error('[clientService] net worth pink flag cleanup failed:', e);
+      }
+    );
+  }
+  return netWorthPinkFlagCleanupOnce;
+}
+
 export async function getAllClients(): Promise<Client[]> {
+  await ensureNetWorthPinkFlagCleanup();
   return dbSelect<Client>(
     `SELECT * FROM clients
      WHERE outcome_bucket IN ('active', 'converted', 'paused')
@@ -17,6 +82,7 @@ export async function getAllClients(): Promise<Client[]> {
 }
 
 export async function getClient(id: string): Promise<Client> {
+  await ensureNetWorthPinkFlagCleanup();
   const results = await dbSelect<Client>(
     `SELECT * FROM clients WHERE id = $1`,
     [id]
@@ -402,33 +468,42 @@ function parseNetWorthMoneyToken(
 }
 
 /**
- * True when stored You 2.0 net worth range is strictly below the ~$250k band
- * (e.g. "50k - 250k"), not at/above it (e.g. "250k - 500k").
+ * True when You 2.0 net worth range is below $250k (fires pink flag).
+ * Below: "Below $50k", "50k - 250k". Not below: "250k - 500k", "500k - 1M", "1M+".
+ *
+ * Avoid naive substring checks (e.g. "150k - 250k" must not match "50k - 250k").
  */
 export function isNetWorthBelowThreshold(
   netWorthRange: string | null
 ): boolean {
-  if (!netWorthRange) return false;
-  const normalized = netWorthRange
+  if (!netWorthRange || !String(netWorthRange).trim()) return false;
+
+  const s = String(netWorthRange)
     .toLowerCase()
     .replace(/,/g, '')
+    .replace(/\$/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
-  if (normalized.includes('50k - 250k')) return true;
-  if (normalized.includes('below 250')) return true;
-  if (normalized.includes('under 250')) return true;
-  if (normalized === '50k-250k') return true;
+  // At or above $250k — never flag
+  if (/^1\s*m\s*\+$/i.test(s)) return false;
+  if (/^250\s*k\s*[-–]\s*500\s*k$/i.test(s)) return false;
+  if (/^500\s*k\s*[-–]\s*1\s*m$/i.test(s)) return false;
 
-  const rangeMatch = normalized.match(
-    /^(\d+\.?\d*)\s*(k|m)?\s*[-–]\s*(\d+\.?\d*)\s*(k|m)?/
+  // Explicit low bucket labels
+  if (/^below\s*50\s*k$/i.test(s)) return true;
+  if (/below\s*50\s*k/i.test(s) && !/\d+\s*k\s*[-–]/i.test(s)) return true;
+
+  // Single hyphenated range: must not start at 250k+ (e.g. 250k–500k)
+  const fullRange = s.match(
+    /^(\d+\.?\d*)\s*(k|m)?\s*[-–]\s*(\d+\.?\d*)\s*(k|m)?$/i
   );
-  if (rangeMatch) {
-    const upper = parseNetWorthMoneyToken(
-      rangeMatch[3],
-      rangeMatch[4]
-    );
-    if (!Number.isNaN(upper) && upper <= 250_000) return true;
-    return false;
+  if (fullRange) {
+    const low = parseNetWorthMoneyToken(fullRange[1], fullRange[2]);
+    const high = parseNetWorthMoneyToken(fullRange[3], fullRange[4]);
+    if (Number.isNaN(low) || Number.isNaN(high)) return false;
+    if (low >= 250_000) return false;
+    return high <= 250_000;
   }
 
   return false;
