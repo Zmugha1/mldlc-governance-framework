@@ -11,11 +11,15 @@ import {
   Bot,
   Shield,
   HelpCircle,
+  Loader2,
 } from 'lucide-react';
+import { invoke, Channel } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
 import { dbExecute } from '@/services/db';
 
@@ -106,6 +110,32 @@ const footerNavItems: Array<{
   { id: 'audit', icon: Shield, ariaLabel: 'Audit and transparency' },
 ];
 
+type AIStatus = 'offline' | 'starting' | 'ready';
+
+async function pingOllamaGenerate(): Promise<boolean> {
+  try {
+    await invoke<string>('ollama_generate', {
+      prompt: 'ping',
+      system: ' ',
+      model: 'qwen2.5:7b',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function trySpawnOllamaServe(): Promise<void> {
+  const onEvent = new Channel();
+  onEvent.onmessage = () => {};
+  await invoke<number>('plugin:shell|spawn', {
+    program: 'ollama',
+    args: ['serve'],
+    options: {},
+    onEvent,
+  });
+}
+
 function PlaceholderPage({ title }: { title: string }) {
   return (
     <div
@@ -127,6 +157,84 @@ function Sidebar({
   activeModule: ModuleType;
   onModuleChange: (module: ModuleType) => void;
 }) {
+  const [aiStatus, setAiStatus] = useState<AIStatus>('offline');
+  const aiPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAiPollers = useCallback(() => {
+    if (aiPollRef.current != null) {
+      clearInterval(aiPollRef.current);
+      aiPollRef.current = null;
+    }
+    if (aiTimeoutRef.current != null) {
+      clearTimeout(aiTimeoutRef.current);
+      aiTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const ok = await pingOllamaGenerate();
+      if (!cancelled) {
+        setAiStatus(ok ? 'ready' : 'offline');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearAiPollers();
+    };
+  }, [clearAiPollers]);
+
+  const handleStartAiEngine = useCallback(() => {
+    setAiStatus('starting');
+    clearAiPollers();
+    void (async () => {
+      try {
+        await trySpawnOllamaServe();
+      } catch (e) {
+        console.error('spawn ollama serve:', e);
+      }
+
+      const alreadyUp = await pingOllamaGenerate();
+      if (alreadyUp) {
+        setAiStatus('ready');
+        toast.success('AI is ready');
+        return;
+      }
+
+      aiPollRef.current = setInterval(() => {
+        void (async () => {
+          const ok = await pingOllamaGenerate();
+          if (ok) {
+            clearAiPollers();
+            setAiStatus('ready');
+            toast.success('AI is ready');
+          }
+        })();
+      }, 3000);
+
+      aiTimeoutRef.current = setTimeout(() => {
+        clearAiPollers();
+        void (async () => {
+          const ok = await pingOllamaGenerate();
+          if (ok) {
+            setAiStatus('ready');
+            toast.success('AI is ready');
+          } else {
+            setAiStatus('offline');
+            toast.error('Could not start AI. Please start Ollama manually.');
+          }
+        })();
+      }, 30000);
+    })();
+  }, [clearAiPollers]);
+
   return (
     <div
       className="flex h-full flex-col text-white"
@@ -212,6 +320,54 @@ function Sidebar({
             </button>
           );
         })}
+      </div>
+
+      <div
+        style={{
+          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+          margin: '8px 0',
+        }}
+        aria-hidden
+      />
+
+      <div className="px-3 pb-2">
+        {aiStatus === 'offline' ? (
+          <>
+            <p className="text-center" style={{ color: '#7A8F95', fontSize: 12 }}>
+              ⚪ AI Offline
+            </p>
+            <div style={{ margin: '8px 12px' }}>
+              <button
+                type="button"
+                className="w-full font-bold text-white transition-opacity hover:opacity-90"
+                style={{
+                  background: '#F05F57',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  fontSize: 12,
+                  border: 'none',
+                }}
+                onClick={handleStartAiEngine}
+              >
+                Start AI Engine
+              </button>
+            </div>
+          </>
+        ) : null}
+        {aiStatus === 'starting' ? (
+          <p
+            className="flex items-center justify-center gap-2 text-center font-medium"
+            style={{ color: '#F05F57', fontSize: 12 }}
+          >
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+            🔄 Starting AI...
+          </p>
+        ) : null}
+        {aiStatus === 'ready' ? (
+          <p className="text-center font-bold" style={{ color: '#3BBFBF', fontSize: 12 }}>
+            🟢 AI Ready
+          </p>
+        ) : null}
       </div>
 
       <div
@@ -464,6 +620,7 @@ function App() {
 
   return (
     <div className="flex min-h-screen" style={brandRootStyle}>
+      <Toaster richColors closeButton position="top-center" />
       {reflectionOpen && (
         <div
           className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4"
