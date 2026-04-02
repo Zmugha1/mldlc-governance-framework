@@ -5418,7 +5418,14 @@ function ClientDetailModal({
                 <CardContent className="space-y-3 text-sm text-slate-700">
                   {you2Details.spouse_name && <p><span className="font-semibold">Spouse:</span> {you2Details.spouse_name}</p>}
                   {you2Details.financial_net_worth_range && <p><span className="font-semibold">Net worth range:</span> {you2Details.financial_net_worth_range}</p>}
-                  {you2Details.credit_score !== null && <p><span className="font-semibold">Credit score:</span> {you2Details.credit_score}</p>}
+                  {you2Details.credit_score != null &&
+                    Number.isFinite(Number(you2Details.credit_score)) &&
+                    Number(you2Details.credit_score) !== 0 && (
+                      <p>
+                        <span className="font-semibold">Credit score:</span>{' '}
+                        {you2Details.credit_score}
+                      </p>
+                    )}
                   {you2Details.launch_timeline && <p><span className="font-semibold">Launch timeline:</span> {you2Details.launch_timeline}</p>}
                   {you2Details.time_commitment && (
                     <p>
