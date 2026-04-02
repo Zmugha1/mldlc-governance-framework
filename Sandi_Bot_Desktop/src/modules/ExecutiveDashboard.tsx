@@ -1451,7 +1451,7 @@ export default function ExecutiveDashboard() {
               TODAY&apos;S FOCUS
             </p>
             <div className="flex flex-wrap items-center">
-              {greetingSignalPills.slice(0, 3).map((pill) => (
+              {greetingSignalPills.map((pill) => (
                 <div
                   key={pill.id}
                   className="inline-flex items-center gap-1.5"
@@ -1479,22 +1479,6 @@ export default function ExecutiveDashboard() {
                   {pill.label}
                 </div>
               ))}
-              {greetingSignalPills.length > 3 ? (
-                <div
-                  style={{
-                    background: '#3BBFBF',
-                    borderRadius: 20,
-                    padding: '4px 12px',
-                    fontSize: 12,
-                    color: '#fff',
-                    fontWeight: 600,
-                    marginRight: 8,
-                    marginBottom: 8,
-                  }}
-                >
-                  + {greetingSignalPills.length - 3} more
-                </div>
-              ) : null}
             </div>
           </div>
         )}
