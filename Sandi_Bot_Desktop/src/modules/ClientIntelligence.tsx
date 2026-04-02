@@ -28,6 +28,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
 import { stageConfig, discColors } from '@/data/sampleClients';
@@ -7295,7 +7300,20 @@ export default function ClientIntelligence() {
                             </span>
                           ) : null}
                           {gq ? (
-                            <Clock className="h-4 w-4 text-amber-500" aria-hidden title="Gone quiet" />
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex" aria-label="Gone quiet — needs follow up">
+                                  <Clock className="h-4 w-4 text-amber-500" aria-hidden />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="top"
+                                sideOffset={4}
+                                className="rounded-[4px] border-0 bg-[#2D4459] px-2 py-1 text-[11px] font-normal leading-tight text-white shadow-md [&>svg]:hidden"
+                              >
+                                Gone quiet — needs follow up
+                              </TooltipContent>
+                            </Tooltip>
                           ) : null}
                         </div>
                       </button>
