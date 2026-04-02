@@ -32,7 +32,12 @@ import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
-import { getAllClients, getClient, inactivateClient } from '@/services/clientService';
+import {
+  getAllClients,
+  getClient,
+  inactivateClient,
+  isNetWorthBelowThreshold,
+} from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { dbExecute, dbSelect } from '@/services/db';
 import { logEntry } from '@/services/auditService';
@@ -296,6 +301,28 @@ function splitPinkFlags(allFlags: string[]): {
     .filter((f) => f.startsWith('resolved:'))
     .map((f) => f.replace(/^resolved:/, ''));
   return { activeFlags, resolvedFlags };
+}
+
+function isNetWorthRangePinkFlag(flag: string): boolean {
+  return flag.toLowerCase().includes('net worth below');
+}
+
+function filterPinkFlagsByKnownNetWorth(
+  flags: string[],
+  mergedNetWorthRange: string
+): string[] {
+  const netWorthRange = mergedNetWorthRange.trim();
+  const allowNetWorthFlag =
+    Boolean(netWorthRange) &&
+    netWorthRange !== '' &&
+    netWorthRange !== 'null' &&
+    netWorthRange !== 'Not provided' &&
+    netWorthRange !== '0' &&
+    isNetWorthBelowThreshold(netWorthRange);
+  return flags.filter((f) => {
+    if (!isNetWorthRangePinkFlag(f)) return true;
+    return allowNetWorthFlag;
+  });
 }
 
 function countActivePinkFlagsOnClient(client: Client): number {
@@ -1251,6 +1278,11 @@ function ClientDetailModal({
     reasons_for_change: string[];
   } | null>(null);
   const [tumayData, setTumayData] = useState<Record<string, unknown> | null>(null);
+  const [tumayReadinessProfile, setTumayReadinessProfile] = useState<{
+    financial_net_worth_range: string;
+    credit_score: number | string | null;
+    time_commitment: string;
+  } | null>(null);
   const [contact, setContact] = useState<{ email: string | null; phone: string | null; company: string | null }>({
     email: null,
     phone: null,
@@ -1742,6 +1774,29 @@ function ClientDetailModal({
           setYou2Details(null);
         });
       dbSelect<{
+        financial_net_worth_range: string | null;
+        credit_score: number | string | null;
+        time_commitment: string | null;
+      }>(
+        `SELECT financial_net_worth_range, credit_score, time_commitment
+         FROM client_tumay_profiles
+         WHERE client_id = ?`,
+        [client.id]
+      )
+        .then((tumayRows) => {
+          const r = tumayRows[0];
+          if (!r) {
+            setTumayReadinessProfile(null);
+            return;
+          }
+          setTumayReadinessProfile({
+            financial_net_worth_range: String(r.financial_net_worth_range ?? ''),
+            credit_score: r.credit_score,
+            time_commitment: String(r.time_commitment ?? ''),
+          });
+        })
+        .catch(() => setTumayReadinessProfile(null));
+      dbSelect<{
         tumay_data: string;
       }>(
         `SELECT tumay_data FROM clients
@@ -1835,6 +1890,7 @@ function ClientDetailModal({
       setYou2Vision('');
       setYou2Details(null);
       setTumayData(null);
+      setTumayReadinessProfile(null);
       setClientReadinessDbFields({
         zor_learning_notes: null,
         franchise_recommendations: null,
@@ -1884,6 +1940,43 @@ function ClientDetailModal({
       ? PIPELINE_ORDER[pipeIdx + 1]!
       : null;
 
+  const clientMergedFinancials = useMemo(() => {
+    const parseCreditRaw = (raw: unknown): number => {
+      if (raw === null || raw === undefined) return 0;
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+      const n = Number(String(raw).trim());
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const row = tumayReadinessProfile;
+    const jd = tumayData;
+    const tumayNw =
+      (row?.financial_net_worth_range ?? '').trim() ||
+      (jd ? String(jd.financial_net_worth_range ?? '').trim() : '') ||
+      '';
+    const tumayTc =
+      (row?.time_commitment ?? '').trim() ||
+      (jd ? String(jd.time_commitment ?? '').trim() : '') ||
+      '';
+    const tumayCsRow = row ? parseCreditRaw(row.credit_score) : 0;
+    const tumayCsJson = jd ? parseCreditRaw(jd.credit_score) : 0;
+    const tumayCs = tumayCsRow > 0 ? tumayCsRow : tumayCsJson;
+
+    const you2Profile = you2Details;
+    const netWorth =
+      (you2Profile?.financial_net_worth_range ?? '').trim() ||
+      tumayNw ||
+      '';
+    const creditScore =
+      you2Profile?.credit_score != null && you2Profile.credit_score > 0
+        ? you2Profile.credit_score
+        : tumayCs || 0;
+    const timeCommit =
+      (you2Profile?.time_commitment ?? '').trim() || tumayTc || '';
+
+    return { netWorth, creditScore, timeCommit };
+  }, [you2Details, tumayReadinessProfile, tumayData]);
+
   const persistedVisionText = (client.visionStatement.paragraph ?? '').trim();
   const visionIsApproved = client.vision_approved === 1;
 
@@ -1912,10 +2005,7 @@ function ClientDetailModal({
     }
 
     let financialScore = 0;
-    const you2Profile = you2Details;
-    const netWorth = you2Profile?.financial_net_worth_range;
-    const creditScore = you2Profile?.credit_score;
-    const timeCommit = you2Profile?.time_commitment;
+    const { netWorth, creditScore, timeCommit } = clientMergedFinancials;
 
     if (
       netWorth &&
@@ -1982,6 +2072,7 @@ function ClientDetailModal({
     you2Vision,
     fathomSessionCount,
     you2Details,
+    clientMergedFinancials,
     client.vision_approved,
     clientReadinessDbFields,
   ]);
@@ -2031,9 +2122,10 @@ function ClientDetailModal({
         break;
       }
     }
-    const activePink = splitPinkFlags(
-      parseClientPinkFlagsJson(localPinkFlagsJson)
-    ).activeFlags.length;
+    const activePink = filterPinkFlagsByKnownNetWorth(
+      splitPinkFlags(parseClientPinkFlagsJson(localPinkFlagsJson)).activeFlags,
+      clientMergedFinancials.netWorth
+    ).length;
     return { hasDisc, discLabel, dangerCount, lastOk, activePink };
   }, [
     discScores,
@@ -2041,6 +2133,7 @@ function ClientDetailModal({
     you2Details,
     fathomSessions,
     localPinkFlagsJson,
+    clientMergedFinancials.netWorth,
   ]);
 
   const bestQuestionsParsed = useMemo(
@@ -2059,8 +2152,17 @@ function ClientDetailModal({
   }, [bestQuestionsParsed]);
 
   const allPinkParsed = parseClientPinkFlagsJson(localPinkFlagsJson);
-  const { activeFlags: activePinkFlags, resolvedFlags: resolvedPinkFlags } =
-    splitPinkFlags(allPinkParsed);
+  const { resolvedFlags: resolvedPinkFlags } = splitPinkFlags(allPinkParsed);
+
+  const activePinkFlagsFiltered = useMemo(() => {
+    const active = splitPinkFlags(
+      parseClientPinkFlagsJson(localPinkFlagsJson)
+    ).activeFlags;
+    return filterPinkFlagsByKnownNetWorth(
+      active,
+      clientMergedFinancials.netWorth
+    );
+  }, [localPinkFlagsJson, clientMergedFinancials.netWorth]);
 
   const goneQuietReengagementTipText =
     shouldShowGoneQuietBadge(client) && discScores
@@ -3702,12 +3804,12 @@ function ClientDetailModal({
               <Badge variant="outline" className="text-xs">
                 {getBucketDisplayName(client.outcome_bucket)}
               </Badge>
-              {activePinkFlags.length > 0 ? (
+              {activePinkFlagsFiltered.length > 0 ? (
                 <Badge
                   className="min-h-6 min-w-6 shrink-0 border-0 bg-red-600 px-2 text-xs font-bold text-white hover:bg-red-600"
-                  title={`${activePinkFlags.length} active pink flag(s)`}
+                  title={`${activePinkFlagsFiltered.length} active pink flag(s)`}
                 >
-                  {activePinkFlags.length}
+                  {activePinkFlagsFiltered.length}
                 </Badge>
               ) : null}
             </div>
@@ -4337,11 +4439,11 @@ function ClientDetailModal({
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {activePinkFlags.length === 0 ? (
+                {activePinkFlagsFiltered.length === 0 ? (
                   <p className="text-sm text-slate-500">No active flags</p>
                 ) : (
                   <ul className="space-y-2">
-                    {activePinkFlags.map((flag, pinkFlagIdx) => (
+                    {activePinkFlagsFiltered.map((flag, pinkFlagIdx) => (
                       <li
                         key={flag}
                         className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2"
