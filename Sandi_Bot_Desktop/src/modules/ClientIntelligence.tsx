@@ -168,6 +168,23 @@ function resolvePipelineStageCode(
   return DISPLAY_LABEL_TO_PIPELINE_CODE[label] ?? null;
 }
 
+function clientHasBusinessPurchaseDate(
+  client: Client & { business_purchase_date?: string | null }
+): boolean {
+  const d = client.business_purchase_date;
+  return d != null && String(d).trim() !== '';
+}
+
+/** Sidebar: converted clients show "Converted" (teal), not "Business Complete". */
+function isSidebarConvertedClient(client: Client): boolean {
+  if ((client.outcome_bucket ?? '').toLowerCase() === 'converted') return true;
+  const code = resolvePipelineStageCode(client.inferred_stage);
+  if (code !== 'C5') return false;
+  return clientHasBusinessPurchaseDate(
+    client as Client & { business_purchase_date?: string | null }
+  );
+}
+
 function formatFathomSessionCardDate(iso: string | null | undefined): string {
   if (iso == null || String(iso).trim() === '') return '—';
   const d = new Date(iso);
@@ -7233,6 +7250,10 @@ export default function ClientIntelligence() {
                     const pinkN = countActivePinkFlagsOnClient(raw);
                     const gq = shouldShowGoneQuietBadge(dc);
                     const rec = dc.recommendationFromReadiness ?? 'GATHER';
+                    const sidebarConverted = isSidebarConvertedClient(raw);
+                    const showOutcomeBucketBadge =
+                      !sidebarConverted ||
+                      (raw.outcome_bucket ?? '').toLowerCase() !== 'converted';
                     return (
                       <button
                         key={raw.id}
@@ -7259,17 +7280,31 @@ export default function ClientIntelligence() {
                             {dc.name}
                           </p>
                           <div className="mt-0.5 flex flex-wrap gap-1">
-                            <span
-                              className="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-800"
-                              style={{
-                                backgroundColor: getStageBadgeColor(dc.inferred_stage?.trim() ?? ''),
-                              }}
-                            >
-                              {resolvePipelineStageCode(dc.inferred_stage) ?? '—'}
-                            </span>
-                            <span className="inline-block rounded border border-[#C8E8E5] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[#7A8F95]">
-                              {getBucketDisplayName(raw.outcome_bucket)}
-                            </span>
+                            {sidebarConverted ? (
+                              <span
+                                className="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(59, 191, 191, 0.15)',
+                                  color: '#3BBFBF',
+                                }}
+                              >
+                                Converted
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-800"
+                                style={{
+                                  backgroundColor: getStageBadgeColor(dc.inferred_stage?.trim() ?? ''),
+                                }}
+                              >
+                                {resolvePipelineStageCode(dc.inferred_stage) ?? '—'}
+                              </span>
+                            )}
+                            {showOutcomeBucketBadge ? (
+                              <span className="inline-block rounded border border-[#C8E8E5] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[#7A8F95]">
+                                {getBucketDisplayName(raw.outcome_bucket)}
+                              </span>
+                            ) : null}
                             {rec === 'VALIDATE' || rec === 'GATHER' || rec === 'PAUSE' ? (
                               <span
                                 className="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold"
