@@ -317,13 +317,17 @@ const NEED_ATTENTION_GONE_QUIET_DAYS: Record<
   C5: 60,
 };
 
-/** Gone quiet SQL thresholds (IC–C4 only; matches dashboard COUNT query). */
-const GONE_QUIET_LAST_CONTACT_THRESHOLDS: Record<'IC' | 'C1' | 'C2' | 'C3' | 'C4', number> = {
+/** Gone quiet SQL thresholds (matches dashboard COUNT query). */
+const GONE_QUIET_LAST_CONTACT_THRESHOLDS: Record<
+  'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5',
+  number
+> = {
   IC: 14,
   C1: 21,
   C2: 14,
   C3: 14,
   C4: 60,
+  C5: 60,
 };
 
 type NeedAttentionKind = 'at_risk' | 'pink_flag' | 'gone_quiet';
@@ -826,6 +830,9 @@ export default function ExecutiveDashboard() {
              OR
              (c.inferred_stage = 'C4'
                AND c.last_contact_date < date('now', '-60 days'))
+             OR
+             (c.inferred_stage = 'C5'
+               AND c.last_contact_date < date('now', '-60 days'))
            )`,
           []
         ),
@@ -1062,19 +1069,39 @@ export default function ExecutiveDashboard() {
 
     for (const cl of clients) {
       if (!isActive(cl)) continue;
-      const inf = (cl.inferred_stage ?? '').trim().toUpperCase();
+      const code = stagePipelineCodeForAttention(cl);
       const lc = clientLastContactDate(cl);
-      const days = lc ? daysSinceCalendarLocal(lc) : null;
-      if ((inf === 'C3' || inf === 'C4') && lc && days !== null && days > 14) {
-        atRisk.push({
-          clientId: cl.id,
-          name: cl.name,
-          kind: 'at_risk',
-          stageCode: inf,
-          reasonLine: `No session in ${days} days — C3/C4 needs attention`,
-          discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(cl.id)),
-        });
-      }
+      const contactDays = lc ? daysSinceCalendarLocal(lc) : null;
+      if (contactDays === null) continue;
+      const th = NEED_ATTENTION_GONE_QUIET_DAYS[code];
+      if (contactDays <= th) continue;
+
+      const lastSess = sessionStatsByClient.get(cl.id)?.lastDate;
+      const sessTrimmed =
+        lastSess != null && String(lastSess).trim() !== ''
+          ? String(lastSess).trim()
+          : '';
+      const sessionDays = sessTrimmed
+        ? daysSinceCalendarLocal(sessTrimmed)
+        : null;
+
+      const earlyStage =
+        code === 'IC' ||
+        code === 'C1' ||
+        code === 'C2' ||
+        code === 'C3';
+      const reasonLine = earlyStage
+        ? `No session in ${sessionDays ?? contactDays}d — follow up needed`
+        : `No contact in ${contactDays}d — validation check needed`;
+
+      atRisk.push({
+        clientId: cl.id,
+        name: cl.name,
+        kind: 'at_risk',
+        stageCode: code,
+        reasonLine,
+        discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(cl.id)),
+      });
     }
 
     for (const cl of clients) {
@@ -1130,7 +1157,7 @@ export default function ExecutiveDashboard() {
     for (const e of pinks) push(e);
     for (const e of goneQ) push(e);
     return ordered;
-  }, [clients, discLetterByProfileClientId]);
+  }, [clients, discLetterByProfileClientId, sessionStatsByClient]);
 
   const greetingPlacementRevenueYtd = useMemo(() => {
     let sum = 0;
