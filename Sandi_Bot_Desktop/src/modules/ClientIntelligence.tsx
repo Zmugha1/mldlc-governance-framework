@@ -6758,6 +6758,8 @@ Use reminders for:
   );
 }
 
+const CLIENT_INTEL_STAGE_FILTER_KEY = 'client_intelligence_stage_filter';
+
 export default function ClientIntelligence() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStage, setSelectedStage] = useState<string>('all');
@@ -6790,6 +6792,27 @@ export default function ClientIntelligence() {
   const [discDerivedMap, setDiscDerivedMap] = useState<Map<string, { style: 'D' | 'I' | 'S' | 'C'; label: string }>>(new Map());
 
   const clientIntelligenceShellRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CLIENT_INTEL_STAGE_FILTER_KEY);
+      if (
+        raw === 'IC' ||
+        raw === 'C1' ||
+        raw === 'C2' ||
+        raw === 'C3' ||
+        raw === 'C4' ||
+        raw === 'C5'
+      ) {
+        setSelectedStage(raw);
+      }
+      if (raw != null) {
+        localStorage.removeItem(CLIENT_INTEL_STAGE_FILTER_KEY);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   /** App.tsx ModuleHeader still passes the legacy description; hide it so only our subtitle shows. */
   useLayoutEffect(() => {
