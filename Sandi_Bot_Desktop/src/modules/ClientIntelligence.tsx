@@ -5609,48 +5609,17 @@ function ClientDetailModal({
 
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
             <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold text-slate-900">
-                    Territory Check
-                  </CardTitle>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Paste territory check results here before generating the vision
-                    statement.
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <Label htmlFor="territory-check-results">
-                      Territory Check Results
-                    </Label>
-                    <Textarea
-                      id="territory-check-results"
-                      rows={6}
-                      className="mt-1 w-full min-h-0 resize-y"
-                      placeholder={TERRITORY_CHECK_TEXTAREA_PLACEHOLDER}
-                      value={territoryCheckDraft}
-                      onChange={(e) => {
-                        setTerritoryCheckDraft(e.target.value);
-                        setTerritoryCheckSavedMsg(false);
-                      }}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    className="bg-teal-600 hover:bg-teal-700 text-white"
-                    onClick={handleSaveTerritoryCheck}
-                  >
-                    Save Territory Notes
-                  </Button>
-                  {territoryCheckSavedMsg ? (
-                    <p className="text-sm font-medium text-green-600">
-                      Territory notes saved. These will be included when you
-                      generate the vision statement.
-                    </p>
-                  ) : null}
-                </CardContent>
-              </Card>
+              <p
+                style={{
+                  color: '#7A8F95',
+                  fontSize: 13,
+                  marginBottom: 16,
+                }}
+              >
+                Generate a draft vision statement for this client. Review and edit it,
+                then approve it. Download as PowerPoint for your presentation or PDF for the
+                client to keep.
+              </p>
 
               {visionIsApproved && !visionDraftMode ? (
                 <div
@@ -5894,6 +5863,52 @@ function ClientDetailModal({
               {visionApproveMsg ? (
                 <p className="text-sm font-medium text-green-600">{visionApproveMsg}</p>
               ) : null}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold text-slate-900">
+                    Territory Check
+                  </CardTitle>
+                  <p
+                    className="mt-1 italic"
+                    style={{ color: '#7A8F95', fontSize: 11 }}
+                  >
+                    Optional — paste territory check results to include in the PowerPoint
+                    download.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <Label htmlFor="territory-check-results">
+                      Territory Check Results
+                    </Label>
+                    <Textarea
+                      id="territory-check-results"
+                      rows={6}
+                      className="mt-1 w-full min-h-0 resize-y"
+                      placeholder={TERRITORY_CHECK_TEXTAREA_PLACEHOLDER}
+                      value={territoryCheckDraft}
+                      onChange={(e) => {
+                        setTerritoryCheckDraft(e.target.value);
+                        setTerritoryCheckSavedMsg(false);
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    className="bg-teal-600 hover:bg-teal-700 text-white"
+                    onClick={handleSaveTerritoryCheck}
+                  >
+                    Save Territory Notes
+                  </Button>
+                  {territoryCheckSavedMsg ? (
+                    <p className="text-sm font-medium text-green-600">
+                      Territory notes saved. These will be included when you
+                      generate the vision statement.
+                    </p>
+                  ) : null}
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
