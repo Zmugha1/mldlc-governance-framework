@@ -58,21 +58,6 @@ const DISC_LETTER_COLORS: Record<'D' | 'I' | 'S' | 'C', string> = {
 /** Last contact on or after this ISO day displays as a real date; older/null → "Not yet contacted". */
 const GLANCE_LAST_CONTACT_MIN_DAY = '2024-01-01';
 
-/** Gone-quiet thresholds by compartment display label (matches CoachingActions). */
-const GLANCE_GONE_QUIET_DAYS_BY_COMPARTMENT: Record<string, number> = {
-  'Initial Contact': 14,
-  'Seeker Connection': 21,
-  'Seeker Clarification': 14,
-  Possibilities: 14,
-  'Coach Client Collaboration': 14,
-  'Client Career 2.0': 60,
-  'Business Purchase': 60,
-};
-
-function goneQuietThresholdDaysForCompartment(compartment: string): number {
-  return GLANCE_GONE_QUIET_DAYS_BY_COMPARTMENT[compartment] ?? 14;
-}
-
 function isValidGlanceLastContact(raw: string | null | undefined): boolean {
   if (raw == null || String(raw).trim() === '') return false;
   const day = String(raw).trim().slice(0, 10);
@@ -98,14 +83,31 @@ type GlanceRecFilter = (typeof GLANCE_REC_FILTERS)[number];
 const GLANCE_STAGE_FILTERS = ['all', 'IC', 'C1', 'C2', 'C3', 'C4', 'C5'] as const;
 type GlanceStageFilter = (typeof GLANCE_STAGE_FILTERS)[number];
 
-const STAGE_CODE_TO_DISPLAY: Record<Exclude<GlanceStageFilter, 'all'>, string> = {
-  IC: 'Initial Contact',
-  C1: 'Seeker Connection',
-  C2: 'Seeker Clarification',
-  C3: 'Possibilities',
-  C4: 'Client Career 2.0',
-  C5: 'Business Purchase',
+type GlancePipelineCode = Exclude<GlanceStageFilter, 'all'>;
+
+/** Compartment column: C-code from DB → "C4 · Initial Validation". */
+const GLANCE_COMPARTMENT_DISPLAY: Record<GlancePipelineCode, string> = {
+  IC: 'IC · Initial Contact',
+  C1: 'C1 · Seeker Connection',
+  C2: 'C2 · Seeker Clarification',
+  C3: 'C3 · Possibilities',
+  C4: 'C4 · Initial Validation',
+  C5: 'C5 · Continued Validation',
 };
+
+/** Gone-quiet thresholds by pipeline code (Clients at a Glance). */
+const GLANCE_GONE_QUIET_DAYS_BY_CODE: Record<GlancePipelineCode, number> = {
+  IC: 14,
+  C1: 21,
+  C2: 14,
+  C3: 14,
+  C4: 60,
+  C5: 60,
+};
+
+function goneQuietThresholdDaysForGlanceCode(code: GlancePipelineCode): number {
+  return GLANCE_GONE_QUIET_DAYS_BY_CODE[code] ?? 14;
+}
 
 function activePinkFlagCount(flags: string[]): number {
   return flags.filter((f) => !String(f).startsWith('resolved:')).length;
@@ -985,6 +987,7 @@ export default function ExecutiveDashboard() {
       id: string;
       name: string;
       compartment: string;
+      glanceStageCode: GlancePipelineCode;
       statusLabel: string;
       recommendation: 'VALIDATE' | 'GATHER' | 'PAUSE';
       discLetter: 'D' | 'I' | 'S' | 'C' | null;
@@ -1008,10 +1011,12 @@ export default function ExecutiveDashboard() {
         glance !== undefined
           ? glance.last_contact_date
           : clientLastContactDateField(cl);
+      const glanceCode = stagePipelineCodeForAttention(cl) as GlancePipelineCode;
       list.push({
         id: r.client_id,
         name: r.client_name,
-        compartment: normalizeDisplayStage(cl.inferred_stage ?? cl.stage),
+        compartment: GLANCE_COMPARTMENT_DISPLAY[glanceCode],
+        glanceStageCode: glanceCode,
         statusLabel: outcomeBucketDisplay(r.outcome_bucket),
         recommendation: rec,
         discLetter: glanceDiscLetter(cl, discLetterByProfileClientId.get(r.client_id)),
@@ -1039,7 +1044,7 @@ export default function ExecutiveDashboard() {
 
   const filteredGlanceRows = useMemo(() => {
     return clientsAtAGlanceRows.filter((row) => {
-      if (glanceStageFilter !== 'all' && row.compartment !== STAGE_CODE_TO_DISPLAY[glanceStageFilter]) {
+      if (glanceStageFilter !== 'all' && row.glanceStageCode !== glanceStageFilter) {
         return false;
       }
       switch (glanceRecFilter) {
@@ -1880,7 +1885,7 @@ export default function ExecutiveDashboard() {
                   const daysSinceLc = showValidDate
                     ? daysSinceCalendarLocal(row.lastContactDate)
                     : null;
-                  const gqThreshold = goneQuietThresholdDaysForCompartment(row.compartment);
+                  const gqThreshold = goneQuietThresholdDaysForGlanceCode(row.glanceStageCode);
                   const showGoneQuietDot =
                     showValidDate &&
                     daysSinceLc !== null &&
