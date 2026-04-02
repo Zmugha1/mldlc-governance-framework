@@ -3996,9 +3996,9 @@ function ClientDetailModal({
           style={{ background: 'white', borderColor: '#C8E8E5', borderRadius: '0 0 12px 12px' }}
         >
           <TabsContent value="overview" className="h-full min-h-0 mt-0 focus-visible:outline-none">
-            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
+            <div className="h-full max-h-[75vh] min-w-0 overflow-y-auto p-6 space-y-4">
+            <div className="grid grid-cols-1 min-w-0 gap-4 md:grid-cols-3">
+              <Card className="min-w-0">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-slate-500">Stage</CardTitle>
                 </CardHeader>
@@ -4069,7 +4069,7 @@ function ClientDetailModal({
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="min-w-0">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-slate-500">Persona</CardTitle>
                 </CardHeader>
@@ -4139,11 +4139,11 @@ function ClientDetailModal({
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="min-w-0">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-slate-500">Readiness</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="min-w-0">
                   <div className="space-y-3">
                     <div>
                       <p
@@ -4152,8 +4152,9 @@ function ClientDetailModal({
                       >
                         Readiness Score
                       </p>
-                      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <div className="mt-1 flex flex-nowrap items-baseline gap-x-3">
                         <span
+                          className="whitespace-nowrap"
                           style={{
                             color: '#2D4459',
                             fontSize: 24,
@@ -4164,6 +4165,7 @@ function ClientDetailModal({
                           {sandiReadinessDimensions.maxTotal}
                         </span>
                         <span
+                          className="whitespace-nowrap"
                           style={{
                             color: '#2D4459',
                             fontSize: 24,
@@ -4209,7 +4211,7 @@ function ClientDetailModal({
 
                     <div className="space-y-2 pt-1">
                       <div
-                        className="flex items-center gap-2"
+                        className="flex min-w-0 items-center gap-2"
                         style={{
                           background: 'white',
                           border: '1px solid #C8E8E5',
@@ -4218,7 +4220,7 @@ function ClientDetailModal({
                           marginBottom: 8,
                         }}
                       >
-                        <div style={{ flex: '0 0 40%', minWidth: 0 }}>
+                        <div className="min-w-0 shrink" style={{ flex: '1 1 36%' }}>
                           <div
                             style={{
                               color: '#2D4459',
@@ -4232,10 +4234,7 @@ function ClientDetailModal({
                             DISC + You 2.0 + Fathom
                           </div>
                         </div>
-                        <div
-                          style={{ flex: '0 0 40%', minWidth: 0 }}
-                          className="px-1"
-                        >
+                        <div className="min-w-0 flex-1 px-1">
                           <div
                             className="overflow-hidden"
                             style={{
@@ -4255,9 +4254,8 @@ function ClientDetailModal({
                           </div>
                         </div>
                         <div
+                          className="shrink-0 whitespace-nowrap text-right"
                           style={{
-                            flex: '0 0 20%',
-                            textAlign: 'right',
                             color: '#2D4459',
                             fontSize: 13,
                             fontWeight: 700,
@@ -4268,7 +4266,7 @@ function ClientDetailModal({
                       </div>
 
                       <div
-                        className="flex items-center gap-2"
+                        className="flex min-w-0 items-center gap-2"
                         style={{
                           background: 'white',
                           border: '1px solid #C8E8E5',
@@ -4277,7 +4275,7 @@ function ClientDetailModal({
                           marginBottom: 8,
                         }}
                       >
-                        <div style={{ flex: '0 0 40%', minWidth: 0 }}>
+                        <div className="min-w-0 shrink" style={{ flex: '1 1 36%' }}>
                           <div
                             style={{
                               color: '#2D4459',
@@ -4291,10 +4289,7 @@ function ClientDetailModal({
                             Vision + Timeline + Spouse
                           </div>
                         </div>
-                        <div
-                          style={{ flex: '0 0 40%', minWidth: 0 }}
-                          className="px-1"
-                        >
+                        <div className="min-w-0 flex-1 px-1">
                           <div
                             className="overflow-hidden"
                             style={{
@@ -4314,9 +4309,8 @@ function ClientDetailModal({
                           </div>
                         </div>
                         <div
+                          className="shrink-0 whitespace-nowrap text-right"
                           style={{
-                            flex: '0 0 20%',
-                            textAlign: 'right',
                             color: '#2D4459',
                             fontSize: 13,
                             fontWeight: 700,
@@ -4327,7 +4321,7 @@ function ClientDetailModal({
                       </div>
 
                       <div
-                        className="flex items-center gap-2"
+                        className="flex min-w-0 items-center gap-2"
                         style={{
                           background: 'white',
                           border: '1px solid #C8E8E5',
@@ -4336,7 +4330,7 @@ function ClientDetailModal({
                           marginBottom: 8,
                         }}
                       >
-                        <div style={{ flex: '0 0 40%', minWidth: 0 }}>
+                        <div className="min-w-0 shrink" style={{ flex: '1 1 36%' }}>
                           <div
                             style={{
                               color: '#2D4459',
@@ -4350,10 +4344,7 @@ function ClientDetailModal({
                             Net worth + Credit + Timeline
                           </div>
                         </div>
-                        <div
-                          style={{ flex: '0 0 40%', minWidth: 0 }}
-                          className="px-1"
-                        >
+                        <div className="min-w-0 flex-1 px-1">
                           <div
                             className="overflow-hidden"
                             style={{
@@ -4373,9 +4364,8 @@ function ClientDetailModal({
                           </div>
                         </div>
                         <div
+                          className="shrink-0 whitespace-nowrap text-right"
                           style={{
-                            flex: '0 0 20%',
-                            textAlign: 'right',
                             color: '#2D4459',
                             fontSize: 13,
                             fontWeight: 700,
@@ -4386,7 +4376,7 @@ function ClientDetailModal({
                       </div>
 
                       <div
-                        className="flex items-center gap-2"
+                        className="flex min-w-0 items-center gap-2"
                         style={{
                           background: 'white',
                           border: '1px solid #C8E8E5',
@@ -4395,7 +4385,7 @@ function ClientDetailModal({
                           marginBottom: 8,
                         }}
                       >
-                        <div style={{ flex: '0 0 40%', minWidth: 0 }}>
+                        <div className="min-w-0 shrink" style={{ flex: '1 1 36%' }}>
                           <div
                             style={{
                               color: '#2D4459',
@@ -4409,10 +4399,7 @@ function ClientDetailModal({
                             ZOR + Franchise + Profile
                           </div>
                         </div>
-                        <div
-                          style={{ flex: '0 0 40%', minWidth: 0 }}
-                          className="flex items-center justify-center px-1"
-                        >
+                        <div className="flex min-w-0 flex-1 items-center justify-center px-1">
                           {sandiReadinessDimensions.discoveryLocked ? (
                             <span
                               className="italic"
@@ -4441,9 +4428,8 @@ function ClientDetailModal({
                           )}
                         </div>
                         <div
+                          className="shrink-0 whitespace-nowrap text-right"
                           style={{
-                            flex: '0 0 20%',
-                            textAlign: 'right',
                             color: '#2D4459',
                             fontSize: 13,
                             fontWeight: 700,
