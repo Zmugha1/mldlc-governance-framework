@@ -389,12 +389,9 @@ function daysSinceFromDateStr(iso: string | null | undefined): number {
   return n ?? 0;
 }
 
-const SIGNALS_PREVIEW_LIMIT = 5;
-
 export default function CoachingActions() {
   const [loading, setLoading] = useState(true);
   const [signalClients, setSignalClients] = useState<ClientSignalCard[]>([]);
-  const [signalsExpanded, setSignalsExpanded] = useState(false);
   const [converted, setConverted] = useState<ConvertedRow[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [goldenDrafts, setGoldenDrafts] = useState<Record<string, string>>({});
@@ -547,8 +544,7 @@ export default function CoachingActions() {
           </div>
         ) : (
           <div className="mt-3 space-y-2">
-            {(signalsExpanded ? signalClients : signalClients.slice(0, SIGNALS_PREVIEW_LIMIT)).map(
-              (item) => (
+            {signalClients.map((item) => (
                 <div
                   key={item.id}
                   className="rounded-[10px] border bg-white"
@@ -612,18 +608,7 @@ export default function CoachingActions() {
                     <p className="mt-2 text-sm font-medium text-green-600">Response logged ✓</p>
                   ) : null}
                 </div>
-              )
-            )}
-            {!signalsExpanded && signalClients.length > SIGNALS_PREVIEW_LIMIT ? (
-              <button
-                type="button"
-                className="text-sm font-semibold underline-offset-2 hover:underline"
-                style={{ color: '#3BBFBF' }}
-                onClick={() => setSignalsExpanded(true)}
-              >
-                See {signalClients.length - SIGNALS_PREVIEW_LIMIT} more in full list
-              </button>
-            ) : null}
+            ))}
           </div>
         )}
       </section>
