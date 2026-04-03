@@ -93,6 +93,8 @@ export default function StatusBar() {
     };
   }, [backup.ever_succeeded, backup.last_backup]);
 
+  const showBackupOverdueBanner = backupUi.dot === 'amber';
+
   const handleOllamaModalRefresh = useCallback(async () => {
     setOllamaModalChecking(true);
     try {
@@ -116,7 +118,25 @@ export default function StatusBar() {
     "Ollama is not running.\nTo start: open a terminal and type\n'ollama serve'\nThen restart Coach Bot.";
 
   return (
-    <div className="h-8 bg-slate-900 text-slate-200 text-xs px-4 flex items-center justify-between border-t border-slate-800">
+    <>
+      {showBackupOverdueBanner ? (
+        <button
+          type="button"
+          onClick={handleBackupClick}
+          disabled={backupRunning}
+          className="flex w-full items-center px-4 py-2.5 text-left transition-opacity disabled:opacity-70"
+          style={{
+            background: '#F4F7F8',
+            border: '1px solid #C8E8E5',
+            borderLeft: '4px solid #3BBFBF',
+            color: '#7A8F95',
+            fontSize: 12,
+          }}
+        >
+          {backupRunning ? 'Backing up...' : 'Backup overdue — click to backup now'}
+        </button>
+      ) : null}
+      <div className="h-8 bg-slate-900 text-slate-200 text-xs px-4 flex items-center justify-between border-t border-slate-800">
       <Dialog open={ollamaHelpOpen} onOpenChange={setOllamaHelpOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -157,15 +177,19 @@ export default function StatusBar() {
         </DialogContent>
       </Dialog>
 
-      <button
-        type="button"
-        onClick={handleBackupClick}
-        disabled={backupRunning}
-        className="inline-flex items-center gap-2 hover:text-white transition-colors disabled:opacity-70"
-      >
-        <Dot color={backupUi.dot} />
-        <span>{backupRunning ? 'Backing up...' : backupUi.text}</span>
-      </button>
+      {!showBackupOverdueBanner ? (
+        <button
+          type="button"
+          onClick={handleBackupClick}
+          disabled={backupRunning}
+          className="inline-flex items-center gap-2 hover:text-white transition-colors disabled:opacity-70"
+        >
+          <Dot color={backupUi.dot} />
+          <span>{backupRunning ? 'Backing up...' : backupUi.text}</span>
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1" aria-hidden />
+      )}
 
       <div className="inline-flex items-center gap-4">
         <span>{clientCount} clients</span>
@@ -199,5 +223,6 @@ export default function StatusBar() {
         {backupMessage && <span className="text-slate-300">{backupMessage}</span>}
       </div>
     </div>
+    </>
   );
 }
