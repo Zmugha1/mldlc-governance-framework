@@ -20,6 +20,7 @@ export const BELOW_THRESHOLD_RANGES = [
   '50k - 250k',
   'below $50k',
   '50k-250k',
+  '$50k - $250k',
 ] as const;
 
 function netWorthRangeComparisonKeys(raw: string): string[] {
@@ -43,16 +44,95 @@ const BELOW_THRESHOLD_KEY_SET = new Set<string>(
 );
 
 /**
+ * Prefer You 2.0 net worth; fall back to TUMAY JSON (same merge as Client Intelligence).
+ */
+function effectiveFinancialNetWorthRange(
+  you2Range: string | null | undefined,
+  tumayDataJson: string | null | undefined
+): string | null {
+  const y = you2Range != null ? String(you2Range).trim() : '';
+  if (y !== '' && y.toLowerCase() !== 'null' && y !== '0') {
+    return y;
+  }
+  if (tumayDataJson == null || !String(tumayDataJson).trim()) return null;
+  try {
+    const o = JSON.parse(tumayDataJson) as { financial_net_worth_range?: unknown };
+    const t = o?.financial_net_worth_range;
+    if (t == null) return null;
+    const s = String(t).trim();
+    if (s === '' || s.toLowerCase() === 'null' || s === '0') return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+function stripNetWorthPinkFlagsFromList(flags: string[]): string[] {
+  return flags.filter((f) => {
+    const low = f.toLowerCase();
+    if (low.includes('net worth below')) return false;
+    if (f === NET_WORTH_PINK_FLAG_TEXT) return false;
+    return true;
+  });
+}
+
+/** Ensures active clients below the net-worth threshold have the canonical flag (You2 or TUMAY range). */
+async function syncNetWorthPinkFlagsForActiveClients(): Promise<void> {
+  const rows = await dbSelect<{
+    id: string;
+    pink_flags: string | null;
+    range_you2: string | null;
+    tumay_data: string | null;
+  }>(
+    `SELECT c.id, c.pink_flags,
+            y.financial_net_worth_range AS range_you2,
+            c.tumay_data AS tumay_data
+     FROM clients c
+     LEFT JOIN client_you2_profiles y ON y.client_id = c.id
+     WHERE c.outcome_bucket = 'active'`,
+    []
+  );
+
+  for (const r of rows) {
+    const effective = effectiveFinancialNetWorthRange(r.range_you2, r.tumay_data);
+    const below = isNetWorthBelowThreshold(effective);
+
+    let flags: string[];
+    try {
+      const p = JSON.parse(r.pink_flags ?? '[]');
+      if (!Array.isArray(p)) continue;
+      flags = p.filter((x): x is string => typeof x === 'string');
+    } catch {
+      continue;
+    }
+
+    const next = below
+      ? [...stripNetWorthPinkFlagsFromList(flags), NET_WORTH_PINK_FLAG_TEXT]
+      : stripNetWorthPinkFlagsFromList(flags);
+
+    if (JSON.stringify(next) === JSON.stringify(flags)) continue;
+
+    await dbExecute(
+      `UPDATE clients SET pink_flags = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [JSON.stringify(next), r.id]
+    );
+  }
+}
+
+/**
  * Removes net-worth pink flags when range is not allowlisted (including null / empty).
- * Net worth is read from `client_you2_profiles` (TUMAY/You2 net worth is persisted there).
+ * Uses You 2.0 range and TUMAY JSON fallback so cleanup matches displayed net worth.
  */
 async function cleanupIncorrectNetWorthPinkFlags(): Promise<void> {
   const rows = await dbSelect<{
     id: string;
     pink_flags: string | null;
-    financial_net_worth_range: string | null;
+    range_you2: string | null;
+    tumay_data: string | null;
   }>(
-    `SELECT c.id, c.pink_flags, y.financial_net_worth_range
+    `SELECT c.id, c.pink_flags,
+            y.financial_net_worth_range AS range_you2,
+            c.tumay_data AS tumay_data
      FROM clients c
      LEFT JOIN client_you2_profiles y ON y.client_id = c.id
      WHERE c.pink_flags IS NOT NULL
@@ -61,7 +141,7 @@ async function cleanupIncorrectNetWorthPinkFlags(): Promise<void> {
   );
 
   for (const r of rows) {
-    const rangeRaw = r.financial_net_worth_range;
+    const rangeRaw = effectiveFinancialNetWorthRange(r.range_you2, r.tumay_data);
     if (isNetWorthBelowThreshold(rangeRaw)) continue;
 
     let flags: string[];
@@ -73,12 +153,7 @@ async function cleanupIncorrectNetWorthPinkFlags(): Promise<void> {
       continue;
     }
 
-    const filtered = flags.filter((f) => {
-      const low = f.toLowerCase();
-      if (low.includes('net worth below')) return false;
-      if (f === NET_WORTH_PINK_FLAG_TEXT) return false;
-      return true;
-    });
+    const filtered = stripNetWorthPinkFlagsFromList(flags);
 
     if (filtered.length === flags.length) continue;
 
@@ -91,6 +166,7 @@ async function cleanupIncorrectNetWorthPinkFlags(): Promise<void> {
 
 async function runNetWorthPinkFlagCleanup(): Promise<void> {
   try {
+    await syncNetWorthPinkFlagsForActiveClients();
     await cleanupIncorrectNetWorthPinkFlags();
   } catch (e) {
     console.error('[clientService] net worth pink flag cleanup failed:', e);
@@ -756,6 +832,11 @@ export async function clearPlaceholderSessions(): Promise<void> {
   );
   console.log('Placeholder sessions cleared');
 }
+
+// Boot — re-sync net-worth pink flags from You2 + TUMAY; strip flags when range is above threshold.
+void (async () => {
+  await runNetWorthPinkFlagCleanup();
+})();
 
 // ONE-TIME SEED — last_contact_date
 // for converted and paused clients
