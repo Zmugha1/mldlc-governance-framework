@@ -137,6 +137,10 @@ type ClientCompletenessRow = {
   /** Count of sessions with date + notes (or CLEAR notes) longer than 20 chars */
   sessions_notes_ok: number;
   tumay_contact_ok: number;
+  /** DISC profile row exists — used for coaching "data complete" score only */
+  disc_profile_linked: number;
+  /** Dated coaching sessions (any notes) — used for data complete score only */
+  dated_session_count: number;
 };
 
 type GoneQuietClientRow = {
@@ -260,6 +264,17 @@ function isActiveClientProfileComplete(row: ClientCompletenessRow): boolean {
     profileYou2Ok(row) &&
     profileSessionsOk(row) &&
     profileTumayOk(row)
+  );
+}
+
+/** Legacy bar used for coaching performance "data complete" points (pre–status-icons definition). */
+function isDataScoreProfileComplete(row: ClientCompletenessRow): boolean {
+  const vision = row.one_year_vision;
+  return (
+    Number(row.disc_profile_linked) === 1 &&
+    vision != null &&
+    String(vision).trim().length > 0 &&
+    Number(row.dated_session_count) > 0
   );
 }
 
@@ -614,7 +629,15 @@ export default function MyPractice() {
                    AND NULLIF(TRIM(json_extract(c.tumay_data, '$.contact_name')), '') IS NOT NULL
                  THEN 1
                  ELSE 0
-               END AS tumay_contact_ok
+               END AS tumay_contact_ok,
+               CASE WHEN d.client_id IS NOT NULL THEN 1 ELSE 0 END AS disc_profile_linked,
+               (
+                 SELECT COUNT(*)
+                 FROM coaching_sessions cs2
+                 WHERE cs2.client_id = c.id
+                   AND cs2.session_date IS NOT NULL
+                   AND TRIM(cs2.session_date) != ''
+               ) AS dated_session_count
              FROM clients c
              LEFT JOIN client_you2_profiles y ON y.client_id = c.id
              LEFT JOIN client_disc_profiles d ON d.client_id = c.id
@@ -845,8 +868,9 @@ export default function MyPractice() {
     interventionTotal <= 0 ? 100 : safePct(interventionResponded, interventionTotal);
 
   const completeCount = clientsComplete.filter((row) => isActiveClientProfileComplete(row)).length;
-  const profileCompletenessRatio =
-    activeClientTotal > 0 ? completeCount / activeClientTotal : 0;
+  const dataScoreCompleteCount = clientsComplete.filter((row) =>
+    isDataScoreProfileComplete(row)
+  ).length;
 
   const clearDims: {
     key: keyof Pick<ClearAgg, 'contracting' | 'listening' | 'exploring' | 'action' | 'reflection'>;
@@ -873,9 +897,10 @@ export default function MyPractice() {
   const c3NorthStarPts = Math.min(20, (c3ForNorthStar / C3_WEEKLY_TARGET) * 20);
   const interventionPts =
     interventionTotal <= 0 ? 20 : (interventionResponded / interventionTotal) * 20;
-  const dataCompletePts = activeClientTotal <= 0 ? 0 : profileCompletenessRatio * 15;
-  let clearQualityPts = 5;
-  if (avgClear != null) {
+  const dataCompletePts =
+    activeClientTotal <= 0 ? 0 : (dataScoreCompleteCount / activeClientTotal) * 15;
+  let clearQualityPts = 10;
+  if (totalSessions > 0 && avgClear != null) {
     if (avgClear >= 4) clearQualityPts = 10;
     else if (avgClear >= 3) clearQualityPts = 7;
     else if (avgClear >= 2) clearQualityPts = 4;
