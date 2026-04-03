@@ -1000,9 +1000,9 @@ export default function MyPractice() {
           </div>
         </div>
         <p className="mt-8 border-t border-white/10 pt-4 text-[10px] italic leading-relaxed text-white/40">
-          Year 2: Coach Bot begins QLoRA fine-tuning on your correction data. Your AI learns your clients,
-          your language, and your coaching style. The longer you use it, the smarter it gets. This score
-          compounds.
+          Year 2: Coach Bot begins learning from your coaching patterns and feedback. The longer you use it,
+          the smarter it gets. Your coaching style becomes part of the intelligence. Your AI learns your
+          clients, your language, and your coaching style. This score compounds.
         </p>
       </section>
 
