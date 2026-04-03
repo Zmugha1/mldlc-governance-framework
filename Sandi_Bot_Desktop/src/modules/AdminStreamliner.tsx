@@ -150,6 +150,71 @@ function csvEscapeCell(value: string): string {
   return value;
 }
 
+/** Map user_feedback row to UAT CSV columns (schema uses page_name, created_at, feedback_text, thumbs_up). */
+function parseUatFeedbackExportRow(row: UserFeedbackRow): {
+  date: string;
+  page: string;
+  rating: string;
+  working: string;
+  confusing: string;
+  missing: string;
+  comments: string;
+} {
+  const text = (row.feedback_text ?? '').trim();
+  let working = row.thumbs_up === 1 ? 'yes' : 'no';
+  let confusing = 'no';
+  let missing = 'no';
+  let comments = text;
+
+  if (text.includes('Working well:')) {
+    const wl = /Working well:\s*(yes|no)/i.exec(text);
+    if (wl) working = wl[1].toLowerCase();
+    const conf = /Confusing:\s*(yes|no)/i.exec(text);
+    if (conf) confusing = conf[1].toLowerCase();
+    const miss = /Missing something:\s*(yes|no)/i.exec(text);
+    if (miss) missing = miss[1].toLowerCase();
+    const idx = text.indexOf('\n\n');
+    comments = idx >= 0 ? text.slice(idx + 2).trim() : '';
+  }
+
+  return {
+    date: row.created_at ?? row.session_date ?? '',
+    page: row.page_name ?? '',
+    rating: (row.rating ?? '').trim(),
+    working,
+    confusing,
+    missing,
+    comments,
+  };
+}
+
+type AuditLogExportRow = {
+  timestamp: string;
+  action_type: string;
+  client_id: string | null;
+  input_data: string | null;
+  output_data: string | null;
+  reasoning: string | null;
+  model_used: string | null;
+};
+
+function auditDetailsCell(row: AuditLogExportRow): string {
+  const parts = [
+    row.output_data ? `out: ${row.output_data}` : '',
+    row.reasoning ? `reason: ${row.reasoning}` : '',
+    row.input_data ? `in: ${row.input_data}` : '',
+  ].filter(Boolean);
+  return parts.join(' | ') || '';
+}
+
+type UatFeedbackSummaryRow = {
+  total: number;
+  avg_rating: number | null;
+  working_count: number;
+  confusing_count: number;
+  missing_count: number;
+};
+
 type CompletenessCellStatus = 'OK' | 'PARTIAL' | 'MISSING' | 'WARN';
 
 type CompletenessAuditRow = {
@@ -444,6 +509,12 @@ export default function AdminStreamliner() {
   const [skillsReExtractRunning, setSkillsReExtractRunning] = useState(false);
   const [skillsReExtractLines, setSkillsReExtractLines] = useState<string[]>([]);
   const [skillsReExtractSummary, setSkillsReExtractSummary] = useState<string | null>(null);
+  const [uatSummary, setUatSummary] = useState<UatFeedbackSummaryRow | null>(null);
+  const [uatReportExporting, setUatReportExporting] = useState(false);
+  const [uatReportToast, setUatReportToast] = useState<{
+    kind: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const fetchValidateReadyCount = async (): Promise<number> => {
     const rows = await dbSelect<{ c: number }>(
@@ -471,6 +542,170 @@ export default function AdminStreamliner() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await dbSelect<{
+          total: number;
+          avg_rating: number | null;
+          working_count: number;
+          confusing_count: number;
+          missing_count: number;
+        }>(
+          `SELECT
+             COUNT(*) as total,
+             AVG(
+               CASE
+                 WHEN rating IS NOT NULL AND TRIM(rating) != ''
+                   AND CAST(rating AS REAL) BETWEEN 1 AND 5
+                 THEN CAST(rating AS REAL)
+                 ELSE NULL
+               END
+             ) as avg_rating,
+             SUM(
+               CASE
+                 WHEN thumbs_up = 1
+                   OR feedback_text LIKE '%Working well: yes%'
+                 THEN 1 ELSE 0 END
+             ) as working_count,
+             SUM(
+               CASE WHEN feedback_text LIKE '%Confusing: yes%' THEN 1 ELSE 0 END
+             ) as confusing_count,
+             SUM(
+               CASE WHEN feedback_text LIKE '%Missing something: yes%' THEN 1 ELSE 0 END
+             ) as missing_count
+           FROM user_feedback`,
+          []
+        );
+        if (cancelled) return;
+        const r = rows[0];
+        setUatSummary({
+          total: Number(r?.total ?? 0),
+          avg_rating: r?.avg_rating != null && Number.isFinite(Number(r.avg_rating)) ? Number(r.avg_rating) : null,
+          working_count: Number(r?.working_count ?? 0),
+          confusing_count: Number(r?.confusing_count ?? 0),
+          missing_count: Number(r?.missing_count ?? 0),
+        });
+      } catch (e) {
+        console.error('UAT summary load failed:', e);
+        if (!cancelled) {
+          setUatSummary({
+            total: 0,
+            avg_rating: null,
+            working_count: 0,
+            confusing_count: 0,
+            missing_count: 0,
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    if (!uatReportToast) return;
+    const ms = uatReportToast.kind === 'success' ? 5000 : 6000;
+    const t = window.setTimeout(() => setUatReportToast(null), ms);
+    return () => window.clearTimeout(t);
+  }, [uatReportToast]);
+
+  const handleExportUatReport = async () => {
+    setUatReportExporting(true);
+    try {
+      const [feedbackAll, auditRows] = await Promise.all([
+        dbSelect<UserFeedbackRow>(
+          `SELECT id, page_name, feedback_type, rating, feedback_text, feature_name, thumbs_up, session_date, created_at
+           FROM user_feedback
+           ORDER BY created_at ASC`,
+          []
+        ),
+        dbSelect<AuditLogExportRow>(
+          `SELECT timestamp, action_type, client_id, input_data, output_data, reasoning, model_used
+           FROM audit_log
+           WHERE datetime(timestamp) >= datetime('now', '-30 days')
+           ORDER BY timestamp ASC`,
+          []
+        ),
+      ]);
+
+      const lines: string[] = [];
+      lines.push(csvEscapeCell('=== FEEDBACK ==='));
+      lines.push(
+        [
+          'Date',
+          'Page',
+          'Rating',
+          'Working Well',
+          'Confusing',
+          'Missing',
+          'Comments',
+        ].join(',')
+      );
+      for (const row of feedbackAll) {
+        const p = parseUatFeedbackExportRow(row);
+        lines.push(
+          [
+            p.date,
+            p.page,
+            p.rating,
+            p.working,
+            p.confusing,
+            p.missing,
+            p.comments,
+          ]
+            .map((v) => csvEscapeCell(String(v)))
+            .join(',')
+        );
+      }
+      lines.push('');
+      lines.push(csvEscapeCell('=== AUDIT LOG ==='));
+      lines.push(['Date', 'Action', 'Entity Type', 'Entity ID', 'Details'].join(','));
+      for (const row of auditRows) {
+        const entityType = row.client_id ? 'client' : row.model_used ?? '';
+        const details = auditDetailsCell(row);
+        lines.push(
+          [
+            row.timestamp ?? '',
+            row.action_type ?? '',
+            entityType,
+            row.client_id ?? '',
+            details,
+          ]
+            .map((v) => csvEscapeCell(String(v)))
+            .join(',')
+        );
+      }
+
+      const csv = lines.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `CoachBot_UAT_Report_${localCalendarDateYyyyMmDd()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setUatReportToast({
+        kind: 'success',
+        text:
+          'UAT Report saved to your Downloads folder. Email it to Zubia at zubiamL4L@gmail.com',
+      });
+    } catch (e) {
+      console.error('UAT report export failed:', e);
+      setUatReportToast({
+        kind: 'error',
+        text: 'Could not export report. Please try again.',
+      });
+    } finally {
+      setUatReportExporting(false);
+    }
+  };
 
   useEffect(() => {
     if (adminTab !== 'feedback' || loading) return;
@@ -1155,6 +1390,60 @@ ${workingText}`;
 
   return (
     <div className="space-y-6">
+      <Card
+        className="border-[#C8E8E5]"
+        style={{ borderColor: '#C8E8E5', borderWidth: 1 }}
+      >
+        <CardHeader className="pb-2">
+          <CardTitle className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+            UAT Report
+          </CardTitle>
+          <CardDescription className="text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+            Export all feedback and audit logs from Sandi&apos;s UAT session. Share this file with Zubia after
+            using Coach Bot.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button
+            type="button"
+            disabled={uatReportExporting}
+            onClick={() => void handleExportUatReport()}
+            className="border-0 font-bold text-white hover:opacity-90"
+            style={{
+              background: '#3BBFBF',
+              borderRadius: 8,
+              padding: '10px 20px',
+              fontSize: 14,
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {uatReportExporting ? 'Exporting…' : 'Export UAT Report'}
+          </Button>
+          <div className="space-y-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+            {uatSummary != null && uatSummary.total === 0 ? (
+              <p className="italic">
+                No feedback collected yet. Use the Feedback button on each page to share what you notice.
+              </p>
+            ) : uatSummary != null ? (
+              <>
+                <p>Total feedback entries: {uatSummary.total}</p>
+                <p>
+                  Average rating:{' '}
+                  {uatSummary.avg_rating != null
+                    ? `${uatSummary.avg_rating.toFixed(1)} / 5`
+                    : '— / 5'}
+                </p>
+                <p>Working well: {uatSummary.working_count} responses</p>
+                <p>Confusing: {uatSummary.confusing_count} responses</p>
+                <p>Missing something: {uatSummary.missing_count} responses</p>
+              </>
+            ) : (
+              <p className="italic">Loading summary…</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <FeedbackButton pageName="Admin Streamliner" />
       <Tabs value={adminTab} onValueChange={setAdminTab}>
         <TabsList className="mb-4">
@@ -2273,6 +2562,18 @@ ${workingText}`;
           )}
         </TabsContent>
       </Tabs>
+
+      {uatReportToast ? (
+        <div
+          role="status"
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[1000] max-w-[min(520px,92vw)] -translate-x-1/2 rounded-lg px-4 py-3 text-center text-[13px] font-medium text-white shadow-lg"
+          style={{
+            backgroundColor: uatReportToast.kind === 'success' ? '#3BBFBF' : '#F05F57',
+          }}
+        >
+          {uatReportToast.text}
+        </div>
+      ) : null}
     </div>
   );
 }
