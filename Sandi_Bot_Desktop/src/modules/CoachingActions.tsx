@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getDb } from '../services/db';
+import UATFeedback from '@/components/UATFeedback';
 
 type PipelineStage = 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
 
@@ -722,6 +723,7 @@ export default function CoachingActions() {
           </div>
         )}
       </section>
+      <UATFeedback currentPage="Coaching Actions" />
     </div>
   );
 }

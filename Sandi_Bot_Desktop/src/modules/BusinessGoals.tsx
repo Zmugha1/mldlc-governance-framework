@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Star, MessageSquare, CheckCircle, Target, Info } from 'lucide-react';
 import { getDb } from '../services/db';
+import UATFeedback from '@/components/UATFeedback';
 import {
   Tooltip,
   TooltipContent,
@@ -777,6 +778,7 @@ export default function BusinessGoals() {
         <br />
         on track for 11 placements and $300,000.
       </p>
+      <UATFeedback currentPage="Business Goals" />
     </div>
   );
 }

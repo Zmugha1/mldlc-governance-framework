@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/tooltip';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
+import UATFeedback from '@/components/UATFeedback';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
 import {
@@ -7579,6 +7580,7 @@ export default function ClientIntelligence() {
           {toastMessage}
         </div>
       ) : null}
+      <UATFeedback currentPage="Client Intelligence" />
     </div>
   );
 }

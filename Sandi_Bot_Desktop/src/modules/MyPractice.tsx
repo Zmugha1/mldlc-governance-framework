@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getDb } from '../services/db';
+import UATFeedback from '@/components/UATFeedback';
 
 const HEADER = '#2D4459';
 const MUTED = '#7A8F95';
@@ -1604,6 +1605,7 @@ export default function MyPractice() {
           )}
         </div>
       </section>
+      <UATFeedback currentPage="My Practice" />
     </div>
   );
 }

@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/tooltip';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
+import UATFeedback from '@/components/UATFeedback';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
 import { getAllStageReadiness } from '@/services/stageReadinessService';
 import type { Client, DashboardStats } from '@/types';
@@ -1983,6 +1984,7 @@ export default function ExecutiveDashboard() {
           </div>
         </CardContent>
       </Card>
+      <UATFeedback currentPage="Morning Brief" />
     </div>
   );
 }
