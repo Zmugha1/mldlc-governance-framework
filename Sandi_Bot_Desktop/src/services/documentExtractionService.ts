@@ -1260,6 +1260,22 @@ async function countCoachingSessionNearDuplicates(
   return Number(rows[0]?.count ?? 0);
 }
 
+/** Removes rows with a session_date but no usable notes (ghost / placeholder sessions). */
+async function cleanupGhostCoachingSessions(): Promise<void> {
+  try {
+    await dbExecute(
+      `DELETE FROM coaching_sessions
+       WHERE (notes IS NULL
+         OR notes = ''
+         OR LENGTH(TRIM(notes)) = 0)
+         AND session_date IS NOT NULL`,
+      []
+    );
+  } catch (e) {
+    console.error('[documentExtractionService] ghost coaching_sessions cleanup failed:', e);
+  }
+}
+
 async function runFathomSessionDuplicateCleanups(): Promise<void> {
   try {
     await dbExecute(
@@ -2475,3 +2491,5 @@ export async function getExtractionStatus(
 
   return status;
 }
+
+void cleanupGhostCoachingSessions();
