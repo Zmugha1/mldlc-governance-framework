@@ -1526,12 +1526,12 @@ export default function MyPractice() {
                 </h3>
                 <div className="mt-3 space-y-3 text-xs leading-relaxed" style={{ color: MUTED }}>
                   <p>
-                    Month 6: Coach Bot runs its first QLoRA fine-tuning on your session data. Your AI begins
-                    learning your clients, your language, and your coaching patterns.
+                    Month 6: Coach Bot begins learning from your real coaching sessions. Your clients, your
+                    language, and your patterns become part of the intelligence.
                   </p>
                   <p>
-                    Month 12: A fine-tuned model replaces the base model. Coach Bot now speaks your coaching
-                    language — not generic AI language.
+                    Month 12: Coach Bot now speaks your coaching language — not generic AI language. Every session
+                    makes it smarter.
                   </p>
                   <p>
                     Year 2: Every correction you make, every aha moment you capture, every golden rule you
