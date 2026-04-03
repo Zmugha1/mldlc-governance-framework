@@ -986,8 +986,8 @@ export default function AdminStreamliner() {
             'you2_skills_reextract',
             clientId,
             filePath ?? '',
-            null,
-            'Skipped: no You 2.0 PDF in document_extractions',
+            fileName || null,
+            `Skipped: no You 2.0 PDF in document_extractions (file_name=${fileName || 'none'})`,
             'n/a'
           );
           continue;

@@ -136,20 +136,6 @@ async function trySpawnOllamaServe(): Promise<void> {
   });
 }
 
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div
-      className="rounded-[12px] border border-[#C8E8E5] bg-white p-6 shadow-sm"
-      style={{ borderLeftWidth: 4, borderLeftColor: '#3BBFBF' }}
-    >
-      <h2 className="text-xl font-semibold mb-2" style={{ color: '#2D4459' }}>
-        {title}
-      </h2>
-      <p className="text-[#7A8F95]">Coming in this build.</p>
-    </div>
-  );
-}
-
 function Sidebar({
   activeModule,
   onModuleChange,

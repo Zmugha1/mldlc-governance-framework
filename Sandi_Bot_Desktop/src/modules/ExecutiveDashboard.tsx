@@ -5,9 +5,8 @@ import {
   useMemo,
   useCallback,
   useRef,
-  type ReactNode,
 } from 'react';
-import { RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Loader2, AlertTriangle, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -482,19 +481,6 @@ function weeksSinceInstallRounded(ref: Date, installDate: Date): number {
   return roundTo1Decimal(diffDays / 7);
 }
 
-/** Unrounded weeks (for first-week Time Saved floor). */
-function rawWeeksSinceInstall(ref: Date, installDate: Date): number {
-  const end = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
-  const start = new Date(
-    installDate.getFullYear(),
-    installDate.getMonth(),
-    installDate.getDate()
-  );
-  if (end < start) return 0;
-  const diffDays = (end.getTime() - start.getTime()) / 86_400_000;
-  return diffDays / 7;
-}
-
 function timeSavedForPeriod(
   period: KpiPeriod,
   ref: Date,
@@ -578,12 +564,14 @@ function MorningBriefKpiCard({
   sub,
   valueColor,
   footnote,
+  infoTooltip,
 }: {
   label: string;
   value: string | number;
   sub: string;
   valueColor?: string;
   footnote?: string;
+  infoTooltip?: string;
 }) {
   return (
     <div
@@ -593,12 +581,30 @@ function MorningBriefKpiCard({
         padding: '16px 20px',
       }}
     >
-      <p
-        className="uppercase tracking-wide font-medium"
-        style={{ fontSize: 11, color: '#7A8F95' }}
-      >
-        {label}
-      </p>
+      <div className="flex items-start justify-between gap-1">
+        <p
+          className="uppercase tracking-wide font-medium"
+          style={{ fontSize: 11, color: '#7A8F95' }}
+        >
+          {label}
+        </p>
+        {infoTooltip ? (
+          <UiTooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="-mr-0.5 shrink-0 rounded p-0.5 text-[#7A8F95] hover:text-[#2D4459] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8E8E5]"
+                aria-label={`About ${label}`}
+              >
+                <Info className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs whitespace-pre-line text-xs">
+              {infoTooltip}
+            </TooltipContent>
+          </UiTooltip>
+        ) : null}
+      </div>
       <p
         className="mt-1 font-bold tabular-nums"
         style={{ fontSize: 28, color: valueColor ?? '#2D4459' }}
@@ -652,8 +658,8 @@ export default function ExecutiveDashboard() {
   const [seekerWeekSaveOk, setSeekerWeekSaveOk] = useState(false);
   const [goneQuietAttentionCount, setGoneQuietAttentionCount] = useState(0);
   const [pinkNeedResponseCount, setPinkNeedResponseCount] = useState(0);
-  const [highPriorityStaleCount, setHighPriorityStaleCount] = useState(0);
-  const [sessionsScheduledNullCount, setSessionsScheduledNullCount] = useState(0);
+  const [_highPriorityStaleCount, setHighPriorityStaleCount] = useState(0);
+  const [_sessionsScheduledNullCount, setSessionsScheduledNullCount] = useState(0);
   const [timeSavedPrefs, setTimeSavedPrefs] = useState<TimeSavedPrefs>(() => ({
     installDate: new Date(FALLBACK_INSTALL_DATE),
     hourlyRate: 150,

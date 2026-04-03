@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 import { getDb } from '../services/db';
 import UATFeedback from '@/components/UATFeedback';
 
+function tauriSqlRows<T>(r: T | T[] | null | undefined): T[] {
+  if (r == null) return [];
+  return Array.isArray(r) ? r : [r];
+}
+
 type PipelineStage = 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
 
 const STAGE_INPUT_TO_PIPELINE: Record<string, PipelineStage> = {
@@ -196,7 +201,9 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
        AND date(COALESCE(response_date, created_at)) = date('now')`,
     []
   );
-  const respondedKey = new Set(respondedToday.map((r) => `${r.client_id}:${r.signal_type}`));
+  const respondedKey = new Set(
+    tauriSqlRows(respondedToday).map((r) => `${r.client_id}:${r.signal_type}`)
+  );
 
   type Acc = {
     clientId: string;
@@ -240,7 +247,7 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
     []
   );
 
-  for (const c of clientRows) {
+  for (const c of tauriSqlRows(clientRows)) {
     const stageCode = normalizeStage(c.inferred_stage ?? '');
     const actPink = activePinkFlags(parsePinkFlagsJson(c.pink_flags));
     if (actPink.length > 0 && !respondedKey.has(`${c.id}:pink_flag`)) {
@@ -364,15 +371,18 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
     []
   );
 
+  const convList = tauriSqlRows(conv);
+  const histList = tauriSqlRows(hist);
+
   const goldenDrafts: Record<string, string> = {};
-  for (const row of conv) {
+  for (const row of convList) {
     goldenDrafts[row.id] = row.golden_rules_notes ?? '';
   }
 
   return {
     signalClients,
-    converted: conv,
-    history: hist,
+    converted: convList,
+    history: histList,
     goldenDrafts,
   };
 }

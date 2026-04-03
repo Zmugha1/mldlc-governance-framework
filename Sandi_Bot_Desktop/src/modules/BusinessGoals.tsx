@@ -20,6 +20,16 @@ const TARGET_C2 = 65;
 const TARGET_C3 = 83;
 const TARGET_C4 = 80;
 
+/** Tauri SQL plugin may return one row as an object instead of T[]. */
+function tauriSqlRows<T>(r: T | T[] | null | undefined): T[] {
+  if (r == null) return [];
+  return Array.isArray(r) ? r : [r];
+}
+
+function tauriSqlFirst<T>(r: T | T[] | null | undefined): T | undefined {
+  return tauriSqlRows(r)[0];
+}
+
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
@@ -259,18 +269,23 @@ export default function BusinessGoals() {
 
         if (cancelled) return;
 
-        const icSched = Number(icScheduledRows[0]?.cnt ?? 0);
-        const icHeld = Number(icHeldRows[0]?.cnt ?? 0);
-        const c1Sched = Number(c1ScheduledRows[0]?.cnt ?? 0);
-        const c1Held = Number(c1HeldRows[0]?.cnt ?? 0);
-        const c4 = c4Rows[0];
+        const icSched = Number(tauriSqlFirst(icScheduledRows)?.cnt ?? 0);
+        const icHeld = Number(tauriSqlFirst(icHeldRows)?.cnt ?? 0);
+        const c1Sched = Number(tauriSqlFirst(c1ScheduledRows)?.cnt ?? 0);
+        const c1Held = Number(tauriSqlFirst(c1HeldRows)?.cnt ?? 0);
+        const c4 = tauriSqlFirst(c4Rows);
         const c4Total = Number(c4?.total ?? 0);
         const c4Poc = Number(c4?.with_poc ?? 0);
 
-        setPlacementCount(Number(placementRows[0]?.cnt ?? 0));
-        setRevenueSumRaw(revenueRows.reduce((sum, r) => sum + parseRevenue(r.placement_revenue), 0));
-        setC3WeekCount(Number(c3WeekRows[0]?.cnt ?? 0));
-        setC3YtdCount(Number(c3YtdRows[0]?.cnt ?? 0));
+        setPlacementCount(Number(tauriSqlFirst(placementRows)?.cnt ?? 0));
+        setRevenueSumRaw(
+          tauriSqlRows(revenueRows).reduce(
+            (sum: number, r: { placement_revenue: string | null }) => sum + parseRevenue(r.placement_revenue),
+            0
+          )
+        );
+        setC3WeekCount(Number(tauriSqlFirst(c3WeekRows)?.cnt ?? 0));
+        setC3YtdCount(Number(tauriSqlFirst(c3YtdRows)?.cnt ?? 0));
         setIcShowPct(
           icSched === 0 ? null : Math.min(100, Math.round((icHeld / icSched) * 1000) / 10)
         );
@@ -282,13 +297,13 @@ export default function BusinessGoals() {
         setC2MovementPct(null);
         setC3MovementPct(null);
 
-        setInterventionCount(Number(interventionRows[0]?.cnt ?? 0));
+        setInterventionCount(Number(tauriSqlFirst(interventionRows)?.cnt ?? 0));
         let resolved = 0;
-        for (const pr of pinkRows) {
+        for (const pr of tauriSqlRows(pinkRows)) {
           resolved += countResolvedFlagsInJson(pr.pink_flags);
         }
         setFlagsResolvedCount(resolved);
-        setClientsReadyCount(Number(readyRows[0]?.cnt ?? 0));
+        setClientsReadyCount(Number(tauriSqlFirst(readyRows)?.cnt ?? 0));
       } catch (e) {
         if (!cancelled) {
           setError(String((e as { message?: string })?.message ?? e ?? 'Failed to load'));

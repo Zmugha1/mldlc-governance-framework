@@ -1960,7 +1960,7 @@ function ClientDetailModal({
   }, [lastContactDateDb, mostRecentSessionDate]);
 
   const resolvedPipelineCode = resolvePipelineStageCode(client.inferred_stage);
-  const stageDisplay = getStageDisplay(client.inferred_stage);
+  const stageDisplay = getStageDisplay(client.inferred_stage ?? null);
   const stageHeaderBadgeText = `${stageDisplay.code} · ${stageDisplay.label}`;
   const stageLabel = stageDisplay.label;
   const stageCompartmentSubtitle =
@@ -3309,7 +3309,8 @@ function ClientDetailModal({
       formatVisionApprovedDateLabel(client.vision_approved_date) ||
       localCalendarDateYyyyMmDd();
 
-    const slide1 = pptx.addSlide({ background: { color: '2D4459' } });
+    const slide1 = pptx.addSlide();
+    slide1.background = { color: '2D4459' };
     slide1.addText(client.name, {
       x: 0.5,
       y: 1.6,
@@ -3339,7 +3340,8 @@ function ClientDetailModal({
     });
 
     const [para1, para2, para3] = visionBodyToThreeParagraphs(body);
-    const slide2 = pptx.addSlide({ background: { color: 'FFFFFF' } });
+    const slide2 = pptx.addSlide();
+    slide2.background = { color: 'FFFFFF' };
     slide2.addText('Vision Statement', {
       x: 0.5,
       y: 0.35,
@@ -3398,7 +3400,8 @@ function ClientDetailModal({
         ? you2Details.opportunities.join('\n')
         : '—';
 
-    const slide3 = pptx.addSlide({ background: { color: 'F4F7F8' } });
+    const slide3 = pptx.addSlide();
+    slide3.background = { color: 'F4F7F8' };
     slide3.addText('Your Path Forward', {
       x: 0.5,
       y: 0.35,

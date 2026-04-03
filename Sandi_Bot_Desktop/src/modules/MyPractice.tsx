@@ -151,6 +151,15 @@ type GoneQuietClientRow = {
   last_sess: string | null;
 };
 
+function tauriSqlRows<T>(r: T | T[] | null | undefined): T[] {
+  if (r == null) return [];
+  return Array.isArray(r) ? r : [r];
+}
+
+function tauriSqlFirst<T>(r: T | T[] | null | undefined): T | undefined {
+  return tauriSqlRows(r)[0];
+}
+
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
@@ -765,7 +774,7 @@ export default function MyPractice() {
         if (cancelled) return;
 
         let goneQuietN = 0;
-        for (const row of gqRows) {
+        for (const row of tauriSqlRows(gqRows)) {
           const stage = normalizeStage(row.inferred_stage);
           const ref = row.last_sess?.trim() || row.updated_at?.trim() || '';
           const days = daysSinceReferenceLocal(ref || null);
@@ -773,7 +782,7 @@ export default function MyPractice() {
           if (days !== null && days > th) goneQuietN += 1;
         }
 
-        const pref = prefsRows[0];
+        const pref = tauriSqlFirst(prefsRows);
         const parsedInstall = parseUserPrefsInstallDate(pref?.install_date ?? null);
         const hr =
           pref?.coach_hourly_rate != null && Number.isFinite(Number(pref.coach_hourly_rate))
@@ -784,32 +793,37 @@ export default function MyPractice() {
             ? Number(pref.weekly_hours_saved)
             : 2;
 
-        setGoldenRules(rules);
-        setClearAgg(clear[0] ?? null);
-        setDiscAgg(disc[0] ?? null);
-        setClientsComplete(activeClients);
-        setActiveClientTotal(Number(activeTotalRows[0]?.total ?? 0));
-        setAhaMoments(ahas);
-        setPlacementCount(Number(placementRows[0]?.cnt ?? 0));
-        setRevenueSumRaw(revenueRows.reduce((sum, r) => sum + parseRevenue(r.placement_revenue), 0));
-        setC3WeekCount(Number(c3WeekRows[0]?.cnt ?? 0));
-        setC3YtdCount(Number(c3YtdRows[0]?.cnt ?? 0));
-        setC1Scheduled(Number(c1SchedRows[0]?.cnt ?? 0));
-        setC1Held(Number(c1HeldRows[0]?.cnt ?? 0));
-        setC4WithPoc(Number(c4Rows[0]?.with_poc ?? 0));
-        setC4Total(Number(c4Rows[0]?.total ?? 0));
-        setInterventionTotal(Number(ivRows[0]?.total ?? 0));
-        setInterventionResponded(Number(ivRows[0]?.responded ?? 0));
+        setGoldenRules(tauriSqlRows(rules) as GoldenRuleRow[]);
+        setClearAgg(tauriSqlFirst(clear) ?? null);
+        setDiscAgg(tauriSqlFirst(disc) ?? null);
+        setClientsComplete(tauriSqlRows(activeClients) as ClientCompletenessRow[]);
+        setActiveClientTotal(Number(tauriSqlFirst(activeTotalRows)?.total ?? 0));
+        setAhaMoments(tauriSqlRows(ahas) as AhaMomentRow[]);
+        setPlacementCount(Number(tauriSqlFirst(placementRows)?.cnt ?? 0));
+        setRevenueSumRaw(
+          tauriSqlRows(revenueRows).reduce(
+            (sum: number, r: { placement_revenue: string | null }) => sum + parseRevenue(r.placement_revenue),
+            0
+          )
+        );
+        setC3WeekCount(Number(tauriSqlFirst(c3WeekRows)?.cnt ?? 0));
+        setC3YtdCount(Number(tauriSqlFirst(c3YtdRows)?.cnt ?? 0));
+        setC1Scheduled(Number(tauriSqlFirst(c1SchedRows)?.cnt ?? 0));
+        setC1Held(Number(tauriSqlFirst(c1HeldRows)?.cnt ?? 0));
+        setC4WithPoc(Number(tauriSqlFirst(c4Rows)?.with_poc ?? 0));
+        setC4Total(Number(tauriSqlFirst(c4Rows)?.total ?? 0));
+        setInterventionTotal(Number(tauriSqlFirst(ivRows)?.total ?? 0));
+        setInterventionResponded(Number(tauriSqlFirst(ivRows)?.responded ?? 0));
         setGoneQuietCountState(goneQuietN);
-        setActiveDaysMonth(activeDaysRows.length);
-        setReflectionsMonth(Number(reflRows[0]?.cnt ?? 0));
-        setAhaMonthCount(Number(ahaMonthRows[0]?.cnt ?? 0));
+        setActiveDaysMonth(tauriSqlRows(activeDaysRows).length);
+        setReflectionsMonth(Number(tauriSqlFirst(reflRows)?.cnt ?? 0));
+        setAhaMonthCount(Number(tauriSqlFirst(ahaMonthRows)?.cnt ?? 0));
         setInstallDate(parsedInstall.date);
         setInstallWasNull(parsedInstall.wasNull);
         setHourlyRate(hr);
         setWeeklyHoursSaved(wh);
-        setEmotionalWith(Number(emotionalRows[0]?.with_em ?? 0));
-        setEmotionalTotal(Number(emotionalRows[0]?.total ?? 0));
+        setEmotionalWith(Number(tauriSqlFirst(emotionalRows)?.with_em ?? 0));
+        setEmotionalTotal(Number(tauriSqlFirst(emotionalRows)?.total ?? 0));
       } catch (e) {
         if (!cancelled) {
           setError(String((e as { message?: string })?.message ?? e ?? 'Failed to load'));
