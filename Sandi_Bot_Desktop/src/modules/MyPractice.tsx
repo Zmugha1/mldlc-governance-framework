@@ -972,6 +972,19 @@ export default function MyPractice() {
             <p className="mt-2 text-lg font-semibold" style={{ color: scoreLabelSpec.color }}>
               {scoreLabelSpec.text}
             </p>
+            <p
+              className="mx-auto italic"
+              style={{
+                color: '#7A8F95',
+                fontSize: 12,
+                marginTop: 8,
+                maxWidth: 300,
+                textAlign: 'center',
+              }}
+            >
+              This score starts low and grows every day you use Coach Bot. Response rate and CLEAR
+              quality are already perfect. Keep coaching.
+            </p>
             <p className="mt-3 text-xs text-white/60">Updated daily as you coach</p>
           </div>
           <div className="min-w-0 flex-1 lg:w-1/2 lg:pl-4">
