@@ -134,8 +134,9 @@ type ClientCompletenessRow = {
   time_commitment: string | null;
   reasons_for_change: string | null;
   has_disc: number;
-  fathom_count: number;
-  tumay_ok: number;
+  /** Count of sessions with date + notes (or CLEAR notes) longer than 20 chars */
+  sessions_notes_ok: number;
+  tumay_contact_ok: number;
 };
 
 type GoneQuietClientRow = {
@@ -227,24 +228,38 @@ function normalizeAhaType(raw: string | null | undefined): AhaMomentType {
   return 'general';
 }
 
-function fieldFilled(v: string | null | undefined): boolean {
-  return v != null && String(v).trim().length > 0;
+function profileDiscOk(row: ClientCompletenessRow): boolean {
+  return Number(row.has_disc) === 1;
+}
+
+function profileYou2Ok(row: ClientCompletenessRow): boolean {
+  const v = row.one_year_vision;
+  return v != null && String(v).trim().length > 20;
+}
+
+function profileSessionsOk(row: ClientCompletenessRow): boolean {
+  return Number(row.sessions_notes_ok) > 0;
+}
+
+function profileTumayOk(row: ClientCompletenessRow): boolean {
+  return Number(row.tumay_contact_ok) === 1;
 }
 
 function profileWeightedPct(row: ClientCompletenessRow): number {
   let pts = 0;
-  if (Number(row.has_disc) === 1) pts += 25;
-  if (fieldFilled(row.one_year_vision)) pts += 25;
-  if (Number(row.fathom_count) > 0) pts += 30;
-  if (Number(row.tumay_ok) === 1) pts += 20;
+  if (profileDiscOk(row)) pts += 25;
+  if (profileYou2Ok(row)) pts += 25;
+  if (profileSessionsOk(row)) pts += 30;
+  if (profileTumayOk(row)) pts += 20;
   return pts;
 }
 
 function isActiveClientProfileComplete(row: ClientCompletenessRow): boolean {
   return (
-    Number(row.has_disc) === 1 &&
-    fieldFilled(row.one_year_vision) &&
-    Number(row.fathom_count) > 0
+    profileDiscOk(row) &&
+    profileYou2Ok(row) &&
+    profileSessionsOk(row) &&
+    profileTumayOk(row)
   );
 }
 
@@ -259,6 +274,34 @@ function profileBarColor(pct: number): string {
   if (pct >= 100) return '#3BBFBF';
   if (pct >= 75) return '#C8613F';
   return '#F05F57';
+}
+
+function ProfileCompletenessStatusIcons({ row }: { row: ClientCompletenessRow }) {
+  const discOk = profileDiscOk(row);
+  const you2Ok = profileYou2Ok(row);
+  const sessOk = profileSessionsOk(row);
+  const tumayOk = profileTumayOk(row);
+  const sep = (
+    <span className="mx-1" style={{ color: MUTED }}>
+      ·
+    </span>
+  );
+  const cell = (label: string, ok: boolean) => (
+    <span style={{ color: ok ? TEAL : CORAL_SOFT, fontSize: 12 }}>
+      {label} {ok ? '✅' : '❌'}
+    </span>
+  );
+  return (
+    <p className="mt-1 flex flex-wrap items-center" style={{ lineHeight: 1.5 }}>
+      {cell('DISC', discOk)}
+      {sep}
+      {cell('You 2.0', you2Ok)}
+      {sep}
+      {cell('Sessions', sessOk)}
+      {sep}
+      {cell('TUMAY', tumayOk)}
+    </p>
+  );
 }
 
 function parseUserPrefsInstallDate(
@@ -545,21 +588,33 @@ export default function MyPractice() {
                y.areas_of_interest,
                y.time_commitment,
                y.reasons_for_change,
-               CASE WHEN d.client_id IS NOT NULL THEN 1 ELSE 0 END AS has_disc,
+               CASE
+                 WHEN d.natural_d IS NOT NULL
+                   OR d.natural_i IS NOT NULL
+                   OR d.natural_s IS NOT NULL
+                   OR d.natural_c IS NOT NULL
+                 THEN 1
+                 ELSE 0
+               END AS has_disc,
                (
                  SELECT COUNT(*)
                  FROM coaching_sessions cs
                  WHERE cs.client_id = c.id
                    AND cs.session_date IS NOT NULL
                    AND TRIM(cs.session_date) != ''
-               ) AS fathom_count,
+                   AND (
+                     LENGTH(TRIM(COALESCE(cs.notes, ''))) > 20
+                     OR LENGTH(TRIM(COALESCE(cs.clear_notes, ''))) > 20
+                   )
+               ) AS sessions_notes_ok,
                CASE
                  WHEN c.tumay_data IS NOT NULL
                    AND LENGTH(TRIM(c.tumay_data)) > 2
                    AND LOWER(TRIM(c.tumay_data)) NOT IN ('{}', 'null', '[]')
+                   AND NULLIF(TRIM(json_extract(c.tumay_data, '$.contact_name')), '') IS NOT NULL
                  THEN 1
                  ELSE 0
-               END AS tumay_ok
+               END AS tumay_contact_ok
              FROM clients c
              LEFT JOIN client_you2_profiles y ON y.client_id = c.id
              LEFT JOIN client_disc_profiles d ON d.client_id = c.id
@@ -1478,8 +1533,11 @@ export default function MyPractice() {
           Profile completeness
         </h2>
         <p className="mt-1 text-sm" style={{ color: MUTED }}>
-          {completeCount} of {activeClientTotal} active clients have complete profiles (DISC + You2 vision + ≥1
-          session). Weighted score per client below.
+          {completeCount} of {activeClientTotal} active clients have complete profiles (DISC, You 2.0, sessions
+          with notes, and TUMAY contact).
+        </p>
+        <p className="mt-2 text-[11px] italic" style={{ color: MUTED }}>
+          Profiles improve as you upload Fathom transcripts and log sessions.
         </p>
         <div className="mt-5 space-y-4">
           {activeClientTotal === 0 ? (
@@ -1511,8 +1569,9 @@ export default function MyPractice() {
                       />
                     </div>
                     <p className="mt-1 text-[11px]" style={{ color: MUTED }}>
-                      {profileStatusLabel(pct)} · weighted (DISC 25 / You2 25 / sessions 30 / TUMAY 20)
+                      {profileStatusLabel(pct)}
                     </p>
+                    <ProfileCompletenessStatusIcons row={row} />
                   </div>
                 </div>
               );
