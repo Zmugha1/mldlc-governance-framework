@@ -1,4 +1,12 @@
-import { useState, useMemo, useEffect, useLayoutEffect, useRef, type ChangeEvent } from 'react';
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  type ChangeEvent,
+} from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import PptxGenJS from 'pptxgenjs';
 import {
@@ -1286,12 +1294,24 @@ function parseListField(
     .filter((s) => s.length > 0);
 }
 
+type StageUndoPayload = {
+  clientId: string;
+  clientName: string;
+  fromStage: string;
+  toStage: string;
+};
+
+type UndoState = StageUndoPayload & {
+  timeoutId: ReturnType<typeof setTimeout>;
+};
+
 function ClientDetailModal({
   client,
   onInactivate,
   onVisionUpdated,
   onStageMoved,
   onStageMoveToast,
+  onStageMoveUndoOffer,
 }: {
   client: DisplayClient;
   onInactivate?: (id: string) => void;
@@ -1304,6 +1324,7 @@ function ClientDetailModal({
     message: string,
     variant?: 'success' | 'error'
   ) => void;
+  onStageMoveUndoOffer?: (payload: StageUndoPayload) => void;
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null);
   const [clientReadinessDbFields, setClientReadinessDbFields] = useState<{
@@ -2392,10 +2413,15 @@ function ClientDetailModal({
       await onStageMoved?.(client.id, target);
 
       const targetDisplay = getStageDisplay(target);
-      onStageMoveToast?.(
-        `Client moved to ${targetDisplay.code} · ${targetDisplay.label}`,
-        'success'
-      );
+      onStageMoveUndoOffer?.({
+        clientId: String(client.id),
+        clientName: client.name,
+        fromStage:
+          fromStageText == null || String(fromStageText).trim() === ''
+            ? ''
+            : String(fromStageText),
+        toStage: String(target),
+      });
 
       void getStageReadiness(client.id).then(setReadiness);
     } catch (e) {
@@ -6889,6 +6915,10 @@ export default function ClientIntelligence() {
     durationMs: number;
   } | null>(null);
 
+  const [undoState, setUndoState] = useState<UndoState | null>(null);
+  const [undoDoneToast, setUndoDoneToast] = useState<string | null>(null);
+  const [undoBarPct, setUndoBarPct] = useState(100);
+
   const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
   const [readinessMap, setReadinessMap] = useState<Map<string, number>>(new Map());
   const [recommendationById, setRecommendationById] = useState<
@@ -7020,6 +7050,93 @@ export default function ClientIntelligence() {
     const t = window.setTimeout(() => setToast(null), toast.durationMs);
     return () => clearTimeout(t);
   }, [toast]);
+
+  const undoRef = useRef<UndoState | null>(null);
+  useEffect(() => {
+    undoRef.current = undoState;
+  }, [undoState]);
+
+  useEffect(() => {
+    if (!undoState) {
+      setUndoBarPct(100);
+      return;
+    }
+    setUndoBarPct(100);
+    const start = Date.now();
+    const id = window.setInterval(() => {
+      const elapsed = Date.now() - start;
+      const pct = Math.max(0, 100 - (elapsed / 10000) * 100);
+      setUndoBarPct(pct);
+      if (elapsed >= 10000) window.clearInterval(id);
+    }, 50);
+    return () => window.clearInterval(id);
+  }, [undoState?.clientId, undoState?.toStage, undoState?.timeoutId]);
+
+  useEffect(() => {
+    if (!undoDoneToast) return;
+    const t = window.setTimeout(() => setUndoDoneToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [undoDoneToast]);
+
+  const handleStageMoveUndoOffer = useCallback((payload: StageUndoPayload) => {
+    setUndoState((prev) => {
+      if (prev?.timeoutId) clearTimeout(prev.timeoutId);
+      const tid = window.setTimeout(() => setUndoState(null), 10000);
+      return { ...payload, timeoutId: tid };
+    });
+  }, []);
+
+  const handleStageUndoClick = useCallback(async () => {
+    const u = undoRef.current;
+    if (!u) return;
+    clearTimeout(u.timeoutId);
+    setUndoState(null);
+    const revertStage =
+      !u.fromStage || u.fromStage.trim() === '' ? 'IC' : u.fromStage;
+    try {
+      await dbExecute(
+        `UPDATE clients SET inferred_stage = $1, updated_at = datetime('now') WHERE id = $2`,
+        [revertStage, String(u.clientId)]
+      );
+      await dbExecute(
+        `INSERT INTO client_stage_log (client_id, from_stage, to_stage, moved_at, moved_by, notes)
+         VALUES ($1, $2, $3, datetime('now'), $4, $5)`,
+        [
+          String(u.clientId),
+          String(u.toStage),
+          String(revertStage),
+          'coach',
+          'undo',
+        ]
+      );
+      await logEntry(
+        'stage_move_rollback',
+        String(u.clientId),
+        u.toStage,
+        revertStage,
+        null,
+        'deterministic'
+      );
+      setSelectedClient((prev) =>
+        prev && prev.id === u.clientId
+          ? { ...prev, inferred_stage: revertStage }
+          : prev
+      );
+      try {
+        const fresh = await getClient(u.clientId);
+        setSelectedClient(fresh);
+      } catch (e) {
+        console.error(e);
+      }
+      loadClients({ silent: true });
+      const prevDisp = getStageDisplay(revertStage);
+      setUndoDoneToast(
+        `↩ Undone — ${u.clientName} back at ${prevDisp.code} · ${prevDisp.label}`
+      );
+    } catch (e) {
+      console.error('undo stage failed:', e);
+    }
+  }, [loadClients]);
 
   function resetAddClientForm() {
     setNewClientName('');
@@ -7479,6 +7596,7 @@ export default function ClientIntelligence() {
                       durationMs: 2000,
                     });
                   }}
+                  onStageMoveUndoOffer={handleStageMoveUndoOffer}
                 />
               ) : (
                 <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 text-center">
@@ -7658,6 +7776,66 @@ export default function ClientIntelligence() {
           style={{ backgroundColor: toast.bg }}
         >
           {toast.message}
+        </div>
+      ) : null}
+      {undoState ? (
+        <div
+          className="pointer-events-auto fixed bottom-6 left-1/2 flex flex-col"
+          style={{
+            zIndex: 9999,
+            width: 380,
+            maxWidth: 'calc(100vw - 32px)',
+            transform: 'translateX(-50%)',
+            background: '#2D4459',
+            borderRadius: 10,
+            padding: '14px 20px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <p className="min-w-0 flex-1 text-white" style={{ fontSize: 14 }}>
+              ✓ {undoState.clientName} moved to{' '}
+              {getStageDisplay(undoState.toStage).code} ·{' '}
+              {getStageDisplay(undoState.toStage).label}
+            </p>
+            <button
+              type="button"
+              className="shrink-0 font-bold text-white"
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.4)',
+                borderRadius: 6,
+                padding: '4px 12px',
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+              onClick={() => void handleStageUndoClick()}
+            >
+              Undo
+            </button>
+          </div>
+          <div
+            className="mt-3 h-[3px] w-full overflow-hidden rounded-sm bg-white/10"
+            aria-hidden
+          >
+            <div
+              className="h-full rounded-sm"
+              style={{
+                width: `${undoBarPct}%`,
+                background: '#3BBFBF',
+                height: 3,
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+      {undoDoneToast ? (
+        <div
+          role="status"
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[9999] max-w-[90vw] -translate-x-1/2 rounded-lg px-4 py-3 text-center text-sm font-medium text-white shadow-lg"
+          style={{ background: '#3BBFBF' }}
+        >
+          {undoDoneToast}
         </div>
       ) : null}
       <UATFeedback currentPage="Client Intelligence" />
