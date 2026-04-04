@@ -45,7 +45,7 @@ import {
   isNetWorthBelowThreshold,
 } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
-import { dbExecute, dbSelect } from '@/services/db';
+import { dbExecute, dbSelect, getDb } from '@/services/db';
 import { logEntry } from '@/services/auditService';
 import {
   getStageReadiness,
@@ -220,12 +220,20 @@ function stageCardCompartmentSubtitle(code: PipelineStageCode | null): string {
   return `Compartment ${n[code]}`;
 }
 
-const PIPELINE_ORDER: PipelineStage[] = ['IC', 'C1', 'C2', 'C3', 'C4', 'C5'];
+/** Canonical pipeline order for Move Forward / Move Back (must match DB IC…C5 codes). */
+const STAGE_ORDER: readonly PipelineStage[] = [
+  'IC',
+  'C1',
+  'C2',
+  'C3',
+  'C4',
+  'C5',
+];
 
-function pipelineOrderIndex(code: PipelineStageCode | null): number {
-  if (!code) return 0;
-  const i = PIPELINE_ORDER.indexOf(code as PipelineStage);
-  return i >= 0 ? i : 0;
+/** Tauri SQL may return a single row object instead of an array — normalize for indexing. */
+function normalizeSqlRows<T>(rows: T | T[] | null | undefined): T[] {
+  if (rows == null) return [];
+  return Array.isArray(rows) ? rows : [rows];
 }
 
 /** Advisory warning when moving forward into a stage with typical doc gaps. */
@@ -1288,8 +1296,14 @@ function ClientDetailModal({
   client: DisplayClient;
   onInactivate?: (id: string) => void;
   onVisionUpdated?: () => void;
-  onStageMoved?: (clientId: string) => void | Promise<void>;
-  onStageMoveToast?: (message: string) => void;
+  onStageMoved?: (
+    clientId: string,
+    newInferredStage?: string
+  ) => void | Promise<void>;
+  onStageMoveToast?: (
+    message: string,
+    variant?: 'success' | 'error'
+  ) => void;
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null);
   const [clientReadinessDbFields, setClientReadinessDbFields] = useState<{
@@ -1467,6 +1481,10 @@ function ClientDetailModal({
     direction: 'forward' | 'back';
   } | null>(null);
   const [stageMoveSaving, setStageMoveSaving] = useState(false);
+  /** Overrides `client.inferred_stage` after a successful move until parent props refresh. */
+  const [optimisticInferredStage, setOptimisticInferredStage] = useState<
+    string | null
+  >(null);
   const [bestQuestionsRaw, setBestQuestionsRaw] = useState<string | null>(null);
   const [bestQuestionsLoading, setBestQuestionsLoading] = useState(false);
   const [bestQuestionsError, setBestQuestionsError] = useState<string | null>(
@@ -1552,6 +1570,10 @@ function ClientDetailModal({
     setStageMoveDialog(null);
     setStageMoveSaving(false);
   }, [client?.id]);
+
+  useEffect(() => {
+    setOptimisticInferredStage(null);
+  }, [client?.id, client?.inferred_stage]);
 
   useEffect(() => {
     setReminderFormOpen(false);
@@ -1959,19 +1981,27 @@ function ClientDetailModal({
     return 'Not set';
   }, [lastContactDateDb, mostRecentSessionDate]);
 
-  const resolvedPipelineCode = resolvePipelineStageCode(client.inferred_stage);
-  const stageDisplay = getStageDisplay(client.inferred_stage ?? null);
+  const effectiveInferredStageRaw =
+    optimisticInferredStage ?? client.inferred_stage;
+  const resolvedPipelineCode =
+    resolvePipelineStageCode(effectiveInferredStageRaw);
+  const stageDisplay = getStageDisplay(effectiveInferredStageRaw ?? null);
   const stageHeaderBadgeText = `${stageDisplay.code} · ${stageDisplay.label}`;
   const stageLabel = stageDisplay.label;
   const stageCompartmentSubtitle =
     stageCardCompartmentSubtitle(resolvedPipelineCode);
 
-  const pipeIdx = pipelineOrderIndex(resolvedPipelineCode);
+  const codeForNav: PipelineStage =
+    resolvedPipelineCode != null &&
+    STAGE_ORDER.includes(resolvedPipelineCode as PipelineStage)
+      ? (resolvedPipelineCode as PipelineStage)
+      : 'IC';
+  const currentIndex = STAGE_ORDER.indexOf(codeForNav);
   const prevStageMove =
-    pipeIdx > 0 ? PIPELINE_ORDER[pipeIdx - 1]! : null;
+    currentIndex > 0 ? STAGE_ORDER[currentIndex - 1]! : null;
   const nextStageMove =
-    pipeIdx < PIPELINE_ORDER.length - 1
-      ? PIPELINE_ORDER[pipeIdx + 1]!
+    currentIndex < STAGE_ORDER.length - 1
+      ? STAGE_ORDER[currentIndex + 1]!
       : null;
 
   const clientMergedFinancials = useMemo(() => {
@@ -2299,16 +2329,30 @@ function ClientDetailModal({
     const target = stageMoveDialog.target;
     setStageMoveSaving(true);
     try {
-      const curRows = await dbSelect<{ inferred_stage: string | null }>(
+      console.log('[ClientIntel] stage move start', {
+        clientId: client.id,
+        target,
+      });
+      const db = await getDb();
+      const curRowsRaw = await db.select<{ inferred_stage: string | null }>(
         `SELECT inferred_stage FROM clients WHERE id = $1`,
         [client.id]
       );
+      const curRows = normalizeSqlRows(curRowsRaw);
       const fromRaw = curRows[0]?.inferred_stage ?? null;
+      console.log('[ClientIntel] current stage from DB', fromRaw);
 
-      await dbExecute(
-        `UPDATE clients SET inferred_stage = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      await db.execute(
+        `UPDATE clients
+         SET inferred_stage = $1,
+             updated_at = datetime('now')
+         WHERE id = $2`,
         [target, client.id]
       );
+      console.log('[ClientIntel] stage move UPDATE committed', {
+        clientId: client.id,
+        target,
+      });
 
       const logId = crypto.randomUUID();
       const movedAt = new Date().toISOString();
@@ -2339,17 +2383,23 @@ function ClientDetailModal({
         })
       );
 
+      setOptimisticInferredStage(target);
       setStageMoveDialog(null);
-      await onStageMoved?.(client.id);
+      await onStageMoved?.(client.id, target);
 
       const targetDisplay = getStageDisplay(target);
       onStageMoveToast?.(
-        `${client.name} moved to ${targetDisplay.code} · ${targetDisplay.label}`
+        `Client moved to ${targetDisplay.code} · ${targetDisplay.label}`,
+        'success'
       );
 
       void getStageReadiness(client.id).then(setReadiness);
     } catch (e) {
       console.error('stage move failed:', e);
+      onStageMoveToast?.(
+        'Could not update stage. Please try again.',
+        'error'
+      );
     } finally {
       setStageMoveSaving(false);
     }
@@ -2379,7 +2429,7 @@ function ClientDetailModal({
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
       const discStyle = client.disc.style;
-      const stage = (client.inferred_stage ?? '').trim() || null;
+      const stage = (effectiveInferredStageRaw ?? '').trim() || null;
       await dbExecute(
         `INSERT INTO aha_moments (id, client_id, moment_text, moment_type, disc_style, stage, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -3850,7 +3900,9 @@ function ClientDetailModal({
               <Badge
                 className="border-0 text-xs font-semibold text-slate-800"
                 style={{
-                  backgroundColor: getStageBadgeColor(client.inferred_stage?.trim() ?? ''),
+                  backgroundColor: getStageBadgeColor(
+                    (effectiveInferredStageRaw ?? '').trim()
+                  ),
                 }}
               >
                 {stageHeaderBadgeText}
@@ -6827,7 +6879,11 @@ export default function ClientIntelligence() {
   const [newClientStatus, setNewClientStatus] =
     useState<NewClientOutcomeBucket>('active');
   const [newClientNotes, setNewClientNotes] = useState('');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    bg: string;
+    durationMs: number;
+  } | null>(null);
 
   const [discProfiles, setDiscProfiles] = useState<Awaited<ReturnType<typeof getDiscProfilesMap>>>(new Map());
   const [readinessMap, setReadinessMap] = useState<Map<string, number>>(new Map());
@@ -6956,10 +7012,10 @@ export default function ClientIntelligence() {
   }, []);
 
   useEffect(() => {
-    if (!toastMessage) return;
-    const t = window.setTimeout(() => setToastMessage(null), 3000);
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), toast.durationMs);
     return () => clearTimeout(t);
-  }, [toastMessage]);
+  }, [toast]);
 
   function resetAddClientForm() {
     setNewClientName('');
@@ -7024,7 +7080,11 @@ export default function ClientIntelligence() {
       loadClients();
       const created = await getClient(id);
       setSelectedClient(created);
-      setToastMessage(`${name} added to your pipeline.`);
+      setToast({
+        message: `${name} added to your pipeline.`,
+        bg: '#22c55e',
+        durationMs: 3000,
+      });
     } catch (err) {
       console.error(err);
     } finally {
@@ -7392,7 +7452,14 @@ export default function ClientIntelligence() {
                   client={selectedDisplay}
                   onInactivate={handleInactivateClient}
                   onVisionUpdated={loadClients}
-                  onStageMoved={async (id) => {
+                  onStageMoved={async (id, newInferredStage) => {
+                    if (newInferredStage) {
+                      setSelectedClient((prev) =>
+                        prev && prev.id === id
+                          ? { ...prev, inferred_stage: newInferredStage }
+                          : prev
+                      );
+                    }
                     try {
                       const fresh = await getClient(id);
                       setSelectedClient(fresh);
@@ -7401,7 +7468,13 @@ export default function ClientIntelligence() {
                     }
                     loadClients({ silent: true });
                   }}
-                  onStageMoveToast={setToastMessage}
+                  onStageMoveToast={(msg, variant) => {
+                    setToast({
+                      message: msg,
+                      bg: variant === 'error' ? '#F05F57' : '#3BBFBF',
+                      durationMs: 2000,
+                    });
+                  }}
                 />
               ) : (
                 <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 text-center">
@@ -7574,13 +7647,13 @@ export default function ClientIntelligence() {
         </DialogContent>
       </Dialog>
 
-      {toastMessage ? (
+      {toast ? (
         <div
           role="status"
           className="pointer-events-none fixed bottom-6 left-1/2 z-[300] max-w-[90vw] -translate-x-1/2 rounded-lg px-4 py-3 text-center text-sm font-medium text-white shadow-lg"
-          style={{ backgroundColor: '#22c55e' }}
+          style={{ backgroundColor: toast.bg }}
         >
-          {toastMessage}
+          {toast.message}
         </div>
       ) : null}
       <UATFeedback currentPage="Client Intelligence" />
