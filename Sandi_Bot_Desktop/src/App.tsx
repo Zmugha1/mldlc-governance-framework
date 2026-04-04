@@ -75,6 +75,12 @@ function markReflectionShownToday(): void {
   }
 }
 
+/** Tauri SQL may return a single row object instead of an array. */
+function normalizeSqlRows<T>(rows: T | T[] | null | undefined): T[] {
+  if (rows == null) return [];
+  return Array.isArray(rows) ? rows : [rows];
+}
+
 type ModuleType =
   | 'morning'
   | 'business'
@@ -437,11 +443,9 @@ function AppFooterStatusBar() {
     }
     return {
       dot: 'amber' as const,
-      text: 'Backup overdue — click to backup now',
+      text: `Last backup: ${daysAgo} days ago`,
     };
   }, [backup.ever_succeeded, backup.last_backup]);
-
-  const showBackupOverdueBanner = backupUi.dot === 'amber';
 
   const handleBackupClick = async () => {
     setBackupRunning(true);
@@ -455,37 +459,16 @@ function AppFooterStatusBar() {
 
   return (
     <>
-      {showBackupOverdueBanner ? (
+      <div className="h-8 bg-slate-900 text-slate-200 text-xs px-4 flex items-center justify-between border-t border-slate-800">
         <button
           type="button"
           onClick={handleBackupClick}
           disabled={backupRunning}
-          className="flex w-full items-center px-4 py-2.5 text-left transition-opacity disabled:opacity-70"
-          style={{
-            background: '#F4F7F8',
-            border: '1px solid #C8E8E5',
-            borderLeft: '4px solid #3BBFBF',
-            color: '#7A8F95',
-            fontSize: 12,
-          }}
+          className="inline-flex items-center gap-2 hover:text-white transition-colors disabled:opacity-70"
         >
-          {backupRunning ? 'Backing up...' : 'Backup overdue — click to backup now'}
+          <FooterDot color={backupUi.dot} />
+          <span>{backupRunning ? 'Backing up...' : backupUi.text}</span>
         </button>
-      ) : null}
-      <div className="h-8 bg-slate-900 text-slate-200 text-xs px-4 flex items-center justify-between border-t border-slate-800">
-        {!showBackupOverdueBanner ? (
-          <button
-            type="button"
-            onClick={handleBackupClick}
-            disabled={backupRunning}
-            className="inline-flex items-center gap-2 hover:text-white transition-colors disabled:opacity-70"
-          >
-            <FooterDot color={backupUi.dot} />
-            <span>{backupRunning ? 'Backing up...' : backupUi.text}</span>
-          </button>
-        ) : (
-          <div className="min-w-0 flex-1" aria-hidden />
-        )}
 
         <div className="inline-flex items-center gap-4">
           <span>{clientCount} clients</span>
@@ -568,6 +551,69 @@ function App() {
 
   useEffect(() => {
     seedKnowledgeBase().catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const db = await getDb();
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS app_preferences (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL
+          )
+        `);
+        const today = localCalendarDateYyyyMmDd();
+        const raw = await db.select<{ value: string | null }>(
+          `SELECT value FROM app_preferences WHERE key = 'last_auto_backup_date'`,
+          []
+        );
+        const rows = normalizeSqlRows(raw);
+        const last = rows[0]?.value?.trim() ?? null;
+        if (last === today) return;
+
+        const result = await createBackup();
+        if (cancelled) return;
+        if (!result.success) {
+          console.error('Auto-backup failed');
+          return;
+        }
+
+        try {
+          await dbExecute(
+            `INSERT INTO app_preferences (key, value) VALUES (?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+            ['last_auto_backup_date', today]
+          );
+        } catch (persistErr) {
+          console.error('Auto-backup preference save failed:', persistErr);
+          return;
+        }
+
+        toast.custom(
+          () => (
+            <div
+              className="rounded-md px-3 py-2 shadow-md"
+              style={{
+                background: '#F4F7F8',
+                borderLeft: '3px solid #3BBFBF',
+                color: '#7A8F95',
+                fontSize: 11,
+              }}
+            >
+              ✓ Backed up today
+            </div>
+          ),
+          { duration: 3000, position: 'bottom-left' }
+        );
+      } catch (e) {
+        console.error('Auto-backup check failed:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
