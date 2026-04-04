@@ -2354,11 +2354,15 @@ function ClientDetailModal({
         target,
       });
 
-      const logId = crypto.randomUUID();
-      const movedAt = new Date().toISOString();
+      const fromStageText =
+        fromRaw == null || String(fromRaw).trim() === ''
+          ? null
+          : String(fromRaw);
+      const toStageText = String(target);
       await dbExecute(
-        `INSERT INTO client_stage_log (id, client_id, from_stage, to_stage, moved_at, moved_by, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [logId, client.id, fromRaw, target, movedAt, 'sandi', null]
+        `INSERT INTO client_stage_log (client_id, from_stage, to_stage, moved_at, moved_by, notes)
+         VALUES ($1, $2, $3, datetime('now'), $4, $5)`,
+        [String(client.id), fromStageText, toStageText, 'coach', null]
       );
 
       const detail = `${fromRaw ?? ''} → ${target}`;
