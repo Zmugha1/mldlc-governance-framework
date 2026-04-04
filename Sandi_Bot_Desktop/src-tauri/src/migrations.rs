@@ -93,13 +93,13 @@ pub fn migration_57() -> Migration {
     }
 }
 
-/// Migration 58: `last_contact_date` on `clients` (backfilled from `updated_at`).
+/// Migration 58: backfill `clients.last_contact_date` from `updated_at`.
+/// Does not `ADD COLUMN` — `last_contact_date` may already exist from startup safety net / earlier migration.
 pub fn migration_58() -> Migration {
     Migration {
         version: 58,
         description: "add_last_contact_date_to_clients",
-        sql: "ALTER TABLE clients ADD COLUMN last_contact_date TEXT;
-              UPDATE clients
+        sql: "UPDATE clients
                 SET last_contact_date = updated_at
                 WHERE last_contact_date IS NULL;",
         kind: MigrationKind::Up,
