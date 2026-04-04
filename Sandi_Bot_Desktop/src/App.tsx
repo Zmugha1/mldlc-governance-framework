@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import {
   Sun,
@@ -11,7 +11,6 @@ import {
   Bot,
   Shield,
   HelpCircle,
-  Loader2,
 } from 'lucide-react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
@@ -21,7 +20,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
-import { dbExecute } from '@/services/db';
+import { dbExecute, getDb } from '@/services/db';
+import { createBackup, getLastBackup } from '@/services/backupService';
 
 // Module Components
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -34,7 +34,6 @@ import AdminStreamliner from '@/modules/AdminStreamliner';
 import AuditTransparency from '@/modules/AuditTransparency';
 import HowToUse from '@/modules/HowToUse';
 import { seedKnowledgeBase } from '@/services/knowledgeSeed';
-import StatusBar from '@/components/StatusBar';
 
 const REFLECTION_LAST_SHOWN_KEY = 'reflection_last_shown';
 
@@ -168,11 +167,6 @@ function Sidebar({
     })();
     return () => {
       cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
       clearAiPollers();
     };
   }, [clearAiPollers]);
@@ -342,10 +336,9 @@ function Sidebar({
         ) : null}
         {aiStatus === 'starting' ? (
           <p
-            className="flex items-center justify-center gap-2 text-center font-medium"
+            className="text-center font-medium"
             style={{ color: '#F05F57', fontSize: 12 }}
           >
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
             🔄 Starting AI...
           </p>
         ) : null}
@@ -379,6 +372,129 @@ function Sidebar({
         </div>
       </div>
     </div>
+  );
+}
+
+type FooterBackupState = {
+  backup_count: number;
+  last_backup: string | null;
+  ever_succeeded: boolean;
+};
+
+function FooterDot({ color }: { color: 'red' | 'green' | 'amber' | 'gray' }) {
+  const map = {
+    red: 'bg-red-500',
+    green: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    gray: 'bg-slate-400',
+  };
+  return <span className={`inline-block h-2 w-2 rounded-full ${map[color]}`} />;
+}
+
+/** Bottom bar: backup + client count only (AI status lives in Sidebar only). */
+function AppFooterStatusBar() {
+  const [backup, setBackup] = useState<FooterBackupState>({
+    backup_count: 0,
+    last_backup: null,
+    ever_succeeded: false,
+  });
+  const [clientCount, setClientCount] = useState(0);
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [backupMessage, setBackupMessage] = useState('');
+
+  const refreshStatus = useCallback(async () => {
+    const db = await getDb();
+    const [backupInfo, clientResult] = await Promise.all([
+      getLastBackup(),
+      db.select<Array<{ count: number }>>(
+        "SELECT COUNT(*) as count FROM clients WHERE outcome_bucket != 'inactive'",
+        []
+      ),
+    ]);
+    setBackup(backupInfo);
+    setClientCount(Number(clientResult[0]?.count ?? 0));
+  }, []);
+
+  useEffect(() => {
+    refreshStatus().catch(console.error);
+  }, [refreshStatus]);
+
+  const backupUi = useMemo(() => {
+    if (!backup.ever_succeeded || !backup.last_backup) {
+      return {
+        dot: 'red' as const,
+        text: 'No backup yet — click to backup now',
+      };
+    }
+    const then = new Date(backup.last_backup).getTime();
+    const now = Date.now();
+    const daysAgo = Math.max(0, Math.floor((now - then) / (1000 * 60 * 60 * 24)));
+    if (daysAgo <= 7) {
+      return {
+        dot: 'green' as const,
+        text: `Last backup: ${daysAgo} day${daysAgo === 1 ? '' : 's'} ago`,
+      };
+    }
+    return {
+      dot: 'amber' as const,
+      text: 'Backup overdue — click to backup now',
+    };
+  }, [backup.ever_succeeded, backup.last_backup]);
+
+  const showBackupOverdueBanner = backupUi.dot === 'amber';
+
+  const handleBackupClick = async () => {
+    setBackupRunning(true);
+    setBackupMessage('Backing up...');
+    const result = await createBackup();
+    await refreshStatus();
+    setBackupMessage(result.success ? 'Backup complete' : 'Backup failed');
+    setBackupRunning(false);
+    window.setTimeout(() => setBackupMessage(''), 2000);
+  };
+
+  return (
+    <>
+      {showBackupOverdueBanner ? (
+        <button
+          type="button"
+          onClick={handleBackupClick}
+          disabled={backupRunning}
+          className="flex w-full items-center px-4 py-2.5 text-left transition-opacity disabled:opacity-70"
+          style={{
+            background: '#F4F7F8',
+            border: '1px solid #C8E8E5',
+            borderLeft: '4px solid #3BBFBF',
+            color: '#7A8F95',
+            fontSize: 12,
+          }}
+        >
+          {backupRunning ? 'Backing up...' : 'Backup overdue — click to backup now'}
+        </button>
+      ) : null}
+      <div className="h-8 bg-slate-900 text-slate-200 text-xs px-4 flex items-center justify-between border-t border-slate-800">
+        {!showBackupOverdueBanner ? (
+          <button
+            type="button"
+            onClick={handleBackupClick}
+            disabled={backupRunning}
+            className="inline-flex items-center gap-2 hover:text-white transition-colors disabled:opacity-70"
+          >
+            <FooterDot color={backupUi.dot} />
+            <span>{backupRunning ? 'Backing up...' : backupUi.text}</span>
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1" aria-hidden />
+        )}
+
+        <div className="inline-flex items-center gap-4">
+          <span>{clientCount} clients</span>
+          {backupMessage ? (
+            <span className="text-slate-300">{backupMessage}</span>
+          ) : null}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -715,7 +831,7 @@ function App() {
         <main className="flex-1">
           <div className="mx-auto max-w-7xl p-4 lg:p-8">{renderModule()}</div>
         </main>
-        <StatusBar />
+        <AppFooterStatusBar />
       </div>
     </div>
   );
