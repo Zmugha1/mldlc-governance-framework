@@ -1,16 +1,12 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 import { 
   Activity, 
-  Phone, 
-  Mail, 
-  Calendar, 
-  FileText, 
   MessageSquare,
   TrendingUp,
   Download,
-  Filter,
-  Search,
   Settings,
   Database,
   Bell,
@@ -49,11 +45,10 @@ import {
 } from '@/services/documentExtractionService';
 import type { DocumentType } from '@/types/extractions';
 import { getAllClients, getRankedClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
-import { getAuditLog, auditEntriesToActivityLogs, logEntry } from '@/services/auditService';
+import { logEntry } from '@/services/auditService';
 import { dbSelect, dbExecute } from '@/services/db';
 import { createBackup, getLastBackup } from '@/services/backupService';
 import { clientToDisplay } from '@/services/clientAdapter';
-import type { ActivityLog } from '@/types';
 import { cn } from '@/lib/utils';
 import FeedbackButton from '../components/FeedbackButton';
 
@@ -379,44 +374,89 @@ function parseSkillsOnlyResponse(raw: string): string[] | null {
   }
 }
 
-// Activity Type Config
-const activityConfig = {
-  call: { icon: Phone, color: 'bg-blue-100 text-blue-600', label: 'Call' },
-  email: { icon: Mail, color: 'bg-green-100 text-green-600', label: 'Email' },
-  meeting: { icon: Calendar, color: 'bg-purple-100 text-purple-600', label: 'Meeting' },
-  note: { icon: FileText, color: 'bg-yellow-100 text-yellow-600', label: 'Note' },
-  stage_change: { icon: TrendingUp, color: 'bg-pink-100 text-pink-600', label: 'Stage Change' },
-  recommendation: { icon: MessageSquare, color: 'bg-orange-100 text-orange-600', label: 'Recommendation' },
+type ActivityAuditRow = {
+  id: number;
+  action_type: string;
+  entity_id: string | null;
+  input_data: string | null;
+  output_data: string | null;
+  details: string | null;
+  created_at: string;
+  client_name: string | null;
 };
 
-// Activity Log Item
-function ActivityItem({ log }: { log: ActivityLog }) {
-  const config = activityConfig[log.type];
-  const Icon = config.icon;
+async function fetchActivityAuditRows(): Promise<ActivityAuditRow[]> {
+  return dbSelect<ActivityAuditRow>(
+    `SELECT
+      al.id,
+      al.action_type,
+      al.client_id AS entity_id,
+      al.input_data,
+      al.output_data,
+      al.reasoning AS details,
+      al.timestamp AS created_at,
+      c.name AS client_name
+     FROM audit_log al
+     LEFT JOIN clients c ON al.client_id = c.id
+     ORDER BY al.timestamp DESC
+     LIMIT 50`,
+    []
+  );
+}
 
+function activityAuditIcon(actionType: string): string {
+  const t = (actionType ?? '').toLowerCase();
+  if (
+    t === 'stage_move' ||
+    t === 'stage_moved' ||
+    t === 'stage_transition'
+  ) {
+    return '🔄';
+  }
+  if (t === 'inactivate' || t === 'client_inactivated') return '🚫';
+  if (t === 'flag_resolved' || t === 'pink_flag_resolved') return '✅';
+  if (t.includes('session')) return '📝';
+  return '📋';
+}
+
+function activityAuditTitle(row: ActivityAuditRow): string {
+  const t = (row.action_type ?? '').toLowerCase();
+  if (
+    t === 'stage_move' ||
+    t === 'stage_moved' ||
+    t === 'stage_transition'
+  ) {
+    return `Stage change: ${row.output_data ?? row.input_data ?? '—'}`;
+  }
+  if (t === 'client_inactivated' || t === 'inactivate') {
+    return 'Client inactivated';
+  }
+  if (t === 'pink_flag_resolved' || t === 'flag_resolved') {
+    return `Pink flag resolved: ${row.input_data ?? '—'}`;
+  }
+  if (t.includes('session')) {
+    return row.action_type.replace(/_/g, ' ');
+  }
+  return row.action_type.replace(/_/g, ' ');
+}
+
+function activityAuditWithinRollbackWindow(iso: string): boolean {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  return Date.now() - d.getTime() <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function activityAuditRollbackable(row: ActivityAuditRow): boolean {
+  if (!activityAuditWithinRollbackWindow(row.created_at)) return false;
+  const t = (row.action_type ?? '').toLowerCase();
   return (
-    <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 hover:bg-slate-100 transition-colors">
-      <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center shrink-0", config.color)}>
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-slate-900">{log.action}</span>
-          <Badge variant="outline" className="text-xs">{config.label}</Badge>
-        </div>
-        <p className="text-sm text-slate-600 mt-1">{log.details}</p>
-        <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-          <span className="flex items-center gap-1">
-            <User className="h-3 w-3" />
-            {log.clientName}
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {new Date(log.timestamp).toLocaleString()}
-          </span>
-        </div>
-      </div>
-    </div>
+    t === 'stage_move' ||
+    t === 'stage_moved' ||
+    t === 'stage_transition' ||
+    t === 'inactivate' ||
+    t === 'client_inactivated' ||
+    t === 'flag_resolved' ||
+    t === 'pink_flag_resolved'
   );
 }
 
@@ -457,10 +497,11 @@ export default function AdminStreamliner() {
   const [feedbackRows, setFeedbackRows] = useState<UserFeedbackRow[]>([]);
   const [feedbackTabLoading, setFeedbackTabLoading] = useState(false);
   const [feedbackTabLoaded, setFeedbackTabLoaded] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<string>('all');
   const [clients, setClients] = useState<DisplayClient[]>([]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [activityAuditRows, setActivityAuditRows] = useState<ActivityAuditRow[]>(
+    []
+  );
+  const [rollbackLoadingId, setRollbackLoadingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState({
@@ -526,15 +567,19 @@ export default function AdminStreamliner() {
     return Number(rows[0]?.c ?? 0);
   };
 
+  const refreshActivityAudit = useCallback(async () => {
+    const rows = await fetchActivityAuditRows();
+    setActivityAuditRows(rows);
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([getAllClients(), getAuditLog(100), fetchValidateReadyCount()])
-      .then(([rawClients, auditEntries, validateCount]) => {
+    Promise.all([getAllClients(), fetchActivityAuditRows(), fetchValidateReadyCount()])
+      .then(([rawClients, auditRows, validateCount]) => {
         setValidateReadyCount(validateCount);
         setClients(rawClients.map((client) => clientToDisplay(client)));
-        const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
-        setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
+        setActivityAuditRows(auditRows);
       })
       .catch((err) => {
         console.error(err);
@@ -1119,13 +1164,9 @@ ${workingText}`;
       console.log('[admin] extraction base path:', basePath);
       const result = await bulkImportFolder(basePath, (p) => setImportProgress(p));
       setImportResult(result);
-      const [rawClients, auditEntries] = await Promise.all([
-        getAllClients(),
-        getAuditLog(100)
-      ]);
+      const rawClients = await getAllClients();
       setClients(rawClients.map((client) => clientToDisplay(client)));
-      const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
-      setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
+      await refreshActivityAudit();
       setValidateReadyCount(await fetchValidateReadyCount());
     } catch (err) {
       setImportResult({
@@ -1150,13 +1191,9 @@ ${workingText}`;
     try {
       const result = await bulkImportRetryFailed((p) => setImportProgress(p));
       setImportResult(result);
-      const [rawClients, auditEntries] = await Promise.all([
-        getAllClients(),
-        getAuditLog(100)
-      ]);
+      const rawClients = await getAllClients();
       setClients(rawClients.map((client) => clientToDisplay(client)));
-      const clientNameMap = Object.fromEntries(rawClients.map((c) => [c.id, c.name]));
-      setActivityLogs(auditEntriesToActivityLogs(auditEntries, clientNameMap));
+      await refreshActivityAudit();
       setValidateReadyCount(await fetchValidateReadyCount());
     } catch (err) {
       setImportResult({
@@ -1341,31 +1378,89 @@ ${workingText}`;
     }
   };
 
-  // Filter logs
-  const filteredLogs = useMemo(() => {
-    return activityLogs.filter(log => {
-      const matchesSearch = 
-        log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.details.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesType = filterType === 'all' || log.type === filterType;
-      
-      return matchesSearch && matchesType;
-    });
-  }, [searchTerm, filterType, activityLogs]);
-
-  // Activity stats
-  const activityStats = useMemo(() => {
-    const stats = {
-      total: activityLogs.length,
-      calls: activityLogs.filter(l => l.type === 'call').length,
-      emails: activityLogs.filter(l => l.type === 'email').length,
-      meetings: activityLogs.filter(l => l.type === 'meeting').length,
-      stageChanges: activityLogs.filter(l => l.type === 'stage_change').length,
-    };
-    return stats;
-  }, [activityLogs]);
+  const handleActivityRollback = async (row: ActivityAuditRow) => {
+    const clientId = row.entity_id;
+    if (!clientId) return;
+    const t = (row.action_type ?? '').toLowerCase();
+    setRollbackLoadingId(row.id);
+    try {
+      if (
+        t === 'stage_move' ||
+        t === 'stage_moved' ||
+        t === 'stage_transition'
+      ) {
+        const fromStage = row.input_data;
+        if (fromStage == null || String(fromStage).trim() === '') {
+          throw new Error('Missing prior stage');
+        }
+        await dbExecute(
+          `UPDATE clients SET inferred_stage = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          [String(fromStage), String(clientId)]
+        );
+        await logEntry(
+          'stage_move_rollback',
+          String(clientId),
+          row.output_data,
+          String(fromStage),
+          null,
+          'deterministic'
+        );
+      } else if (t === 'client_inactivated' || t === 'inactivate') {
+        await dbExecute(
+          `UPDATE clients SET outcome_bucket = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [String(clientId)]
+        );
+        await logEntry(
+          'reactivate',
+          String(clientId),
+          null,
+          'active',
+          null,
+          'deterministic'
+        );
+      } else if (t === 'pink_flag_resolved' || t === 'flag_resolved') {
+        const flagName = String(row.input_data ?? '').trim();
+        if (!flagName) throw new Error('Missing flag');
+        const pfRows = await dbSelect<{ pink_flags: string | null }>(
+          `SELECT pink_flags FROM clients WHERE id = $1`,
+          [String(clientId)]
+        );
+        const raw = pfRows[0]?.pink_flags ?? '[]';
+        let arr: string[];
+        try {
+          arr = JSON.parse(raw) as string[];
+        } catch {
+          arr = [];
+        }
+        const resolvedPrefix = `resolved:${flagName}`;
+        const next = arr.map((f) =>
+          f === resolvedPrefix ? flagName : f
+        );
+        await dbExecute(
+          `UPDATE clients SET pink_flags = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          [JSON.stringify(next), String(clientId)]
+        );
+        await logEntry(
+          'flag_reopened',
+          String(clientId),
+          flagName,
+          null,
+          null,
+          'deterministic'
+        );
+      } else {
+        return;
+      }
+      toast.success('✓ Action rolled back', {
+        style: { background: '#3BBFBF', color: 'white' },
+      });
+      await refreshActivityAudit();
+    } catch (e) {
+      console.error('rollback failed:', e);
+    } finally {
+      setRollbackLoadingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -1448,7 +1543,7 @@ ${workingText}`;
       <Tabs value={adminTab} onValueChange={setAdminTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="activity">
-            <Activity className="h-4 w-4 mr-2" />
+            <Clock className="h-4 w-4 mr-2" />
             Activity Log
           </TabsTrigger>
           <TabsTrigger value="import">
@@ -1475,92 +1570,96 @@ ${workingText}`;
 
         {/* Activity Log Tab */}
         <TabsContent value="activity">
-          {/* Stats Row */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            <StatCard 
-              title="Total Activities" 
-              value={activityStats.total} 
-              icon={Activity} 
-              color="#3B82F6"
-            />
-            <StatCard 
-              title="Calls" 
-              value={activityStats.calls} 
-              icon={Phone} 
-              color="#22C55E"
-            />
-            <StatCard 
-              title="Emails" 
-              value={activityStats.emails} 
-              icon={Mail} 
-              color="#F59E0B"
-            />
-            <StatCard 
-              title="Meetings" 
-              value={activityStats.meetings} 
-              icon={Calendar} 
-              color="#8B5CF6"
-            />
-            <StatCard 
-              title="Stage Changes" 
-              value={activityStats.stageChanges} 
-              icon={TrendingUp} 
-              color="#EC4899"
-            />
-          </div>
-
-          {/* Filters */}
-          <Card className="mb-6">
-            <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    placeholder="Search activities..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Filter className="h-4 w-4 text-slate-400" />
-                  <select
-                    value={filterType}
-                    onChange={(e) => setFilterType(e.target.value)}
-                    className="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="all">All Types</option>
-                    <option value="call">Calls</option>
-                    <option value="email">Emails</option>
-                    <option value="meeting">Meetings</option>
-                    <option value="note">Notes</option>
-                    <option value="stage_change">Stage Changes</option>
-                    <option value="recommendation">Recommendations</option>
-                  </select>
-                </div>
-                <Button variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Activity List */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Recent Activity</CardTitle>
-              <CardDescription>Latest coaching interactions and system events</CardDescription>
+          <Card className="border-[#C8E8E5]">
+            <CardHeader className="pb-2">
+              <CardTitle
+                className="font-bold"
+                style={{ color: '#2D4459', fontSize: 18 }}
+              >
+                Recent Activity
+              </CardTitle>
+              <CardDescription
+                className="text-[13px] leading-relaxed"
+                style={{ color: '#7A8F95' }}
+              >
+                Last 50 actions. Rollback available for 7 days.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {filteredLogs.map((log) => (
-                  <ActivityItem key={log.id} log={log} />
-                ))}
-                {filteredLogs.length === 0 && (
-                  <div className="text-center py-8 text-slate-500">
-                    <Activity className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                    <p>No activities found matching your filters.</p>
+                {activityAuditRows.map((row) => {
+                  const rel = (() => {
+                    try {
+                      return formatDistanceToNow(new Date(row.created_at), {
+                        addSuffix: true,
+                      });
+                    } catch {
+                      return row.created_at;
+                    }
+                  })();
+                  const showRollback =
+                    activityAuditRollbackable(row) && row.entity_id;
+                  return (
+                    <div
+                      key={row.id}
+                      className="flex items-start gap-3 rounded-lg border border-[#C8E8E5] bg-white p-3"
+                    >
+                      <span
+                        className="shrink-0 text-xl leading-none pt-0.5"
+                        aria-hidden
+                      >
+                        {activityAuditIcon(row.action_type)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="font-bold"
+                          style={{ color: '#2D4459', fontSize: 14 }}
+                        >
+                          {activityAuditTitle(row)}
+                        </p>
+                        {row.client_name ? (
+                          <p className="text-sm" style={{ color: '#7A8F95' }}>
+                            {row.client_name}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-xs" style={{ color: '#7A8F95' }}>
+                          {rel}
+                        </p>
+                      </div>
+                      {showRollback ? (
+                        <button
+                          type="button"
+                          disabled={rollbackLoadingId === row.id}
+                          className="shrink-0 font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+                          style={{
+                            background: 'white',
+                            border: '1px solid #F05F57',
+                            color: '#F05F57',
+                            borderRadius: 6,
+                            padding: '4px 12px',
+                            fontSize: 12,
+                          }}
+                          onClick={() => void handleActivityRollback(row)}
+                        >
+                          {rollbackLoadingId === row.id
+                            ? 'Rolling back…'
+                            : 'Rollback'}
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {activityAuditRows.length === 0 && (
+                  <div
+                    className="flex flex-col items-center justify-center py-12 text-center"
+                    style={{ color: '#7A8F95', fontSize: 13 }}
+                  >
+                    <Clock className="mb-3 h-10 w-10 opacity-40" aria-hidden />
+                    <p>
+                      No activity yet.
+                      <br />
+                      Actions you take in Coach Bot will appear here.
+                    </p>
                   </div>
                 )}
               </div>
