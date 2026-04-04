@@ -377,12 +377,13 @@ function parseSkillsOnlyResponse(raw: string): string[] | null {
 type ActivityAuditRow = {
   id: number;
   action_type: string;
+  entity_type: string | null;
   entity_id: string | null;
-  input_data: string | null;
-  output_data: string | null;
   details: string | null;
   created_at: string;
   client_name: string | null;
+  input_data: string | null;
+  output_data: string | null;
 };
 
 async function fetchActivityAuditRows(): Promise<ActivityAuditRow[]> {
@@ -390,18 +391,44 @@ async function fetchActivityAuditRows(): Promise<ActivityAuditRow[]> {
     `SELECT
       al.id,
       al.action_type,
+      CASE WHEN al.client_id IS NOT NULL THEN 'client' ELSE NULL END AS entity_type,
       al.client_id AS entity_id,
-      al.input_data,
-      al.output_data,
-      al.reasoning AS details,
+      COALESCE(
+        NULLIF(TRIM(al.reasoning), ''),
+        TRIM(
+          COALESCE(al.input_data, '') || ' ' || COALESCE(al.output_data, '')
+        )
+      ) AS details,
       al.timestamp AS created_at,
-      c.name AS client_name
+      c.name AS client_name,
+      al.input_data,
+      al.output_data
      FROM audit_log al
      LEFT JOIN clients c ON al.client_id = c.id
      ORDER BY al.timestamp DESC
      LIMIT 50`,
     []
   );
+}
+
+/** Prefer JSON in details; else input_data / arrow line in output_data (Coach Bot stage logs). */
+function parseStageMoveFromStageRow(row: ActivityAuditRow): string | null {
+  const raw = (row.details ?? '').trim();
+  if (raw.startsWith('{')) {
+    try {
+      const j = JSON.parse(raw) as { from_stage?: string };
+      const fs = j.from_stage;
+      if (fs != null && String(fs).trim() !== '') return String(fs).trim();
+    } catch {
+      /* fall through */
+    }
+  }
+  const fromInput = row.input_data?.trim();
+  if (fromInput) return fromInput;
+  const out = (row.output_data ?? '').trim();
+  const m = /^(.+?)\s*→\s*.+$/.exec(out);
+  if (m) return m[1].trim();
+  return null;
 }
 
 function activityAuditIcon(actionType: string): string {
@@ -415,7 +442,13 @@ function activityAuditIcon(actionType: string): string {
   }
   if (t === 'inactivate' || t === 'client_inactivated') return '🚫';
   if (t === 'flag_resolved' || t === 'pink_flag_resolved') return '✅';
-  if (t.includes('session')) return '📝';
+  if (
+    t === 'session_added' ||
+    t === 'manual_session_added' ||
+    (t.includes('session') && t.includes('added'))
+  ) {
+    return '📝';
+  }
   return '📋';
 }
 
@@ -426,13 +459,18 @@ function activityAuditTitle(row: ActivityAuditRow): string {
     t === 'stage_moved' ||
     t === 'stage_transition'
   ) {
-    return `Stage change: ${row.output_data ?? row.input_data ?? '—'}`;
+    const out = (row.output_data ?? '').trim();
+    if (out) return `Stage change: ${out}`;
+    return `Stage change: ${(row.input_data ?? '').trim() || '—'}`;
   }
   if (t === 'client_inactivated' || t === 'inactivate') {
     return 'Client inactivated';
   }
   if (t === 'pink_flag_resolved' || t === 'flag_resolved') {
     return `Pink flag resolved: ${row.input_data ?? '—'}`;
+  }
+  if (t === 'session_added' || t === 'manual_session_added') {
+    return 'Session added';
   }
   if (t.includes('session')) {
     return row.action_type.replace(/_/g, ' ');
@@ -801,6 +839,11 @@ export default function AdminStreamliner() {
       cancelled = true;
     };
   }, [adminTab, loading]);
+
+  useEffect(() => {
+    if (adminTab !== 'activity' || loading) return;
+    void refreshActivityAudit();
+  }, [adminTab, loading, refreshActivityAudit]);
 
   const handleExportFeedbackCsv = async () => {
     const all = await dbSelect<UserFeedbackRow>(
@@ -1389,8 +1432,8 @@ ${workingText}`;
         t === 'stage_moved' ||
         t === 'stage_transition'
       ) {
-        const fromStage = row.input_data;
-        if (fromStage == null || String(fromStage).trim() === '') {
+        const fromStage = parseStageMoveFromStageRow(row);
+        if (fromStage == null || fromStage === '') {
           throw new Error('Missing prior stage');
         }
         await dbExecute(
@@ -1638,6 +1681,7 @@ ${workingText}`;
                             borderRadius: 6,
                             padding: '4px 12px',
                             fontSize: 12,
+                            fontWeight: 700,
                           }}
                           onClick={() => void handleActivityRollback(row)}
                         >
