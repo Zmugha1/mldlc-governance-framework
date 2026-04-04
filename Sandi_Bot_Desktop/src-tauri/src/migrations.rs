@@ -166,3 +166,17 @@ pub fn migration_60() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 61: legacy `client_stage_log` (v28) lacked pipeline columns; add for stage movement INSERTs.
+pub fn migration_61() -> Migration {
+    Migration {
+        version: 61,
+        description: "add_from_stage_to_stage_columns_to_client_stage_log",
+        sql: "ALTER TABLE client_stage_log ADD COLUMN from_stage TEXT;
+              ALTER TABLE client_stage_log ADD COLUMN to_stage TEXT;
+              ALTER TABLE client_stage_log ADD COLUMN moved_by TEXT DEFAULT 'coach';
+              ALTER TABLE client_stage_log ADD COLUMN notes TEXT;
+              ALTER TABLE client_stage_log ADD COLUMN moved_at TEXT;",
+        kind: MigrationKind::Up,
+    }
+}

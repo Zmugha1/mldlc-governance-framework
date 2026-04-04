@@ -1024,6 +1024,11 @@ pub fn run() {
         migrations::migration_54(),
         migrations::migration_55(),
         migrations::migration_56(),
+        migrations::migration_57(),
+        migrations::migration_58(),
+        migrations::migration_59(),
+        migrations::migration_60(),
+        migrations::migration_61(),
     ];
 
     tauri::Builder::default()
