@@ -6,11 +6,11 @@ import {
   Users,
   Zap,
   BarChart2,
-  Settings,
   Menu,
   Bot,
   Shield,
   HelpCircle,
+  Layers,
 } from 'lucide-react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
@@ -110,7 +110,7 @@ const footerNavItems: Array<{
   icon: React.ElementType;
   ariaLabel: string;
 }> = [
-  { id: 'admin', icon: Settings, ariaLabel: 'Settings' },
+  { id: 'admin', icon: Layers, ariaLabel: 'The Capture' },
   { id: 'help', icon: HelpCircle, ariaLabel: 'Help' },
   { id: 'audit', icon: Shield, ariaLabel: 'Audit and transparency' },
 ];
@@ -733,11 +733,7 @@ function App() {
         );
       case 'admin':
         return (
-          <ErrorBoundary moduleName="Admin Streamliner">
-            <ModuleHeader
-              title="Admin Streamliner"
-              description="Activity logs, system settings, and data management"
-            />
+          <ErrorBoundary moduleName="The Capture">
             <AdminStreamliner />
           </ErrorBoundary>
         );

@@ -12,6 +12,7 @@ import {
   Bell,
   Shield,
   User,
+  Users,
   Clock,
   CheckCircle2,
   BookOpen,
@@ -19,6 +20,7 @@ import {
   Target,
   FolderInput,
   ListChecks,
+  Layers,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1526,72 +1528,435 @@ ${workingText}`;
     );
   }
 
+  const comingSoonBadge = (
+    <span
+      className="inline-block mt-3"
+      style={{
+        background: '#F4F7F8',
+        border: '1px solid #C8E8E5',
+        color: '#7A8F95',
+        borderRadius: 20,
+        padding: '4px 12px',
+        fontSize: 11,
+      }}
+    >
+      Coming in next update
+    </span>
+  );
+
   return (
     <div className="space-y-6">
-      <Card
-        className="border-[#C8E8E5]"
-        style={{ borderColor: '#C8E8E5', borderWidth: 1 }}
+      <div className="flex items-start gap-4">
+        <Layers
+          className="shrink-0"
+          aria-hidden
+          style={{ color: '#3BBFBF', width: 24, height: 24 }}
+        />
+        <div>
+          <h1 className="font-bold" style={{ color: '#2D4459', fontSize: 24 }}>
+            The Capture
+          </h1>
+          <p className="mt-2 max-w-xl text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+            Your coaching intelligence grows here. Everything you add makes Coach Bot smarter.
+          </p>
+        </div>
+      </div>
+
+      {/* SECTION 1 — My Identity */}
+      <div
+        className="bg-white"
+        style={{
+          borderRadius: 12,
+          border: '1px solid #C8E8E5',
+          borderLeftWidth: 4,
+          borderLeftColor: '#3BBFBF',
+          padding: '24px 28px',
+          marginBottom: 16,
+        }}
       >
-        <CardHeader className="pb-2">
-          <CardTitle className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
-            UAT Report
-          </CardTitle>
-          <CardDescription className="text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
-            Export all feedback and audit logs from Sandi&apos;s UAT session. Share this file with Zubia after
-            using Coach Bot.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button
-            type="button"
-            disabled={uatReportExporting}
-            onClick={() => void handleExportUatReport()}
-            className="border-0 font-bold text-white hover:opacity-90"
-            style={{
-              background: '#3BBFBF',
-              borderRadius: 8,
-              padding: '10px 20px',
-              fontSize: 14,
-            }}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {uatReportExporting ? 'Exporting…' : 'Export UAT Report'}
-          </Button>
-          <div className="space-y-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
-            {uatSummary != null && uatSummary.total === 0 ? (
-              <p className="italic">
-                No feedback collected yet. Use the Feedback button on each page to share what you notice.
-              </p>
-            ) : uatSummary != null ? (
-              <>
-                <p>Total feedback entries: {uatSummary.total}</p>
-                <p>
-                  Average rating:{' '}
-                  {uatSummary.avg_rating != null
-                    ? `${uatSummary.avg_rating.toFixed(1)} / 5`
-                    : '— / 5'}
-                </p>
-                <p>Working well: {uatSummary.working_count} responses</p>
-                <p>Confusing: {uatSummary.confusing_count} responses</p>
-                <p>Missing something: {uatSummary.missing_count} responses</p>
-              </>
-            ) : (
-              <p className="italic">Loading summary…</p>
+        <div className="flex items-start gap-3">
+          <User className="shrink-0" style={{ color: '#3BBFBF', width: 20, height: 20 }} aria-hidden />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+              My Identity
+            </h2>
+            <p className="mt-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+              Who you are as a coach. Used to personalize every response Coach Bot generates.
+            </p>
+            <p className="mt-3 text-[13px] italic leading-relaxed" style={{ color: '#7A8F95' }}>
+              Upload your resume and coaching philosophy to help Coach Bot speak in your voice.
+            </p>
+            {comingSoonBadge}
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 2 — My Knowledge */}
+      <div
+        className="bg-white"
+        style={{
+          borderRadius: 12,
+          border: '1px solid #C8E8E5',
+          borderLeftWidth: 4,
+          borderLeftColor: '#F05F57',
+          padding: '24px 28px',
+          marginBottom: 16,
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <BookOpen className="shrink-0" style={{ color: '#F05F57', width: 20, height: 20 }} aria-hidden />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+              My Knowledge
+            </h2>
+            <p className="mt-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+              Coaching frameworks, TES methodology, franchise guides, and resources you use. Coach Bot learns
+              from these.
+            </p>
+            <p className="mt-3 text-[13px] italic leading-relaxed" style={{ color: '#7A8F95' }}>
+              Upload your coaching documents, frameworks, and resources to build your knowledge base.
+            </p>
+            {comingSoonBadge}
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 3 — My Clients */}
+      <div
+        className="bg-white"
+        style={{
+          borderRadius: 12,
+          border: '1px solid #C8E8E5',
+          borderLeftWidth: 4,
+          borderLeftColor: '#2D4459',
+          padding: '24px 28px',
+          marginBottom: 16,
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <Users className="shrink-0" style={{ color: '#2D4459', width: 20, height: 20 }} aria-hidden />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+              My Clients
+            </h2>
+            <p className="mt-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+              Upload client documents here. DISC, You 2.0, TUMAY, and Fathom transcripts populate each client
+              card automatically.
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleBulkImport} disabled={importRunning}>
+              <FolderInput className="h-4 w-4 mr-2" />
+              Import All Client Files
+            </Button>
+            <Button variant="outline" onClick={handleRetryFailed} disabled={importRunning}>
+              Retry Failed Only
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleReExtractYou2AndTumay}
+              disabled={reExtractRunning || importRunning}
+            >
+              Re-Extract You 2.0 & TUMAY
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleReExtractFathom}
+              disabled={fathomReExtractRunning || importRunning || reExtractRunning}
+            >
+              Re-Extract Fathom (9-Block)
+            </Button>
+          </div>
+          <div>
+            <Button
+              variant="secondary"
+              onClick={() => void handleRunCompletenessAudit()}
+              disabled={completenessAuditLoading || importRunning}
+            >
+              <ListChecks className="h-4 w-4 mr-2" />
+              Run Completeness Audit
+            </Button>
+            <div className="mt-3">
+              <Button
+                variant="secondary"
+                onClick={() => void handleReExtractSkillsOnly()}
+                disabled={skillsReExtractRunning || importRunning || completenessAuditLoading}
+              >
+                Re-Extract Skills Only
+              </Button>
+            </div>
+            {skillsReExtractRunning && (
+              <p className="text-sm text-slate-600 mt-2">Re-extracting skills…</p>
+            )}
+            {skillsReExtractLines.length > 0 && (
+              <div className="mt-2 space-y-1 text-sm text-slate-700 font-mono">
+                {skillsReExtractLines.map((line, i) => (
+                  <p key={`${line}-${i}`}>{line}</p>
+                ))}
+              </div>
+            )}
+            {skillsReExtractSummary && !skillsReExtractRunning && (
+              <p className="text-sm text-slate-800 mt-2 font-medium">{skillsReExtractSummary}</p>
+            )}
+            {completenessAuditLoading && <p className="text-sm text-slate-600 mt-2">Running audit…</p>}
+            {completenessAuditError && (
+              <p className="text-sm text-red-600 mt-2">{completenessAuditError}</p>
+            )}
+            {completenessAuditRows !== null && !completenessAuditLoading && (
+              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm text-left">
+                  <thead>
+                    <tr className="border-b bg-slate-50">
+                      <th className="p-2 font-semibold text-slate-700">Name</th>
+                      <th className="p-2 font-semibold text-slate-700">Stage</th>
+                      <th className="p-2 font-semibold text-slate-700">Vision</th>
+                      <th className="p-2 font-semibold text-slate-700">Dangers</th>
+                      <th className="p-2 font-semibold text-slate-700">Opportunities</th>
+                      <th className="p-2 font-semibold text-slate-700">Strengths</th>
+                      <th className="p-2 font-semibold text-slate-700">Skills</th>
+                      <th className="p-2 font-semibold text-slate-700">DISC</th>
+                      <th className="p-2 font-semibold text-slate-700">Sessions</th>
+                      <th className="p-2 font-semibold text-slate-700">Contact</th>
+                      <th className="p-2 font-semibold text-slate-700">Last Contact</th>
+                      <th className="p-2 font-semibold text-slate-700">RAG Ready</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {completenessAuditRows.map((row, i) => (
+                      <tr
+                        key={`${row.name}-${i}`}
+                        className="border-b border-slate-100"
+                        style={{ backgroundColor: auditRowBackground(row) }}
+                      >
+                        <td className="p-2 text-slate-900">{row.name}</td>
+                        <td className="p-2 text-slate-700">{row.inferred_stage ?? '—'}</td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.vision)
+                            )}
+                          >
+                            {completenessStatusLabel(row.vision)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.dangers)
+                            )}
+                          >
+                            {completenessStatusLabel(row.dangers)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.opportunities)
+                            )}
+                          >
+                            {completenessStatusLabel(row.opportunities)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.strengths)
+                            )}
+                          >
+                            {completenessStatusLabel(row.strengths)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.skills)
+                            )}
+                          >
+                            {completenessStatusLabel(row.skills)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.disc)
+                            )}
+                          >
+                            {completenessStatusLabel(row.disc)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.sessions)
+                            )}
+                          >
+                            {completenessStatusLabel(row.sessions)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.contact)
+                            )}
+                          >
+                            {completenessStatusLabel(row.contact)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              completenessStatusTextClass(row.lastContact)
+                            )}
+                          >
+                            {completenessStatusLabel(row.lastContact)}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <span
+                            className={cn(
+                              'font-medium whitespace-nowrap',
+                              row.ragReady ? 'text-green-700' : 'text-red-700'
+                            )}
+                          >
+                            {row.ragReady ? '✅ Ready' : '❌ Not Ready'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 bg-slate-100">
+                      <td colSpan={12} className="p-3 text-sm font-medium text-slate-800">
+                        {completenessAuditRows.filter((r) => r.ragReady).length} of{' '}
+                        {completenessAuditRows.length} clients fully complete
+                        <br />
+                        {completenessAuditRows.length -
+                          completenessAuditRows.filter((r) => r.ragReady).length}{' '}
+                        clients have gaps
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+          {reExtractRunning && <p className="text-sm text-slate-600">Extracting files...</p>}
+          {fathomReExtractRunning && <p className="text-sm text-slate-600">Extracting Fathom...</p>}
+          {reExtractResult && !reExtractRunning && (
+            <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p className="font-medium text-slate-800">
+                You 2.0: {reExtractResult.you2_success}/17 extracted
+              </p>
+              <p className="font-medium text-slate-800">
+                TUMAY: {reExtractResult.tumay_success}/17 extracted
+              </p>
+              {reExtractResult.errors.length > 0 && (
+                <div>
+                  <p className="font-medium text-amber-700">Errors:</p>
+                  <ul className="text-sm text-slate-600 list-disc list-inside">
+                    {reExtractResult.errors.map((e, i) => (
+                      <li key={`${e}-${i}`}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          {fathomReExtractResult && !fathomReExtractRunning && (
+            <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p className="font-medium text-slate-800">
+                Fathom: {fathomReExtractResult.success}/
+                {fathomReExtractResult.success + fathomReExtractResult.failed} extracted
+              </p>
+              {fathomReExtractResult.errors.length > 0 && (
+                <div>
+                  <p className="font-medium text-amber-700">Errors:</p>
+                  <ul className="text-sm text-slate-600 list-disc list-inside">
+                    {fathomReExtractResult.errors.map((e, i) => (
+                      <li key={`${e}-${i}`}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          {importRunning && importProgress && (
+            <div className="space-y-2">
+              <Progress
+                value={
+                  importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0
+                }
+                className="h-2"
+              />
+              <p className="text-sm text-slate-600">
+                Processing {importProgress.current_client} — {importProgress.current_file} (
+                {importProgress.current} of {importProgress.total} files)
+              </p>
+            </div>
+          )}
+          {importResult && !importRunning && (
+            <div className="space-y-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p className="font-medium text-green-700">
+                ✓ {importResult.processed} documents processed successfully
+                {importResult.skipped > 0 && `, ${importResult.skipped} skipped (already complete)`}
+                {importResult.clients_created > 0 && `, ${importResult.clients_created} new clients`}
+              </p>
+              {importResult.clientSummaries.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium text-slate-700">Per client:</p>
+                  <ul className="text-sm space-y-1">
+                    {importResult.clientSummaries.map((s) => {
+                      const parts: string[] = [];
+                      parts.push(s.succeededTypes.includes('you2') ? 'You2 ✓' : s.missingYou2 ? 'You2 pending' : '');
+                      parts.push(s.succeededTypes.includes('disc') ? 'DISC ✓' : s.missingDisc ? 'DISC pending' : '');
+                      parts.push(
+                        s.succeededTypes.includes('fathom') ? 'Fathom ✓' : s.missingFathom ? 'Fathom pending' : ''
+                      );
+                      const line = parts.filter(Boolean).join(', ');
+                      return (
+                        <li key={s.clientId} className="flex items-center gap-2">
+                          <span className="font-medium">{s.clientName}:</span>
+                          <span className="text-slate-600">{line || '—'}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+              {importResult.failed > 0 && importResult.failedFiles && importResult.failedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium text-amber-700">✗ {importResult.failed} documents failed:</p>
+                  <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
+                    {importResult.failedFiles.map((f, i) => (
+                      <li key={i}>
+                        {f.clientName} — {f.fileName}: {f.error}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
-      <FeedbackButton pageName="Admin Streamliner" />
+      <FeedbackButton pageName="The Capture" />
       <Tabs value={adminTab} onValueChange={setAdminTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="activity">
             <Clock className="h-4 w-4 mr-2" />
             Activity Log
-          </TabsTrigger>
-          <TabsTrigger value="import">
-            <FolderInput className="h-4 w-4 mr-2" />
-            Import
           </TabsTrigger>
           <TabsTrigger value="analytics">
             <TrendingUp className="h-4 w-4 mr-2" />
@@ -1707,341 +2072,6 @@ ${workingText}`;
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Import Tab */}
-        <TabsContent value="import">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <FolderInput className="h-5 w-5" />
-                Bulk Import Client Files
-              </CardTitle>
-              <CardDescription>
-                Import from ~/CoachBot/clients (Active, Paused, WIN, Various folders)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleBulkImport}
-                  disabled={importRunning}
-                >
-                  <FolderInput className="h-4 w-4 mr-2" />
-                  Import All Client Files
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleRetryFailed}
-                  disabled={importRunning}
-                >
-                  Retry Failed Only
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleReExtractYou2AndTumay}
-                  disabled={reExtractRunning || importRunning}
-                >
-                  Re-Extract You 2.0 & TUMAY
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleReExtractFathom}
-                  disabled={fathomReExtractRunning || importRunning || reExtractRunning}
-                >
-                  Re-Extract Fathom (9-Block)
-                </Button>
-              </div>
-              <div>
-                <Button
-                  variant="secondary"
-                  onClick={() => void handleRunCompletenessAudit()}
-                  disabled={completenessAuditLoading || importRunning}
-                >
-                  <ListChecks className="h-4 w-4 mr-2" />
-                  Run Completeness Audit
-                </Button>
-                <div className="mt-3">
-                  <Button
-                    variant="secondary"
-                    onClick={() => void handleReExtractSkillsOnly()}
-                    disabled={
-                      skillsReExtractRunning ||
-                      importRunning ||
-                      completenessAuditLoading
-                    }
-                  >
-                    Re-Extract Skills Only
-                  </Button>
-                </div>
-                {skillsReExtractRunning && (
-                  <p className="text-sm text-slate-600 mt-2">Re-extracting skills…</p>
-                )}
-                {skillsReExtractLines.length > 0 && (
-                  <div className="mt-2 space-y-1 text-sm text-slate-700 font-mono">
-                    {skillsReExtractLines.map((line, i) => (
-                      <p key={`${line}-${i}`}>{line}</p>
-                    ))}
-                  </div>
-                )}
-                {skillsReExtractSummary && !skillsReExtractRunning && (
-                  <p className="text-sm text-slate-800 mt-2 font-medium">
-                    {skillsReExtractSummary}
-                  </p>
-                )}
-                {completenessAuditLoading && (
-                  <p className="text-sm text-slate-600 mt-2">Running audit…</p>
-                )}
-                {completenessAuditError && (
-                  <p className="text-sm text-red-600 mt-2">{completenessAuditError}</p>
-                )}
-                {completenessAuditRows !== null && !completenessAuditLoading && (
-                  <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-                    <table className="w-full text-sm text-left">
-                      <thead>
-                        <tr className="border-b bg-slate-50">
-                          <th className="p-2 font-semibold text-slate-700">Name</th>
-                          <th className="p-2 font-semibold text-slate-700">Stage</th>
-                          <th className="p-2 font-semibold text-slate-700">Vision</th>
-                          <th className="p-2 font-semibold text-slate-700">Dangers</th>
-                          <th className="p-2 font-semibold text-slate-700">Opportunities</th>
-                          <th className="p-2 font-semibold text-slate-700">Strengths</th>
-                          <th className="p-2 font-semibold text-slate-700">Skills</th>
-                          <th className="p-2 font-semibold text-slate-700">DISC</th>
-                          <th className="p-2 font-semibold text-slate-700">Sessions</th>
-                          <th className="p-2 font-semibold text-slate-700">Contact</th>
-                          <th className="p-2 font-semibold text-slate-700">Last Contact</th>
-                          <th className="p-2 font-semibold text-slate-700">RAG Ready</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {completenessAuditRows.map((row, i) => (
-                          <tr
-                            key={`${row.name}-${i}`}
-                            className="border-b border-slate-100"
-                            style={{ backgroundColor: auditRowBackground(row) }}
-                          >
-                            <td className="p-2 text-slate-900">{row.name}</td>
-                            <td className="p-2 text-slate-700">{row.inferred_stage ?? '—'}</td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.vision)
-                                )}
-                              >
-                                {completenessStatusLabel(row.vision)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.dangers)
-                                )}
-                              >
-                                {completenessStatusLabel(row.dangers)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.opportunities)
-                                )}
-                              >
-                                {completenessStatusLabel(row.opportunities)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.strengths)
-                                )}
-                              >
-                                {completenessStatusLabel(row.strengths)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.skills)
-                                )}
-                              >
-                                {completenessStatusLabel(row.skills)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.disc)
-                                )}
-                              >
-                                {completenessStatusLabel(row.disc)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.sessions)
-                                )}
-                              >
-                                {completenessStatusLabel(row.sessions)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.contact)
-                                )}
-                              >
-                                {completenessStatusLabel(row.contact)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  completenessStatusTextClass(row.lastContact)
-                                )}
-                              >
-                                {completenessStatusLabel(row.lastContact)}
-                              </span>
-                            </td>
-                            <td className="p-2">
-                              <span
-                                className={cn(
-                                  'font-medium whitespace-nowrap',
-                                  row.ragReady ? 'text-green-700' : 'text-red-700'
-                                )}
-                              >
-                                {row.ragReady ? '✅ Ready' : '❌ Not Ready'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-slate-300 bg-slate-100">
-                          <td
-                            colSpan={12}
-                            className="p-3 text-sm font-medium text-slate-800"
-                          >
-                            {completenessAuditRows.filter((r) => r.ragReady).length} of{' '}
-                            {completenessAuditRows.length} clients fully complete
-                            <br />
-                            {completenessAuditRows.length -
-                              completenessAuditRows.filter((r) => r.ragReady).length}{' '}
-                            clients have gaps
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-              </div>
-              {reExtractRunning && (
-                <p className="text-sm text-slate-600">Extracting files...</p>
-              )}
-              {fathomReExtractRunning && (
-                <p className="text-sm text-slate-600">Extracting Fathom...</p>
-              )}
-              {reExtractResult && !reExtractRunning && (
-                <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
-                  <p className="font-medium text-slate-800">You 2.0: {reExtractResult.you2_success}/17 extracted</p>
-                  <p className="font-medium text-slate-800">TUMAY: {reExtractResult.tumay_success}/17 extracted</p>
-                  {reExtractResult.errors.length > 0 && (
-                    <div>
-                      <p className="font-medium text-amber-700">Errors:</p>
-                      <ul className="text-sm text-slate-600 list-disc list-inside">
-                        {reExtractResult.errors.map((e, i) => (
-                          <li key={`${e}-${i}`}>{e}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-              {fathomReExtractResult && !fathomReExtractRunning && (
-                <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
-                  <p className="font-medium text-slate-800">
-                    Fathom: {fathomReExtractResult.success}/{fathomReExtractResult.success + fathomReExtractResult.failed} extracted
-                  </p>
-                  {fathomReExtractResult.errors.length > 0 && (
-                    <div>
-                      <p className="font-medium text-amber-700">Errors:</p>
-                      <ul className="text-sm text-slate-600 list-disc list-inside">
-                        {fathomReExtractResult.errors.map((e, i) => (
-                          <li key={`${e}-${i}`}>{e}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-              {importRunning && importProgress && (
-                <div className="space-y-2">
-                  <Progress
-                    value={importProgress.total > 0
-                      ? (importProgress.current / importProgress.total) * 100
-                      : 0}
-                    className="h-2"
-                  />
-                  <p className="text-sm text-slate-600">
-                    Processing {importProgress.current_client} — {importProgress.current_file} ({importProgress.current} of {importProgress.total} files)
-                  </p>
-                </div>
-              )}
-              {importResult && !importRunning && (
-                <div className="space-y-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
-                  <p className="font-medium text-green-700">
-                    ✓ {importResult.processed} documents processed successfully
-                    {importResult.skipped > 0 && `, ${importResult.skipped} skipped (already complete)`}
-                    {importResult.clients_created > 0 && `, ${importResult.clients_created} new clients`}
-                  </p>
-                  {importResult.clientSummaries.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="font-medium text-slate-700">Per client:</p>
-                      <ul className="text-sm space-y-1">
-                        {importResult.clientSummaries.map((s) => {
-                          const parts: string[] = [];
-                          parts.push(s.succeededTypes.includes('you2') ? 'You2 ✓' : s.missingYou2 ? 'You2 pending' : '');
-                          parts.push(s.succeededTypes.includes('disc') ? 'DISC ✓' : s.missingDisc ? 'DISC pending' : '');
-                          parts.push(s.succeededTypes.includes('fathom') ? 'Fathom ✓' : s.missingFathom ? 'Fathom pending' : '');
-                          const line = parts.filter(Boolean).join(', ');
-                          return (
-                            <li key={s.clientId} className="flex items-center gap-2">
-                              <span className="font-medium">{s.clientName}:</span>
-                              <span className="text-slate-600">{line || '—'}</span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  )}
-                  {importResult.failed > 0 && importResult.failedFiles && importResult.failedFiles.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="font-medium text-amber-700">
-                        ✗ {importResult.failed} documents failed:
-                      </p>
-                      <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-                        {importResult.failedFiles.map((f, i) => (
-                          <li key={i}>
-                            {f.clientName} — {f.fileName}: {f.error}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -2705,6 +2735,60 @@ ${workingText}`;
           )}
         </TabsContent>
       </Tabs>
+
+      <Card
+        className="border-[#C8E8E5]"
+        style={{ borderColor: '#C8E8E5', borderWidth: 1 }}
+      >
+        <CardHeader className="pb-2">
+          <CardTitle className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+            UAT Report
+          </CardTitle>
+          <CardDescription className="text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+            Export all feedback and audit logs from Sandi&apos;s UAT session. Share this file with Zubia after
+            using Coach Bot.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button
+            type="button"
+            disabled={uatReportExporting}
+            onClick={() => void handleExportUatReport()}
+            className="border-0 font-bold text-white hover:opacity-90"
+            style={{
+              background: '#3BBFBF',
+              borderRadius: 8,
+              padding: '10px 20px',
+              fontSize: 14,
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {uatReportExporting ? 'Exporting…' : 'Export UAT Report'}
+          </Button>
+          <div className="space-y-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+            {uatSummary != null && uatSummary.total === 0 ? (
+              <p className="italic">
+                No feedback collected yet. Use the Feedback button on each page to share what you notice.
+              </p>
+            ) : uatSummary != null ? (
+              <>
+                <p>Total feedback entries: {uatSummary.total}</p>
+                <p>
+                  Average rating:{' '}
+                  {uatSummary.avg_rating != null
+                    ? `${uatSummary.avg_rating.toFixed(1)} / 5`
+                    : '— / 5'}
+                </p>
+                <p>Working well: {uatSummary.working_count} responses</p>
+                <p>Confusing: {uatSummary.confusing_count} responses</p>
+                <p>Missing something: {uatSummary.missing_count} responses</p>
+              </>
+            ) : (
+              <p className="italic">Loading summary…</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {uatReportToast ? (
         <div
