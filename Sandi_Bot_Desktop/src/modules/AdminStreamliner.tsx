@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -21,6 +21,11 @@ import {
   FolderInput,
   ListChecks,
   Layers,
+  Brain,
+  Building2,
+  Library,
+  FileText,
+  GraduationCap,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,6 +58,14 @@ import { createBackup, getLastBackup } from '@/services/backupService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { cn } from '@/lib/utils';
 import FeedbackButton from '../components/FeedbackButton';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 type DisplayClient = ReturnType<typeof clientToDisplay>;
 
@@ -500,6 +513,77 @@ function activityAuditRollbackable(row: ActivityAuditRow): boolean {
   );
 }
 
+const KNOWLEDGE_UPLOAD_PLACEHOLDER = 'Uploaded — extraction coming in next update';
+
+const KNOWLEDGE_DOMAINS: ReadonlyArray<{
+  domain: string;
+  description: string;
+  color: string;
+  Icon: React.ElementType;
+}> = [
+  {
+    domain: 'Coaching Methodology',
+    description: 'CLEAR framework,\nTES coaching guides,\nsession structure',
+    color: '#3BBFBF',
+    Icon: Target,
+  },
+  {
+    domain: 'DISC Playbooks',
+    description: 'Coaching approaches per DISC style,\ncommunication guides,\nre-engagement scripts',
+    color: '#F05F57',
+    Icon: Brain,
+  },
+  {
+    domain: 'Franchise Knowledge',
+    description: 'Industry categories,\nfranchise evaluation criteria,\nZOR preparation guides',
+    color: '#2D4459',
+    Icon: Building2,
+  },
+  {
+    domain: 'Business Development',
+    description: 'Pipeline management,\nconversion strategies,\nseeker sourcing guides',
+    color: '#3BBFBF',
+    Icon: TrendingUp,
+  },
+  {
+    domain: 'Client Psychology',
+    description: 'Seeker motivation,\ndecision making patterns,\nobjection handling',
+    color: '#F05F57',
+    Icon: Heart,
+  },
+  {
+    domain: 'Reference Library',
+    description: 'Books, articles,\nresearch, and reference\nmaterial you rely on',
+    color: '#2D4459',
+    Icon: Library,
+  },
+  {
+    domain: 'Scripts and Templates',
+    description: 'Email templates,\ncall scripts, opening\nquestions, reconnect messages',
+    color: '#3BBFBF',
+    Icon: FileText,
+  },
+  {
+    domain: 'Training Materials',
+    description: 'TES training content,\ncertification materials,\nonboarding guides',
+    color: '#F05F57',
+    Icon: GraduationCap,
+  },
+];
+
+function knowledgeHealthMotivation(score: number): string {
+  if (score < 25) {
+    return 'Start by uploading your CLEAR framework documents';
+  }
+  if (score < 50) {
+    return 'Good start — add more coaching resources to improve question quality';
+  }
+  if (score <= 75) {
+    return 'Strong foundation — fill remaining domains for full coaching intelligence';
+  }
+  return 'Excellent knowledge base — Coach Bot has rich context for every coaching session';
+}
+
 // Stats Card
 function StatCard({ title, value, change, icon: Icon, color }: {
   title: string;
@@ -596,6 +680,107 @@ export default function AdminStreamliner() {
     kind: 'success' | 'error';
     text: string;
   } | null>(null);
+
+  const [knowledgeDomainCounts, setKnowledgeDomainCounts] = useState<Record<string, number>>({});
+  const [knowledgeRecent, setKnowledgeRecent] = useState<
+    Array<{ title: string; domain: string; created_at: string; file_name: string | null }>
+  >([]);
+  const [knowledgeModalDomain, setKnowledgeModalDomain] = useState<string | null>(null);
+  const [knowledgeModalDocs, setKnowledgeModalDocs] = useState<
+    Array<{ title: string; file_name: string | null; created_at: string }>
+  >([]);
+  const [knowledgeCardHover, setKnowledgeCardHover] = useState<string | null>(null);
+  const knowledgeFileInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshKnowledgeDocuments = useCallback(async () => {
+    const counts = await dbSelect<{ domain: string; c: number }>(
+      `SELECT domain, COUNT(*) as c FROM knowledge_documents GROUP BY domain`,
+      []
+    );
+    const map: Record<string, number> = {};
+    for (const d of KNOWLEDGE_DOMAINS) {
+      map[d.domain] = 0;
+    }
+    for (const row of counts) {
+      map[row.domain] = Number(row.c);
+    }
+    setKnowledgeDomainCounts(map);
+    const recent = await dbSelect<{
+      title: string;
+      domain: string;
+      created_at: string;
+      file_name: string | null;
+    }>(
+      `SELECT title, domain, created_at, file_name FROM knowledge_documents ORDER BY datetime(created_at) DESC LIMIT 5`,
+      []
+    );
+    setKnowledgeRecent(recent);
+  }, []);
+
+  const loadKnowledgeModalDocs = useCallback(async (domain: string) => {
+    const rows = await dbSelect<{ title: string; file_name: string | null; created_at: string }>(
+      `SELECT title, file_name, created_at FROM knowledge_documents WHERE domain = ? ORDER BY datetime(created_at) DESC`,
+      [domain]
+    );
+    setKnowledgeModalDocs(rows);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        await dbExecute(
+          `CREATE TABLE IF NOT EXISTS knowledge_documents (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            content TEXT,
+            domain TEXT NOT NULL,
+            doc_type TEXT,
+            file_name TEXT,
+            file_size INTEGER,
+            embedded INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )`
+        );
+      } catch (e) {
+        console.error('knowledge_documents table:', e);
+      }
+      if (!cancelled) {
+        await refreshKnowledgeDocuments();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKnowledgeDocuments]);
+
+  useEffect(() => {
+    if (!knowledgeModalDomain) {
+      setKnowledgeModalDocs([]);
+      return;
+    }
+    void loadKnowledgeModalDocs(knowledgeModalDomain);
+  }, [knowledgeModalDomain, loadKnowledgeModalDocs]);
+
+  const uploadKnowledgePdfFiles = useCallback(
+    async (files: File[]) => {
+      const domain = knowledgeModalDomain;
+      if (!domain) return;
+      for (const file of files) {
+        const lower = file.name.toLowerCase();
+        if (!lower.endsWith('.pdf')) continue;
+        const id = crypto.randomUUID();
+        await dbExecute(
+          `INSERT INTO knowledge_documents (id, title, content, domain, doc_type, file_name, file_size, embedded)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+          [id, file.name, KNOWLEDGE_UPLOAD_PLACEHOLDER, domain, 'pdf', file.name, file.size]
+        );
+      }
+      await refreshKnowledgeDocuments();
+      await loadKnowledgeModalDocs(domain);
+    },
+    [knowledgeModalDomain, refreshKnowledgeDocuments, loadKnowledgeModalDocs]
+  );
 
   const fetchValidateReadyCount = async (): Promise<number> => {
     const rows = await dbSelect<{ c: number }>(
@@ -1544,6 +1729,14 @@ ${workingText}`;
     </span>
   );
 
+  const knowledgeDomainsCovered = KNOWLEDGE_DOMAINS.filter(
+    (d) => (knowledgeDomainCounts[d.domain] ?? 0) >= 1
+  ).length;
+  const knowledgeHealthPct = Math.round((knowledgeDomainsCovered / 8) * 100);
+  const knowledgeModalMeta = knowledgeModalDomain
+    ? KNOWLEDGE_DOMAINS.find((x) => x.domain === knowledgeModalDomain)
+    : undefined;
+
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-4">
@@ -1613,12 +1806,263 @@ ${workingText}`;
               Coaching frameworks, TES methodology, franchise guides, and resources you use. Coach Bot learns
               from these.
             </p>
-            <p className="mt-3 text-[13px] italic leading-relaxed" style={{ color: '#7A8F95' }}>
-              Upload your coaching documents, frameworks, and resources to build your knowledge base.
-            </p>
-            {comingSoonBadge}
           </div>
         </div>
+
+        <div className="mt-6 flex flex-wrap items-start justify-between gap-6">
+          <div className="min-w-0 flex-1">
+            <p
+              className="font-semibold uppercase tracking-wide"
+              style={{ color: '#7A8F95', fontSize: 11 }}
+            >
+              Knowledge Base Health
+            </p>
+            <p className="mt-1 font-bold leading-tight" style={{ color: '#2D4459', fontSize: 32 }}>
+              {knowledgeHealthPct}%
+            </p>
+            <p className="mt-1 text-[13px]" style={{ color: '#7A8F95' }}>
+              {knowledgeDomainsCovered} of 8 domains covered
+            </p>
+            <p className="mt-3 max-w-md text-[12px] italic leading-relaxed" style={{ color: '#7A8F95' }}>
+              {knowledgeHealthMotivation(knowledgeHealthPct)}
+            </p>
+          </div>
+          <div className="shrink-0 pt-1">
+            <div
+              className="overflow-hidden"
+              style={{
+                width: 200,
+                height: 8,
+                borderRadius: 4,
+                background: '#F4F7F8',
+              }}
+            >
+              <div
+                style={{
+                  width: `${knowledgeHealthPct}%`,
+                  height: '100%',
+                  borderRadius: 4,
+                  background: '#3BBFBF',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="mt-4 grid grid-cols-1 md:grid-cols-2"
+          style={{ gap: 12, marginTop: 16 }}
+        >
+          {KNOWLEDGE_DOMAINS.map((d) => {
+            const count = knowledgeDomainCounts[d.domain] ?? 0;
+            const Icon = d.Icon;
+            const showUploadBtn = count === 0 || knowledgeCardHover === d.domain;
+            let coverageSymbol = '○';
+            let coverageLabel = 'Not started';
+            let coverageColor = '#C8E8E5';
+            if (count >= 3) {
+              coverageSymbol = '●';
+              coverageLabel = `${count} documents — well covered`;
+              coverageColor = '#3BBFBF';
+            } else if (count >= 1) {
+              coverageSymbol = '◑';
+              coverageLabel = `${count} document${count === 1 ? '' : 's'} — building`;
+              coverageColor = '#F05F57';
+            }
+            return (
+              <div
+                key={d.domain}
+                role="button"
+                tabIndex={0}
+                className="cursor-pointer bg-white shadow-none transition-shadow duration-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+                style={{
+                  borderRadius: 10,
+                  border: '1px solid #C8E8E5',
+                  borderLeftWidth: 4,
+                  borderLeftColor: d.color,
+                  padding: 16,
+                }}
+                onMouseEnter={() => setKnowledgeCardHover(d.domain)}
+                onMouseLeave={() => setKnowledgeCardHover(null)}
+                onClick={() => setKnowledgeModalDomain(d.domain)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setKnowledgeModalDomain(d.domain);
+                  }
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="shrink-0" style={{ color: d.color, width: 18, height: 18 }} aria-hidden />
+                  <span className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                    {d.domain}
+                  </span>
+                </div>
+                <p
+                  className="mt-1 whitespace-pre-line leading-snug"
+                  style={{ color: '#7A8F95', fontSize: 11 }}
+                >
+                  {d.description}
+                </p>
+                <p className="mt-2 text-[11px]" style={{ color: coverageColor }}>
+                  <span aria-hidden>{coverageSymbol}</span> {coverageLabel}
+                </p>
+                <div style={{ marginTop: 8, minHeight: 28 }}>
+                  <button
+                    type="button"
+                    className="text-[11px] font-medium transition-opacity"
+                    style={{
+                      visibility: showUploadBtn ? 'visible' : 'hidden',
+                      background: 'transparent',
+                      border: `1px solid ${d.color}`,
+                      color: d.color,
+                      borderRadius: 6,
+                      padding: '4px 12px',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setKnowledgeModalDomain(d.domain);
+                    }}
+                  >
+                    + Upload Documents
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-6">
+          <p className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+            Recently Added
+          </p>
+          {knowledgeRecent.length === 0 ? (
+            <p className="mt-2 text-[13px] italic" style={{ color: '#7A8F95' }}>
+              No documents uploaded yet. Click any domain to get started.
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {knowledgeRecent.map((row) => {
+                const displayName = row.file_name ?? row.title;
+                let rel = row.created_at;
+                try {
+                  rel = formatDistanceToNow(new Date(row.created_at), { addSuffix: true });
+                } catch {
+                  /* keep raw */
+                }
+                return (
+                  <li
+                    key={`${row.domain}-${row.created_at}-${displayName}`}
+                    className="flex flex-wrap items-center justify-between gap-2 text-[13px]"
+                  >
+                    <span className="min-w-0 flex-1 font-medium" style={{ color: '#2D4459' }}>
+                      <span aria-hidden>📄 </span>
+                      {displayName}
+                    </span>
+                    <span
+                      className="shrink-0 rounded-[12px] px-2 py-0.5 text-[11px]"
+                      style={{ background: '#F4F7F8', color: '#7A8F95' }}
+                    >
+                      {row.domain}
+                    </span>
+                    <span className="shrink-0 text-[11px]" style={{ color: '#7A8F95' }}>
+                      {rel}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <Dialog
+          open={knowledgeModalDomain !== null}
+          onOpenChange={(open) => {
+            if (!open) setKnowledgeModalDomain(null);
+          }}
+        >
+          <DialogContent
+            className="max-h-[90vh] overflow-y-auto sm:max-w-lg"
+            style={{ borderColor: '#C8E8E5' }}
+          >
+            <DialogHeader>
+              <DialogTitle style={{ color: '#2D4459' }}>
+                {knowledgeModalMeta ? `Upload to ${knowledgeModalMeta.domain}` : 'Upload'}
+              </DialogTitle>
+              <DialogDescription
+                className="whitespace-pre-line text-[13px] leading-relaxed"
+                style={{ color: '#7A8F95' }}
+              >
+                {knowledgeModalMeta?.description ?? ''}
+              </DialogDescription>
+            </DialogHeader>
+            <input
+              ref={knowledgeFileInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = e.target.files;
+                if (!files?.length) return;
+                void uploadKnowledgePdfFiles(Array.from(files));
+                e.target.value = '';
+              }}
+            />
+            <div
+              role="button"
+              tabIndex={0}
+              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors hover:bg-[#F4F7F8]"
+              style={{ borderColor: '#C8E8E5', color: '#7A8F95' }}
+              onClick={() => knowledgeFileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  knowledgeFileInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const list = e.dataTransfer.files;
+                if (list?.length) {
+                  void uploadKnowledgePdfFiles(Array.from(list));
+                }
+              }}
+            >
+              <p className="text-sm font-medium" style={{ color: '#2D4459' }}>
+                Drop PDFs here or click to browse
+              </p>
+              <p className="mt-1 text-xs" style={{ color: '#7A8F95' }}>
+                Supports multiple files
+              </p>
+            </div>
+            {knowledgeModalDocs.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#7A8F95' }}>
+                  Uploaded in this domain
+                </p>
+                <ul className="max-h-40 space-y-1 overflow-y-auto text-sm" style={{ color: '#2D4459' }}>
+                  {knowledgeModalDocs.map((doc) => (
+                    <li key={`${doc.created_at}-${doc.title}`} className="truncate">
+                      {doc.file_name ?? doc.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setKnowledgeModalDomain(null)}>
+                Done
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* SECTION 3 — My Clients */}
