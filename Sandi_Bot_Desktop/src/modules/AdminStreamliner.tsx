@@ -26,6 +26,8 @@ import {
   Library,
   FileText,
   GraduationCap,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,7 +57,8 @@ import { getAllClients, getRankedClients, getAverageConfidence, getSupportiveSpo
 import { logEntry } from '@/services/auditService';
 import { dbSelect, dbExecute } from '@/services/db';
 import { createBackup, getLastBackup } from '@/services/backupService';
-import { clientToDisplay } from '@/services/clientAdapter';
+import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter';
+import { rebuildClientProfile } from '@/services/profileBuilderService';
 import { cn } from '@/lib/utils';
 import FeedbackButton from '../components/FeedbackButton';
 import {
@@ -355,6 +358,134 @@ function auditRowBackground(row: CompletenessAuditRow): string {
   if (cells.some((c) => c === 'MISSING')) return '#FFF0F0';
   if (cells.some((c) => c === 'PARTIAL' || c === 'WARN')) return '#FFF8F0';
   return '#ffffff';
+}
+
+type CaptureClientRow = {
+  id: string;
+  name: string;
+  inferred_stage: string | null;
+  recommendation: string | null;
+  one_year_vision: string | null;
+  disc_style_label: string | null;
+  natural_d: number | null;
+  natural_i: number | null;
+  natural_s: number | null;
+  natural_c: number | null;
+  tumay_contact_name: string | null;
+  tumay_data: string | null;
+  real_session_count: number;
+  latest_session_date: string | null;
+  session_count_total: number;
+};
+
+type CaptureDocKind = 'disc' | 'you2' | 'tumay' | 'fathom';
+
+type CaptureUploadPhase = 'idle' | 'extracting' | 'done' | 'failed';
+
+type CaptureUploadSlot = {
+  phase: CaptureUploadPhase;
+  message?: string;
+};
+
+function clientInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+  }
+  return name.trim().slice(0, 2).toUpperCase() || '—';
+}
+
+function captureStageLine(inferred: string | null): string {
+  const code = (inferred ?? '—').trim() || '—';
+  const long = normalizeDisplayStage(inferred ?? undefined);
+  const short = long.replace(/\bClarification\b/i, 'Clarif.');
+  return `${code} · ${short}`;
+}
+
+function recommendationAvatarBg(rec: string | null | undefined): string {
+  const r = (rec ?? '').toUpperCase();
+  if (r === 'VALIDATE') return '#3BBFBF';
+  if (r === 'PAUSE') return '#9CA3AF';
+  return '#F59E0B';
+}
+
+function tumaySnippetFromJson(tumayJson: string | null): string {
+  if (!tumayJson?.trim()) return '';
+  try {
+    const o = JSON.parse(tumayJson) as {
+      financial_net_worth_range?: string;
+      credit_score?: number | string;
+    };
+    const nw = (o.financial_net_worth_range ?? '').trim();
+    const cs = o.credit_score != null && String(o.credit_score).trim() !== '' ? String(o.credit_score) : '';
+    if (nw && cs) return `${nw} · ${cs} credit`;
+    if (nw) return nw;
+    if (cs) return `${cs} credit`;
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
+function hasTumayContactLoaded(row: CaptureClientRow): boolean {
+  const t = (row.tumay_contact_name ?? '').trim();
+  return t !== '';
+}
+
+function cardCompletenessPct(row: CaptureClientRow): number {
+  const discOk =
+    discColumnStatus({
+      natural_d: row.natural_d,
+      natural_i: row.natural_i,
+      natural_s: row.natural_s,
+      natural_c: row.natural_c,
+    }) === 'OK';
+  const you2Ok = you2FieldStatus(row.one_year_vision) === 'OK';
+  const tumayOk = hasTumayContactLoaded(row);
+  const fathomOk = row.real_session_count >= 1;
+  const n = [discOk, you2Ok, tumayOk, fathomOk].filter(Boolean).length;
+  return Math.round((n / 4) * 100);
+}
+
+function completenessGaugeColor(pct: number): string {
+  if (pct >= 100) return '#3BBFBF';
+  if (pct >= 50) return '#F59E0B';
+  return '#F05F57';
+}
+
+function ClientCompletenessRing({ pct }: { pct: number }) {
+  const size = 36;
+  const stroke = 3;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - Math.min(100, Math.max(0, pct)) / 100);
+  const col = completenessGaugeColor(pct);
+  return (
+    <svg width={size} height={size} className="shrink-0" aria-hidden>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#F4F7F8" strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={col}
+        strokeWidth={stroke}
+        strokeDasharray={c}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text
+        x="50%"
+        y="50%"
+        dominantBaseline="middle"
+        textAnchor="middle"
+        style={{ fontSize: 11, fontWeight: 700, fill: col }}
+      >
+        {pct}%
+      </text>
+    </svg>
+  );
 }
 
 const SKILLS_ONLY_REEXTRACT_NAMES = [
@@ -681,6 +812,21 @@ export default function AdminStreamliner() {
     text: string;
   } | null>(null);
 
+  const [captureRows, setCaptureRows] = useState<CaptureClientRow[]>([]);
+  const [captureLoading, setCaptureLoading] = useState(false);
+  const [selectedCaptureClientId, setSelectedCaptureClientId] = useState<string | null>(null);
+  const [captureAdvancedOpen, setCaptureAdvancedOpen] = useState(false);
+  const [captureUpload, setCaptureUpload] = useState<Record<CaptureDocKind, CaptureUploadSlot>>({
+    disc: { phase: 'idle' },
+    you2: { phase: 'idle' },
+    tumay: { phase: 'idle' },
+    fathom: { phase: 'idle' },
+  });
+  const captureDiscInputRef = useRef<HTMLInputElement>(null);
+  const captureYou2InputRef = useRef<HTMLInputElement>(null);
+  const captureTumayInputRef = useRef<HTMLInputElement>(null);
+  const captureFathomInputRef = useRef<HTMLInputElement>(null);
+
   const [knowledgeDomainCounts, setKnowledgeDomainCounts] = useState<Record<string, number>>({});
   const [knowledgeRecent, setKnowledgeRecent] = useState<
     Array<{ title: string; domain: string; created_at: string; file_name: string | null }>
@@ -796,6 +942,90 @@ export default function AdminStreamliner() {
     const rows = await fetchActivityAuditRows();
     setActivityAuditRows(rows);
   }, []);
+
+  const refreshCaptureClients = useCallback(async () => {
+    setCaptureLoading(true);
+    try {
+      const raw = await dbSelect<{
+        id: string;
+        name: string;
+        inferred_stage: string | null;
+        recommendation: string | null;
+        one_year_vision: string | null;
+        disc_style_label: string | null;
+        natural_d: number | null;
+        natural_i: number | null;
+        natural_s: number | null;
+        natural_c: number | null;
+        tumay_contact_name: string | null;
+        tumay_data: string | null;
+        real_session_count: number | null;
+        latest_session_date: string | null;
+        session_count_total: number | null;
+      }>(
+        `SELECT
+          c.id,
+          c.name,
+          c.inferred_stage,
+          c.recommendation,
+          y.one_year_vision,
+          dp.primary_style_label AS disc_style_label,
+          dp.natural_d,
+          dp.natural_i,
+          dp.natural_s,
+          dp.natural_c,
+          NULLIF(TRIM(json_extract(c.tumay_data, '$.contact_name')), '') AS tumay_contact_name,
+          c.tumay_data AS tumay_data,
+          (
+            SELECT COUNT(*)
+            FROM coaching_sessions cs
+            WHERE cs.client_id = c.id
+              AND cs.notes IS NOT NULL
+              AND TRIM(cs.notes) != ''
+              AND cs.notes NOT LIKE '%John Doe%'
+              AND LENGTH(cs.notes) > 20
+          ) AS real_session_count,
+          (
+            SELECT MAX(cs.session_date) FROM coaching_sessions cs WHERE cs.client_id = c.id
+          ) AS latest_session_date,
+          (
+            SELECT COUNT(*) FROM coaching_sessions cs WHERE cs.client_id = c.id
+          ) AS session_count_total
+        FROM clients c
+        LEFT JOIN client_you2_profiles y ON c.id = y.client_id
+        LEFT JOIN client_disc_profiles dp ON c.id = dp.client_id
+        WHERE c.outcome_bucket != 'inactive'
+        ORDER BY c.name`,
+        []
+      );
+      setCaptureRows(
+        raw.map((r) => ({
+          ...r,
+          real_session_count: Number(r.real_session_count ?? 0),
+          session_count_total: Number(r.session_count_total ?? 0),
+        }))
+      );
+    } catch (e) {
+      console.error('[capture] refresh failed:', e);
+      setCaptureRows([]);
+    } finally {
+      setCaptureLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    void refreshCaptureClients();
+  }, [loading, refreshCaptureClients]);
+
+  useEffect(() => {
+    setCaptureUpload({
+      disc: { phase: 'idle' },
+      you2: { phase: 'idle' },
+      tumay: { phase: 'idle' },
+      fathom: { phase: 'idle' },
+    });
+  }, [selectedCaptureClientId]);
 
   useEffect(() => {
     setLoading(true);
@@ -1203,6 +1433,143 @@ export default function AdminStreamliner() {
     }
   };
 
+  const runCaptureUpload = async (kind: CaptureDocKind, file: File) => {
+    const clientId = selectedCaptureClientId;
+    if (!clientId) return;
+    const tauriPath = (file as File & { path?: string }).path;
+    if (!tauriPath || typeof tauriPath !== 'string' || tauriPath.trim() === '') {
+      setCaptureUpload((prev) => ({
+        ...prev,
+        [kind]: {
+          phase: 'failed',
+          message: '❌ Failed — no file path (use Import All Client Files)',
+        },
+      }));
+      toast.error(
+        'Could not read file path for extraction. Use Import All Client Files from your CoachBot clients folder, or pick files from a desktop build that exposes paths.'
+      );
+      return;
+    }
+
+    setCaptureUpload((prev) => ({
+      ...prev,
+      [kind]: { phase: 'extracting', message: '⟳ Extracting...' },
+    }));
+
+    try {
+      let textToUse = '';
+      if (kind !== 'tumay') {
+        let extracted: { text: string; success: boolean; error?: string };
+        try {
+          extracted = await invoke<{
+            text: string;
+            success: boolean;
+            error?: string;
+          }>('extract_text_from_any_file', { filePath: tauriPath });
+        } catch (e) {
+          extracted = {
+            text: '',
+            success: false,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+        const lowerPath = tauriPath.toLowerCase();
+        const isDiscPdf = kind === 'disc' && lowerPath.endsWith('.pdf');
+        const isYou2Pdf = kind === 'you2' && lowerPath.endsWith('.pdf');
+        textToUse = extracted.success && extracted.text ? extracted.text : '';
+        if (!extracted.success || !extracted.text) {
+          if (kind === 'fathom') {
+            throw new Error(extracted.error ?? 'Could not read transcript from file');
+          }
+          if (!(isDiscPdf || isYou2Pdf)) {
+            throw new Error(extracted.error ?? 'extract_text_from_any_file failed');
+          }
+        }
+      }
+
+      const docType: DocumentType =
+        kind === 'tumay'
+          ? ('tumay' as DocumentType)
+          : kind === 'you2'
+            ? 'you2'
+            : kind === 'disc'
+              ? 'disc'
+              : 'fathom';
+
+      const res = await processDocument(
+        clientId,
+        docType,
+        textToUse,
+        file.name,
+        tauriPath
+      );
+
+      const ok =
+        res.extraction_status === 'complete' ||
+        res.extraction_status === 'pending' ||
+        (res.success === true && res.extraction_status !== 'failed');
+
+      if (!ok || res.extraction_status === 'skipped') {
+        setCaptureUpload((prev) => ({
+          ...prev,
+          [kind]: {
+            phase: 'failed',
+            message: `❌ Failed — ${res.error ?? 'try again'}`,
+          },
+        }));
+        return;
+      }
+
+      await rebuildClientProfile(clientId);
+      const rawClients = await getAllClients();
+      setClients(rawClients.map((c) => clientToDisplay(c)));
+      await refreshCaptureClients();
+
+      let doneMsg = '✅ Done';
+      if (kind === 'disc') {
+        const rows = await dbSelect<{ primary_style_label: string | null }>(
+          `SELECT primary_style_label FROM client_disc_profiles WHERE client_id = ? LIMIT 1`,
+          [clientId]
+        );
+        const label = rows[0]?.primary_style_label?.trim();
+        doneMsg = label ? `✅ Done — ${label}` : '✅ Done — DISC stored';
+      } else if (kind === 'you2') {
+        const rows = await dbSelect<{ one_year_vision: string | null }>(
+          `SELECT one_year_vision FROM client_you2_profiles WHERE client_id = ? LIMIT 1`,
+          [clientId]
+        );
+        const v = (rows[0]?.one_year_vision ?? '').trim();
+        doneMsg = v
+          ? `✅ Done — ${v.slice(0, 40)}${v.length > 40 ? '…' : ''}`
+          : '✅ Done — You 2.0 stored';
+      } else if (kind === 'tumay') {
+        doneMsg = '✅ Done — TUMAY intake saved';
+      } else {
+        doneMsg = '✅ Done — session processed';
+      }
+
+      setCaptureUpload((prev) => ({
+        ...prev,
+        [kind]: { phase: 'done', message: doneMsg },
+      }));
+      toast.success('Document processed');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setCaptureUpload((prev) => ({
+        ...prev,
+        [kind]: {
+          phase: 'failed',
+          message: `❌ Failed — ${msg}`,
+        },
+      }));
+    }
+  };
+
+  const handleReExtractAllDocuments = async () => {
+    await handleReExtractYou2AndTumay();
+    await handleReExtractFathom();
+  };
+
   const handleReExtractSkillsOnly = async () => {
     setSkillsReExtractRunning(true);
     setSkillsReExtractLines([]);
@@ -1398,6 +1765,7 @@ ${workingText}`;
       setClients(rawClients.map((client) => clientToDisplay(client)));
       await refreshActivityAudit();
       setValidateReadyCount(await fetchValidateReadyCount());
+      await refreshCaptureClients();
     } catch (err) {
       setImportResult({
         processed: 0,
@@ -1425,6 +1793,7 @@ ${workingText}`;
       setClients(rawClients.map((client) => clientToDisplay(client)));
       await refreshActivityAudit();
       setValidateReadyCount(await fetchValidateReadyCount());
+      await refreshCaptureClients();
     } catch (err) {
       setImportResult({
         processed: 0,
@@ -1588,6 +1957,7 @@ ${workingText}`;
       });
     } finally {
       setReExtractRunning(false);
+      void refreshCaptureClients();
     }
   };
 
@@ -1605,6 +1975,7 @@ ${workingText}`;
       });
     } finally {
       setFathomReExtractRunning(false);
+      void refreshCaptureClients();
     }
   };
 
@@ -1737,6 +2108,56 @@ ${workingText}`;
     ? KNOWLEDGE_DOMAINS.find((x) => x.domain === knowledgeModalDomain)
     : undefined;
 
+  const totalCapture = captureRows.length;
+  const pipelineCompleteCount = captureRows.filter((r) => {
+    const discOk =
+      discColumnStatus({
+        natural_d: r.natural_d,
+        natural_i: r.natural_i,
+        natural_s: r.natural_s,
+        natural_c: r.natural_c,
+      }) === 'OK';
+    const you2Ok = you2FieldStatus(r.one_year_vision) === 'OK';
+    return discOk && you2Ok && r.real_session_count >= 1;
+  }).length;
+  const pipelinePct = totalCapture > 0 ? (pipelineCompleteCount / totalCapture) * 100 : 0;
+  const statDiscLoaded = captureRows.filter(
+    (r) =>
+      discColumnStatus({
+        natural_d: r.natural_d,
+        natural_i: r.natural_i,
+        natural_s: r.natural_s,
+        natural_c: r.natural_c,
+      }) === 'OK'
+  ).length;
+  const statYou2Loaded = captureRows.filter((r) => you2FieldStatus(r.one_year_vision) === 'OK').length;
+  const statTumayLoaded = captureRows.filter((r) => hasTumayContactLoaded(r)).length;
+  const statSessionsLoaded = captureRows.filter((r) => r.real_session_count >= 1).length;
+  const selectedCaptureRow = captureRows.find((r) => r.id === selectedCaptureClientId) ?? null;
+
+  const openCapturePicker = (kind: CaptureDocKind) => {
+    if (kind === 'disc') captureDiscInputRef.current?.click();
+    else if (kind === 'you2') captureYou2InputRef.current?.click();
+    else if (kind === 'tumay') captureTumayInputRef.current?.click();
+    else captureFathomInputRef.current?.click();
+  };
+
+  const quickForRow = (row: CaptureClientRow): { label: string; kind: CaptureDocKind } => {
+    const discOk =
+      discColumnStatus({
+        natural_d: row.natural_d,
+        natural_i: row.natural_i,
+        natural_s: row.natural_s,
+        natural_c: row.natural_c,
+      }) === 'OK';
+    const you2Ok = you2FieldStatus(row.one_year_vision) === 'OK';
+    const sessOk = row.real_session_count >= 1;
+    if (!discOk) return { label: 'Upload DISC', kind: 'disc' };
+    if (!you2Ok) return { label: 'Upload You 2.0', kind: 'you2' };
+    if (!sessOk) return { label: 'Upload Session', kind: 'fathom' };
+    return { label: '+ Add Session', kind: 'fathom' };
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-4">
@@ -1755,7 +2176,767 @@ ${workingText}`;
         </div>
       </div>
 
-      {/* SECTION 1 — My Identity */}
+      {/* SECTION 1 — My Clients */}
+      <div style={{ marginBottom: 16 }}>
+        <div className="mb-4 flex items-center gap-2">
+          <Users className="shrink-0" style={{ color: '#2D4459', width: 20, height: 20 }} aria-hidden />
+          <h2 className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+            My Clients
+          </h2>
+        </div>
+
+        <div
+          className="bg-white"
+          style={{
+            borderRadius: 12,
+            border: '1px solid #C8E8E5',
+            padding: '24px 28px',
+            marginBottom: 16,
+          }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+              Client Profile Progress
+            </span>
+            <span style={{ color: '#7A8F95', fontSize: 13 }}>
+              {pipelineCompleteCount} of {totalCapture} clients complete
+            </span>
+          </div>
+          <div
+            className="mt-4 overflow-hidden"
+            style={{
+              height: 12,
+              borderRadius: 6,
+              background: '#F4F7F8',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(100, Math.max(0, pipelinePct))}%`,
+                height: '100%',
+                borderRadius: 6,
+                background: '#3BBFBF',
+                transition: 'width 0.35s ease',
+              }}
+            />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: 'DISC Loaded', value: statDiscLoaded },
+              { label: 'You 2.0 Loaded', value: statYou2Loaded },
+              { label: 'TUMAY Loaded', value: statTumayLoaded },
+              { label: 'Sessions Uploaded', value: statSessionsLoaded },
+            ].map((s) => (
+              <div key={s.label} className="text-center">
+                <p className="font-bold" style={{ color: '#2D4459', fontSize: 24 }}>
+                  {captureLoading ? '—' : s.value}
+                </p>
+                <p style={{ color: '#7A8F95', fontSize: 11 }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {captureLoading && (
+          <p className="mb-2 text-[13px]" style={{ color: '#7A8F95' }}>
+            Loading clients…
+          </p>
+        )}
+
+        <div
+          className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
+          style={{ gap: 12 }}
+        >
+          {captureRows.map((r) => {
+            const pct = cardCompletenessPct(r);
+            const discOk =
+              discColumnStatus({
+                natural_d: r.natural_d,
+                natural_i: r.natural_i,
+                natural_s: r.natural_s,
+                natural_c: r.natural_c,
+              }) === 'OK';
+            const you2Ok = you2FieldStatus(r.one_year_vision) === 'OK';
+            const tumayOk = hasTumayContactLoaded(r);
+            const fathomOk = r.real_session_count >= 1;
+            const qa = quickForRow(r);
+            const selected = selectedCaptureClientId === r.id;
+            return (
+              <div
+                key={r.id}
+                role="button"
+                tabIndex={0}
+                className={cn(
+                  'cursor-pointer rounded-[10px] bg-white p-4 transition-[border-color,box-shadow] duration-200',
+                  selected
+                    ? 'border-2 border-[#3BBFBF] bg-[#F0FAFA]'
+                    : 'border border-[#C8E8E5] hover:border-[#3BBFBF] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]'
+                )}
+                onClick={() => setSelectedCaptureClientId(r.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedCaptureClientId(r.id);
+                  }
+                }}
+              >
+                <div className="flex items-start gap-2">
+                  <div
+                    className="flex shrink-0 items-center justify-center font-bold text-white"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: recommendationAvatarBg(r.recommendation),
+                      fontSize: 13,
+                    }}
+                  >
+                    {clientInitials(r.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                      {r.name}
+                    </p>
+                    <p className="truncate" style={{ color: '#7A8F95', fontSize: 11 }}>
+                      {captureStageLine(r.inferred_stage)}
+                    </p>
+                  </div>
+                  <ClientCompletenessRing pct={pct} />
+                </div>
+                <div className="mt-3 flex justify-center gap-2">
+                  {[
+                    {
+                      key: 'disc',
+                      filled: discOk,
+                      tip: discOk ? 'DISC ✅ uploaded' : 'DISC ⚠️ missing',
+                    },
+                    {
+                      key: 'you2',
+                      filled: you2Ok,
+                      tip: you2Ok ? 'You 2.0 ✅ uploaded' : 'You 2.0 ⚠️ missing',
+                    },
+                    {
+                      key: 'tumay',
+                      filled: tumayOk,
+                      tip: tumayOk ? 'TUMAY ✅ uploaded' : 'TUMAY ⚠️ missing',
+                    },
+                    {
+                      key: 'fathom',
+                      filled: fathomOk,
+                      tip: fathomOk ? 'Fathom ✅ uploaded' : 'Fathom ⚠️ missing',
+                    },
+                  ].map((d) => (
+                    <span
+                      key={d.key}
+                      title={d.tip}
+                      className="cursor-default text-[14px] leading-none"
+                      style={{ color: d.filled ? '#3BBFBF' : '#D1D5DB' }}
+                      aria-label={d.tip}
+                    >
+                      {d.filled ? '●' : '○'}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-1 text-center" style={{ color: '#7A8F95', fontSize: 9 }}>
+                  DISC · You 2.0 · TUMAY · Fathom
+                </p>
+                <button
+                  type="button"
+                  className="mt-3 w-full font-medium transition-opacity hover:opacity-90"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #3BBFBF',
+                    color: '#3BBFBF',
+                    borderRadius: 6,
+                    padding: '4px 12px',
+                    fontSize: 11,
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedCaptureClientId(r.id);
+                    openCapturePicker(qa.kind);
+                  }}
+                >
+                  {qa.label}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {selectedCaptureRow ? (
+          <div
+            style={{
+              marginTop: 16,
+              borderRadius: 12,
+              border: '2px solid #3BBFBF',
+              background: '#F4F7F8',
+              padding: 24,
+            }}
+          >
+            <p className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+              {selectedCaptureRow.name} — Upload Documents
+            </p>
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {/* DISC */}
+              <div>
+                <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                  DISC
+                </p>
+                <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
+                  {discColumnStatus({
+                    natural_d: selectedCaptureRow.natural_d,
+                    natural_i: selectedCaptureRow.natural_i,
+                    natural_s: selectedCaptureRow.natural_s,
+                    natural_c: selectedCaptureRow.natural_c,
+                  }) === 'OK'
+                    ? '✅ Uploaded'
+                    : '⚪ Missing'}
+                </p>
+                {discColumnStatus({
+                  natural_d: selectedCaptureRow.natural_d,
+                  natural_i: selectedCaptureRow.natural_i,
+                  natural_s: selectedCaptureRow.natural_s,
+                  natural_c: selectedCaptureRow.natural_c,
+                }) === 'OK' && selectedCaptureRow.disc_style_label ? (
+                  <p className="mt-1 text-[12px]" style={{ color: '#2D4459' }}>
+                    {selectedCaptureRow.disc_style_label}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="mt-2 w-full font-medium"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #3BBFBF',
+                    color: '#3BBFBF',
+                    borderRadius: 6,
+                    padding: '4px 12px',
+                    fontSize: 11,
+                  }}
+                  onClick={() => openCapturePicker('disc')}
+                >
+                  {discColumnStatus({
+                    natural_d: selectedCaptureRow.natural_d,
+                    natural_i: selectedCaptureRow.natural_i,
+                    natural_s: selectedCaptureRow.natural_s,
+                    natural_c: selectedCaptureRow.natural_c,
+                  }) === 'OK'
+                    ? 'Re-upload DISC'
+                    : 'Upload DISC'}
+                </button>
+                {captureUpload.disc.phase !== 'idle' ? (
+                  <p className="mt-2 text-[11px]" style={{ color: '#2D4459' }}>
+                    {captureUpload.disc.message}
+                  </p>
+                ) : null}
+              </div>
+              {/* You 2.0 */}
+              <div>
+                <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                  You 2.0
+                </p>
+                <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
+                  {you2FieldStatus(selectedCaptureRow.one_year_vision) === 'OK' ? '✅ Uploaded' : '⚪ Missing'}
+                </p>
+                {you2FieldStatus(selectedCaptureRow.one_year_vision) === 'OK' &&
+                selectedCaptureRow.one_year_vision ? (
+                  <p className="mt-1 line-clamp-2 text-[12px]" style={{ color: '#2D4459' }}>
+                    {(selectedCaptureRow.one_year_vision ?? '').trim().slice(0, 40)}
+                    {(selectedCaptureRow.one_year_vision ?? '').trim().length > 40 ? '…' : ''}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="mt-2 w-full font-medium"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #3BBFBF',
+                    color: '#3BBFBF',
+                    borderRadius: 6,
+                    padding: '4px 12px',
+                    fontSize: 11,
+                  }}
+                  onClick={() => openCapturePicker('you2')}
+                >
+                  {you2FieldStatus(selectedCaptureRow.one_year_vision) === 'OK' ? 'Re-upload' : 'Upload'}
+                </button>
+                {captureUpload.you2.phase !== 'idle' ? (
+                  <p className="mt-2 text-[11px]" style={{ color: '#2D4459' }}>
+                    {captureUpload.you2.message}
+                  </p>
+                ) : null}
+              </div>
+              {/* TUMAY */}
+              <div>
+                <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                  TUMAY
+                </p>
+                <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
+                  {hasTumayContactLoaded(selectedCaptureRow) ? '✅ Uploaded' : '⚪ Missing'}
+                </p>
+                {hasTumayContactLoaded(selectedCaptureRow) ? (
+                  <p className="mt-1 text-[12px]" style={{ color: '#2D4459' }}>
+                    {tumaySnippetFromJson(selectedCaptureRow.tumay_data) || '—'}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="mt-2 w-full font-medium"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #3BBFBF',
+                    color: '#3BBFBF',
+                    borderRadius: 6,
+                    padding: '4px 12px',
+                    fontSize: 11,
+                  }}
+                  onClick={() => openCapturePicker('tumay')}
+                >
+                  {hasTumayContactLoaded(selectedCaptureRow) ? 'Re-upload' : 'Upload'}
+                </button>
+                {captureUpload.tumay.phase !== 'idle' ? (
+                  <p className="mt-2 text-[11px]" style={{ color: '#2D4459' }}>
+                    {captureUpload.tumay.message}
+                  </p>
+                ) : null}
+              </div>
+              {/* Fathom */}
+              <div>
+                <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                  Fathom
+                </p>
+                <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
+                  {selectedCaptureRow.real_session_count >= 1
+                    ? `${selectedCaptureRow.session_count_total} sessions`
+                    : '⚪ None'}
+                </p>
+                {selectedCaptureRow.latest_session_date ? (
+                  <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
+                    Latest: {selectedCaptureRow.latest_session_date}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="mt-2 w-full font-medium"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #3BBFBF',
+                    color: '#3BBFBF',
+                    borderRadius: 6,
+                    padding: '4px 12px',
+                    fontSize: 11,
+                  }}
+                  onClick={() => openCapturePicker('fathom')}
+                >
+                  Upload Session PDF
+                </button>
+                <p className="mt-1 text-[10px]" style={{ color: '#7A8F95' }}>
+                  Supports multiple files
+                </p>
+                {captureUpload.fathom.phase !== 'idle' ? (
+                  <p className="mt-2 text-[11px]" style={{ color: '#2D4459' }}>
+                    {captureUpload.fathom.message}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-4">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left font-bold transition-colors hover:bg-[#F4F7F8]"
+            style={{ color: '#2D4459', fontSize: 14 }}
+            onClick={() => setCaptureAdvancedOpen((v) => !v)}
+          >
+            <span>Advanced — Re-extract existing</span>
+            {captureAdvancedOpen ? (
+              <ChevronDown className="h-5 w-5 shrink-0" style={{ color: '#7A8F95' }} aria-hidden />
+            ) : (
+              <ChevronRight className="h-5 w-5 shrink-0" style={{ color: '#7A8F95' }} aria-hidden />
+            )}
+          </button>
+          {captureAdvancedOpen ? (
+            <div className="mt-3 space-y-4 rounded-lg border border-[#C8E8E5] bg-white p-4">
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handleBulkImport} disabled={importRunning}>
+                  <FolderInput className="mr-2 h-4 w-4" />
+                  Import All Client Files
+                </Button>
+                <Button variant="outline" onClick={handleRetryFailed} disabled={importRunning}>
+                  Retry Failed Only
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleReExtractAllDocuments()}
+                  disabled={reExtractRunning || fathomReExtractRunning || importRunning}
+                >
+                  Re-extract All Documents
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleReExtractYou2AndTumay}
+                  disabled={reExtractRunning || importRunning}
+                >
+                  Re-extract You 2.0 &amp; TUMAY
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleReExtractFathom}
+                  disabled={fathomReExtractRunning || importRunning || reExtractRunning}
+                >
+                  Re-extract Fathom Sessions
+                </Button>
+              </div>
+              <div>
+                <Button
+                  variant="secondary"
+                  onClick={() => void handleRunCompletenessAudit()}
+                  disabled={completenessAuditLoading || importRunning}
+                >
+                  <ListChecks className="mr-2 h-4 w-4" />
+                  Run Data Quality Check
+                </Button>
+                <div className="mt-3">
+                  <Button
+                    variant="secondary"
+                    onClick={() => void handleReExtractSkillsOnly()}
+                    disabled={skillsReExtractRunning || importRunning || completenessAuditLoading}
+                  >
+                    Re-Extract Skills Only
+                  </Button>
+                </div>
+                {skillsReExtractRunning && (
+                  <p className="mt-2 text-sm text-slate-600">Re-extracting skills…</p>
+                )}
+                {skillsReExtractLines.length > 0 && (
+                  <div className="mt-2 space-y-1 font-mono text-sm text-slate-700">
+                    {skillsReExtractLines.map((line, i) => (
+                      <p key={`${line}-${i}`}>{line}</p>
+                    ))}
+                  </div>
+                )}
+                {skillsReExtractSummary && !skillsReExtractRunning && (
+                  <p className="mt-2 text-sm font-medium text-slate-800">{skillsReExtractSummary}</p>
+                )}
+                {completenessAuditLoading && <p className="mt-2 text-sm text-slate-600">Running audit…</p>}
+                {completenessAuditError && (
+                  <p className="mt-2 text-sm text-red-600">{completenessAuditError}</p>
+                )}
+                {completenessAuditRows !== null && !completenessAuditLoading && (
+                  <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b bg-slate-50">
+                          <th className="p-2 font-semibold text-slate-700">Name</th>
+                          <th className="p-2 font-semibold text-slate-700">Stage</th>
+                          <th className="p-2 font-semibold text-slate-700">Vision</th>
+                          <th className="p-2 font-semibold text-slate-700">Dangers</th>
+                          <th className="p-2 font-semibold text-slate-700">Opportunities</th>
+                          <th className="p-2 font-semibold text-slate-700">Strengths</th>
+                          <th className="p-2 font-semibold text-slate-700">Skills</th>
+                          <th className="p-2 font-semibold text-slate-700">DISC</th>
+                          <th className="p-2 font-semibold text-slate-700">Sessions</th>
+                          <th className="p-2 font-semibold text-slate-700">Contact</th>
+                          <th className="p-2 font-semibold text-slate-700">Last Contact</th>
+                          <th className="p-2 font-semibold text-slate-700">RAG Ready</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {completenessAuditRows.map((row, i) => (
+                          <tr
+                            key={`${row.name}-${i}`}
+                            className="border-b border-slate-100"
+                            style={{ backgroundColor: auditRowBackground(row) }}
+                          >
+                            <td className="p-2 text-slate-900">{row.name}</td>
+                            <td className="p-2 text-slate-700">{row.inferred_stage ?? '—'}</td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.vision)
+                                )}
+                              >
+                                {completenessStatusLabel(row.vision)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.dangers)
+                                )}
+                              >
+                                {completenessStatusLabel(row.dangers)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.opportunities)
+                                )}
+                              >
+                                {completenessStatusLabel(row.opportunities)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.strengths)
+                                )}
+                              >
+                                {completenessStatusLabel(row.strengths)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.skills)
+                                )}
+                              >
+                                {completenessStatusLabel(row.skills)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.disc)
+                                )}
+                              >
+                                {completenessStatusLabel(row.disc)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.sessions)
+                                )}
+                              >
+                                {completenessStatusLabel(row.sessions)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.contact)
+                                )}
+                              >
+                                {completenessStatusLabel(row.contact)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  completenessStatusTextClass(row.lastContact)
+                                )}
+                              >
+                                {completenessStatusLabel(row.lastContact)}
+                              </span>
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  'whitespace-nowrap font-medium',
+                                  row.ragReady ? 'text-green-700' : 'text-red-700'
+                                )}
+                              >
+                                {row.ragReady ? '✅ Ready' : '❌ Not Ready'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 bg-slate-100">
+                          <td colSpan={12} className="p-3 text-sm font-medium text-slate-800">
+                            {completenessAuditRows.filter((rr) => rr.ragReady).length} of{' '}
+                            {completenessAuditRows.length} clients fully complete
+                            <br />
+                            {completenessAuditRows.length -
+                              completenessAuditRows.filter((rr) => rr.ragReady).length}{' '}
+                            clients have gaps
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+              {reExtractRunning && <p className="text-sm text-slate-600">Extracting files...</p>}
+              {fathomReExtractRunning && <p className="text-sm text-slate-600">Extracting Fathom...</p>}
+              {reExtractResult && !reExtractRunning && (
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-medium text-slate-800">
+                    You 2.0: {reExtractResult.you2_success}/17 extracted
+                  </p>
+                  <p className="font-medium text-slate-800">
+                    TUMAY: {reExtractResult.tumay_success}/17 extracted
+                  </p>
+                  {reExtractResult.errors.length > 0 && (
+                    <div>
+                      <p className="font-medium text-amber-700">Errors:</p>
+                      <ul className="list-inside list-disc text-sm text-slate-600">
+                        {reExtractResult.errors.map((err, i) => (
+                          <li key={`${err}-${i}`}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              {fathomReExtractResult && !fathomReExtractRunning && (
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-medium text-slate-800">
+                    Fathom: {fathomReExtractResult.success}/
+                    {fathomReExtractResult.success + fathomReExtractResult.failed} extracted
+                  </p>
+                  {fathomReExtractResult.errors.length > 0 && (
+                    <div>
+                      <p className="font-medium text-amber-700">Errors:</p>
+                      <ul className="list-inside list-disc text-sm text-slate-600">
+                        {fathomReExtractResult.errors.map((err, i) => (
+                          <li key={`${err}-${i}`}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              {importRunning && importProgress && (
+                <div className="space-y-2">
+                  <Progress
+                    value={
+                      importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0
+                    }
+                    className="h-2"
+                  />
+                  <p className="text-sm text-slate-600">
+                    Processing {importProgress.current_client} — {importProgress.current_file} (
+                    {importProgress.current} of {importProgress.total} files)
+                  </p>
+                </div>
+              )}
+              {importResult && !importRunning && (
+                <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-medium text-green-700">
+                    ✓ {importResult.processed} documents processed successfully
+                    {importResult.skipped > 0 && `, ${importResult.skipped} skipped (already complete)`}
+                    {importResult.clients_created > 0 && `, ${importResult.clients_created} new clients`}
+                  </p>
+                  {importResult.clientSummaries.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="font-medium text-slate-700">Per client:</p>
+                      <ul className="space-y-1 text-sm">
+                        {importResult.clientSummaries.map((s) => {
+                          const parts: string[] = [];
+                          parts.push(
+                            s.succeededTypes.includes('you2') ? 'You2 ✓' : s.missingYou2 ? 'You2 pending' : ''
+                          );
+                          parts.push(
+                            s.succeededTypes.includes('disc') ? 'DISC ✓' : s.missingDisc ? 'DISC pending' : ''
+                          );
+                          parts.push(
+                            s.succeededTypes.includes('fathom')
+                              ? 'Fathom ✓'
+                              : s.missingFathom
+                                ? 'Fathom pending'
+                                : ''
+                          );
+                          const line = parts.filter(Boolean).join(', ');
+                          return (
+                            <li key={s.clientId} className="flex items-center gap-2">
+                              <span className="font-medium">{s.clientName}:</span>
+                              <span className="text-slate-600">{line || '—'}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  {importResult.failed > 0 && importResult.failedFiles && importResult.failedFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="font-medium text-amber-700">✗ {importResult.failed} documents failed:</p>
+                      <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
+                        {importResult.failedFiles.map((f, i) => (
+                          <li key={i}>
+                            {f.clientName} — {f.fileName}: {f.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <input
+          ref={captureDiscInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void runCaptureUpload('disc', f);
+          }}
+        />
+        <input
+          ref={captureYou2InputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void runCaptureUpload('you2', f);
+          }}
+        />
+        <input
+          ref={captureTumayInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void runCaptureUpload('tumay', f);
+          }}
+        />
+        <input
+          ref={captureFathomInputRef}
+          type="file"
+          accept=".pdf,.txt,application/pdf,text/plain"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const list = e.target.files;
+            e.target.value = '';
+            if (!list?.length) return;
+            void (async () => {
+              for (const f of Array.from(list)) {
+                await runCaptureUpload('fathom', f);
+              }
+            })();
+          }}
+        />
+      </div>
+
+      {/* SECTION 2 — My Identity */}
       <div
         className="bg-white"
         style={{
@@ -1784,7 +2965,7 @@ ${workingText}`;
         </div>
       </div>
 
-      {/* SECTION 2 — My Knowledge */}
+      {/* SECTION 3 — My Knowledge */}
       <div
         className="bg-white"
         style={{
@@ -2063,336 +3244,6 @@ ${workingText}`;
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
-
-      {/* SECTION 3 — My Clients */}
-      <div
-        className="bg-white"
-        style={{
-          borderRadius: 12,
-          border: '1px solid #C8E8E5',
-          borderLeftWidth: 4,
-          borderLeftColor: '#2D4459',
-          padding: '24px 28px',
-          marginBottom: 16,
-        }}
-      >
-        <div className="flex items-start gap-3">
-          <Users className="shrink-0" style={{ color: '#2D4459', width: 20, height: 20 }} aria-hidden />
-          <div className="min-w-0 flex-1">
-            <h2 className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
-              My Clients
-            </h2>
-            <p className="mt-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
-              Upload client documents here. DISC, You 2.0, TUMAY, and Fathom transcripts populate each client
-              card automatically.
-            </p>
-          </div>
-        </div>
-        <div className="mt-6 space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={handleBulkImport} disabled={importRunning}>
-              <FolderInput className="h-4 w-4 mr-2" />
-              Import All Client Files
-            </Button>
-            <Button variant="outline" onClick={handleRetryFailed} disabled={importRunning}>
-              Retry Failed Only
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleReExtractYou2AndTumay}
-              disabled={reExtractRunning || importRunning}
-            >
-              Re-Extract You 2.0 & TUMAY
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleReExtractFathom}
-              disabled={fathomReExtractRunning || importRunning || reExtractRunning}
-            >
-              Re-Extract Fathom (9-Block)
-            </Button>
-          </div>
-          <div>
-            <Button
-              variant="secondary"
-              onClick={() => void handleRunCompletenessAudit()}
-              disabled={completenessAuditLoading || importRunning}
-            >
-              <ListChecks className="h-4 w-4 mr-2" />
-              Run Completeness Audit
-            </Button>
-            <div className="mt-3">
-              <Button
-                variant="secondary"
-                onClick={() => void handleReExtractSkillsOnly()}
-                disabled={skillsReExtractRunning || importRunning || completenessAuditLoading}
-              >
-                Re-Extract Skills Only
-              </Button>
-            </div>
-            {skillsReExtractRunning && (
-              <p className="text-sm text-slate-600 mt-2">Re-extracting skills…</p>
-            )}
-            {skillsReExtractLines.length > 0 && (
-              <div className="mt-2 space-y-1 text-sm text-slate-700 font-mono">
-                {skillsReExtractLines.map((line, i) => (
-                  <p key={`${line}-${i}`}>{line}</p>
-                ))}
-              </div>
-            )}
-            {skillsReExtractSummary && !skillsReExtractRunning && (
-              <p className="text-sm text-slate-800 mt-2 font-medium">{skillsReExtractSummary}</p>
-            )}
-            {completenessAuditLoading && <p className="text-sm text-slate-600 mt-2">Running audit…</p>}
-            {completenessAuditError && (
-              <p className="text-sm text-red-600 mt-2">{completenessAuditError}</p>
-            )}
-            {completenessAuditRows !== null && !completenessAuditLoading && (
-              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full text-sm text-left">
-                  <thead>
-                    <tr className="border-b bg-slate-50">
-                      <th className="p-2 font-semibold text-slate-700">Name</th>
-                      <th className="p-2 font-semibold text-slate-700">Stage</th>
-                      <th className="p-2 font-semibold text-slate-700">Vision</th>
-                      <th className="p-2 font-semibold text-slate-700">Dangers</th>
-                      <th className="p-2 font-semibold text-slate-700">Opportunities</th>
-                      <th className="p-2 font-semibold text-slate-700">Strengths</th>
-                      <th className="p-2 font-semibold text-slate-700">Skills</th>
-                      <th className="p-2 font-semibold text-slate-700">DISC</th>
-                      <th className="p-2 font-semibold text-slate-700">Sessions</th>
-                      <th className="p-2 font-semibold text-slate-700">Contact</th>
-                      <th className="p-2 font-semibold text-slate-700">Last Contact</th>
-                      <th className="p-2 font-semibold text-slate-700">RAG Ready</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {completenessAuditRows.map((row, i) => (
-                      <tr
-                        key={`${row.name}-${i}`}
-                        className="border-b border-slate-100"
-                        style={{ backgroundColor: auditRowBackground(row) }}
-                      >
-                        <td className="p-2 text-slate-900">{row.name}</td>
-                        <td className="p-2 text-slate-700">{row.inferred_stage ?? '—'}</td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.vision)
-                            )}
-                          >
-                            {completenessStatusLabel(row.vision)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.dangers)
-                            )}
-                          >
-                            {completenessStatusLabel(row.dangers)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.opportunities)
-                            )}
-                          >
-                            {completenessStatusLabel(row.opportunities)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.strengths)
-                            )}
-                          >
-                            {completenessStatusLabel(row.strengths)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.skills)
-                            )}
-                          >
-                            {completenessStatusLabel(row.skills)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.disc)
-                            )}
-                          >
-                            {completenessStatusLabel(row.disc)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.sessions)
-                            )}
-                          >
-                            {completenessStatusLabel(row.sessions)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.contact)
-                            )}
-                          >
-                            {completenessStatusLabel(row.contact)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              completenessStatusTextClass(row.lastContact)
-                            )}
-                          >
-                            {completenessStatusLabel(row.lastContact)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <span
-                            className={cn(
-                              'font-medium whitespace-nowrap',
-                              row.ragReady ? 'text-green-700' : 'text-red-700'
-                            )}
-                          >
-                            {row.ragReady ? '✅ Ready' : '❌ Not Ready'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-slate-300 bg-slate-100">
-                      <td colSpan={12} className="p-3 text-sm font-medium text-slate-800">
-                        {completenessAuditRows.filter((r) => r.ragReady).length} of{' '}
-                        {completenessAuditRows.length} clients fully complete
-                        <br />
-                        {completenessAuditRows.length -
-                          completenessAuditRows.filter((r) => r.ragReady).length}{' '}
-                        clients have gaps
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </div>
-          {reExtractRunning && <p className="text-sm text-slate-600">Extracting files...</p>}
-          {fathomReExtractRunning && <p className="text-sm text-slate-600">Extracting Fathom...</p>}
-          {reExtractResult && !reExtractRunning && (
-            <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
-              <p className="font-medium text-slate-800">
-                You 2.0: {reExtractResult.you2_success}/17 extracted
-              </p>
-              <p className="font-medium text-slate-800">
-                TUMAY: {reExtractResult.tumay_success}/17 extracted
-              </p>
-              {reExtractResult.errors.length > 0 && (
-                <div>
-                  <p className="font-medium text-amber-700">Errors:</p>
-                  <ul className="text-sm text-slate-600 list-disc list-inside">
-                    {reExtractResult.errors.map((e, i) => (
-                      <li key={`${e}-${i}`}>{e}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-          {fathomReExtractResult && !fathomReExtractRunning && (
-            <div className="space-y-2 p-4 rounded-lg bg-slate-50 border border-slate-200">
-              <p className="font-medium text-slate-800">
-                Fathom: {fathomReExtractResult.success}/
-                {fathomReExtractResult.success + fathomReExtractResult.failed} extracted
-              </p>
-              {fathomReExtractResult.errors.length > 0 && (
-                <div>
-                  <p className="font-medium text-amber-700">Errors:</p>
-                  <ul className="text-sm text-slate-600 list-disc list-inside">
-                    {fathomReExtractResult.errors.map((e, i) => (
-                      <li key={`${e}-${i}`}>{e}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-          {importRunning && importProgress && (
-            <div className="space-y-2">
-              <Progress
-                value={
-                  importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0
-                }
-                className="h-2"
-              />
-              <p className="text-sm text-slate-600">
-                Processing {importProgress.current_client} — {importProgress.current_file} (
-                {importProgress.current} of {importProgress.total} files)
-              </p>
-            </div>
-          )}
-          {importResult && !importRunning && (
-            <div className="space-y-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
-              <p className="font-medium text-green-700">
-                ✓ {importResult.processed} documents processed successfully
-                {importResult.skipped > 0 && `, ${importResult.skipped} skipped (already complete)`}
-                {importResult.clients_created > 0 && `, ${importResult.clients_created} new clients`}
-              </p>
-              {importResult.clientSummaries.length > 0 && (
-                <div className="space-y-2">
-                  <p className="font-medium text-slate-700">Per client:</p>
-                  <ul className="text-sm space-y-1">
-                    {importResult.clientSummaries.map((s) => {
-                      const parts: string[] = [];
-                      parts.push(s.succeededTypes.includes('you2') ? 'You2 ✓' : s.missingYou2 ? 'You2 pending' : '');
-                      parts.push(s.succeededTypes.includes('disc') ? 'DISC ✓' : s.missingDisc ? 'DISC pending' : '');
-                      parts.push(
-                        s.succeededTypes.includes('fathom') ? 'Fathom ✓' : s.missingFathom ? 'Fathom pending' : ''
-                      );
-                      const line = parts.filter(Boolean).join(', ');
-                      return (
-                        <li key={s.clientId} className="flex items-center gap-2">
-                          <span className="font-medium">{s.clientName}:</span>
-                          <span className="text-slate-600">{line || '—'}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-              {importResult.failed > 0 && importResult.failedFiles && importResult.failedFiles.length > 0 && (
-                <div className="space-y-2">
-                  <p className="font-medium text-amber-700">✗ {importResult.failed} documents failed:</p>
-                  <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-                    {importResult.failedFiles.map((f, i) => (
-                      <li key={i}>
-                        {f.clientName} — {f.fileName}: {f.error}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       <FeedbackButton pageName="The Capture" />
