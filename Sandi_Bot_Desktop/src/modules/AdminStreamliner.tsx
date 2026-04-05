@@ -28,6 +28,7 @@ import {
   GraduationCap,
   ChevronDown,
   ChevronRight,
+  Info,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -702,6 +703,58 @@ const KNOWLEDGE_DOMAINS: ReadonlyArray<{
   },
 ];
 
+const CAPTURE_INFO_TOOLTIPS: Record<string, string> = {
+  'capture-pipeline-title':
+    'A complete profile means DISC assessment, You 2.0 vision, TUMAY financial data, and at least one Fathom coaching session are all uploaded. Complete profiles unlock the best AI coaching questions and session grading.',
+  'capture-stat-disc':
+    'TTI DISC assessment PDF uploaded and scores extracted. Used to personalize coaching questions and communication tips for each client.',
+  'capture-stat-you2':
+    'You 2.0 career assessment PDF uploaded. Captures their one year vision, declared dangers, strengths, and opportunities. This is what drives their coaching journey.',
+  'capture-stat-tumay':
+    'Tell Us More About You questionnaire uploaded. Captures financial profile, net worth, credit score, spouse information, and industries of interest.',
+  'capture-stat-sessions':
+    'Fathom coaching session transcripts uploaded and analyzed. Sessions power the 9-block CLEAR coaching quality score and Best Next Questions grounding.',
+  'capture-card-dots':
+    'These dots show which documents have been uploaded for this client. Filled teal = uploaded. Empty gray = missing. Click the client card to upload missing files.',
+  'capture-upload-disc':
+    'Upload the TTI DISC assessment PDF that TES sends after each seeker completes their behavioral assessment. Coach Bot extracts the scores automatically.',
+  'capture-upload-you2':
+    'Upload the You 2.0 career assessment PDF. This contains their one year vision, dangers, strengths, and opportunities — the foundation of every coaching conversation.',
+  'capture-upload-tumay':
+    'Upload the Tell Us More About You questionnaire PDF. Contains financial profile and areas of business interest.',
+  'capture-upload-fathom':
+    'Upload Fathom coaching session transcript PDFs. You can upload multiple sessions at once. Each session is analyzed using the CLEAR coaching framework and updates the client\'s gone quiet status automatically.',
+  'capture-identity':
+    'Your professional profile as a coach. Upload your resume and describe your coaching philosophy. Coach Bot uses this to generate responses that sound like you — not like a generic AI.',
+  'capture-knowledge':
+    'The coaching frameworks, TES methodology guides, and resources you use every day. The more you upload here the smarter Coach Bot becomes about your specific coaching approach.',
+  'capture-knowledge-health':
+    'Measures how much of your coaching expertise has been captured. A higher score means Coach Bot can generate better questions, grade sessions more accurately, and personalize responses to your style.',
+  'capture-domain-Coaching Methodology':
+    'Upload CLEAR framework docs, TES coaching guides, and session structure templates. This is the foundation of everything Coach Bot knows about coaching.',
+  'capture-domain-DISC Playbooks':
+    'Upload your DISC coaching guides and communication playbooks. Coach Bot uses these to tailor questions and tips per client behavioral style.',
+  'capture-domain-Franchise Knowledge':
+    'Upload franchise industry guides, ZOR preparation materials, and evaluation criteria. Powers the franchise recommendation engine.',
+  'capture-domain-Business Development':
+    'Upload pipeline management guides and conversion strategy documents. Helps Coach Bot understand your business development methodology.',
+  'capture-domain-Client Psychology':
+    'Upload resources about seeker motivation, decision making, and objection handling. Helps Coach Bot understand why seekers say yes or no.',
+  'capture-domain-Reference Library':
+    'Upload books, articles, and research you rely on. Coach Bot reads these and applies the insights to your coaching.',
+  'capture-domain-Scripts and Templates':
+    'Upload your email templates, call scripts, and opening questions. Coach Bot learns your communication style and voice from these.',
+  'capture-domain-Training Materials':
+    'Upload TES training content and certification materials. Helps Coach Bot align with the TES methodology you were trained in.',
+};
+
+type CaptureTooltipLayout = {
+  left: number;
+  top: number;
+  transform: string;
+  arrowSide: 'top' | 'bottom';
+};
+
 function knowledgeHealthMotivation(score: number): string {
   if (score < 25) {
     return 'Start by uploading your CLEAR framework documents';
@@ -816,6 +869,8 @@ export default function AdminStreamliner() {
   const [captureLoading, setCaptureLoading] = useState(false);
   const [selectedCaptureClientId, setSelectedCaptureClientId] = useState<string | null>(null);
   const [captureAdvancedOpen, setCaptureAdvancedOpen] = useState(false);
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [tooltipLayout, setTooltipLayout] = useState<CaptureTooltipLayout | null>(null);
   const [captureUpload, setCaptureUpload] = useState<Record<CaptureDocKind, CaptureUploadSlot>>({
     disc: { phase: 'idle' },
     you2: { phase: 'idle' },
@@ -2158,6 +2213,42 @@ ${workingText}`;
     return { label: '+ Add Session', kind: 'fathom' };
   };
 
+  const showCaptureTooltip = useCallback((id: string) => (e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    const center = r.left + r.width / 2;
+    const gap = 8;
+    const estH = 140;
+    const placeAbove = r.bottom + estH + gap > window.innerHeight && r.top > estH + 60;
+    setActiveTooltip(id);
+    setTooltipLayout({
+      left: center,
+      top: placeAbove ? r.top - gap : r.bottom + gap,
+      transform: placeAbove ? 'translate(-50%, -100%)' : 'translateX(-50%)',
+      arrowSide: placeAbove ? 'bottom' : 'top',
+    });
+  }, []);
+
+  const hideCaptureTooltip = useCallback(() => {
+    setActiveTooltip(null);
+    setTooltipLayout(null);
+  }, []);
+
+  const CaptureInfoIcon = ({ id }: { id: string }) => (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={(e) => e.stopPropagation()}
+      onMouseEnter={showCaptureTooltip(id)}
+      onMouseLeave={hideCaptureTooltip}
+      className="inline cursor-pointer align-middle"
+      style={{ marginLeft: 6, color: '#7A8F95', verticalAlign: 'middle' }}
+      aria-label="More information"
+    >
+      <Info width={14} height={14} />
+    </span>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-4">
@@ -2195,8 +2286,9 @@ ${workingText}`;
           }}
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+            <span className="inline-flex items-center font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
               Client Profile Progress
+              <CaptureInfoIcon id="capture-pipeline-title" />
             </span>
             <span style={{ color: '#7A8F95', fontSize: 13 }}>
               {pipelineCompleteCount} of {totalCapture} clients complete
@@ -2222,16 +2314,22 @@ ${workingText}`;
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: 'DISC Loaded', value: statDiscLoaded },
-              { label: 'You 2.0 Loaded', value: statYou2Loaded },
-              { label: 'TUMAY Loaded', value: statTumayLoaded },
-              { label: 'Sessions Uploaded', value: statSessionsLoaded },
+              { label: 'DISC Loaded', value: statDiscLoaded, tipId: 'capture-stat-disc' },
+              { label: 'You 2.0 Loaded', value: statYou2Loaded, tipId: 'capture-stat-you2' },
+              { label: 'TUMAY Loaded', value: statTumayLoaded, tipId: 'capture-stat-tumay' },
+              { label: 'Sessions Uploaded', value: statSessionsLoaded, tipId: 'capture-stat-sessions' },
             ].map((s) => (
               <div key={s.label} className="text-center">
                 <p className="font-bold" style={{ color: '#2D4459', fontSize: 24 }}>
                   {captureLoading ? '—' : s.value}
                 </p>
-                <p style={{ color: '#7A8F95', fontSize: 11 }}>{s.label}</p>
+                <p
+                  className="inline-flex items-center justify-center"
+                  style={{ color: '#7A8F95', fontSize: 11 }}
+                >
+                  {s.label}
+                  <CaptureInfoIcon id={s.tipId} />
+                </p>
               </div>
             ))}
           </div>
@@ -2337,8 +2435,12 @@ ${workingText}`;
                     </span>
                   ))}
                 </div>
-                <p className="mt-1 text-center" style={{ color: '#7A8F95', fontSize: 9 }}>
-                  DISC · You 2.0 · TUMAY · Fathom
+                <p
+                  className="mt-1 inline-flex w-full items-center justify-center gap-0 text-center"
+                  style={{ color: '#7A8F95', fontSize: 9 }}
+                >
+                  <span>DISC · You 2.0 · TUMAY · Fathom</span>
+                  <CaptureInfoIcon id="capture-card-dots" />
                 </p>
                 <button
                   type="button"
@@ -2380,8 +2482,12 @@ ${workingText}`;
             <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               {/* DISC */}
               <div>
-                <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                <p
+                  className="inline-flex items-center font-bold"
+                  style={{ color: '#2D4459', fontSize: 13 }}
+                >
                   DISC
+                  <CaptureInfoIcon id="capture-upload-disc" />
                 </p>
                 <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
                   {discColumnStatus({
@@ -2433,8 +2539,12 @@ ${workingText}`;
               </div>
               {/* You 2.0 */}
               <div>
-                <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                <p
+                  className="inline-flex items-center font-bold"
+                  style={{ color: '#2D4459', fontSize: 13 }}
+                >
                   You 2.0
+                  <CaptureInfoIcon id="capture-upload-you2" />
                 </p>
                 <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
                   {you2FieldStatus(selectedCaptureRow.one_year_vision) === 'OK' ? '✅ Uploaded' : '⚪ Missing'}
@@ -2469,8 +2579,12 @@ ${workingText}`;
               </div>
               {/* TUMAY */}
               <div>
-                <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                <p
+                  className="inline-flex items-center font-bold"
+                  style={{ color: '#2D4459', fontSize: 13 }}
+                >
                   TUMAY
+                  <CaptureInfoIcon id="capture-upload-tumay" />
                 </p>
                 <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
                   {hasTumayContactLoaded(selectedCaptureRow) ? '✅ Uploaded' : '⚪ Missing'}
@@ -2503,8 +2617,12 @@ ${workingText}`;
               </div>
               {/* Fathom */}
               <div>
-                <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                <p
+                  className="inline-flex items-center font-bold"
+                  style={{ color: '#2D4459', fontSize: 13 }}
+                >
                   Fathom
+                  <CaptureInfoIcon id="capture-upload-fathom" />
                 </p>
                 <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
                   {selectedCaptureRow.real_session_count >= 1
@@ -2951,8 +3069,9 @@ ${workingText}`;
         <div className="flex items-start gap-3">
           <User className="shrink-0" style={{ color: '#3BBFBF', width: 20, height: 20 }} aria-hidden />
           <div className="min-w-0 flex-1">
-            <h2 className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+            <h2 className="inline-flex items-center font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
               My Identity
+              <CaptureInfoIcon id="capture-identity" />
             </h2>
             <p className="mt-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
               Who you are as a coach. Used to personalize every response Coach Bot generates.
@@ -2980,8 +3099,9 @@ ${workingText}`;
         <div className="flex items-start gap-3">
           <BookOpen className="shrink-0" style={{ color: '#F05F57', width: 20, height: 20 }} aria-hidden />
           <div className="min-w-0 flex-1">
-            <h2 className="font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
+            <h2 className="inline-flex items-center font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
               My Knowledge
+              <CaptureInfoIcon id="capture-knowledge" />
             </h2>
             <p className="mt-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
               Coaching frameworks, TES methodology, franchise guides, and resources you use. Coach Bot learns
@@ -2993,10 +3113,11 @@ ${workingText}`;
         <div className="mt-6 flex flex-wrap items-start justify-between gap-6">
           <div className="min-w-0 flex-1">
             <p
-              className="font-semibold uppercase tracking-wide"
+              className="inline-flex items-center font-semibold uppercase tracking-wide"
               style={{ color: '#7A8F95', fontSize: 11 }}
             >
               Knowledge Base Health
+              <CaptureInfoIcon id="capture-knowledge-health" />
             </p>
             <p className="mt-1 font-bold leading-tight" style={{ color: '#2D4459', fontSize: 32 }}>
               {knowledgeHealthPct}%
@@ -3076,8 +3197,12 @@ ${workingText}`;
               >
                 <div className="flex items-center gap-2">
                   <Icon className="shrink-0" style={{ color: d.color, width: 18, height: 18 }} aria-hidden />
-                  <span className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                  <span
+                    className="inline-flex items-center font-bold"
+                    style={{ color: '#2D4459', fontSize: 14 }}
+                  >
                     {d.domain}
+                    <CaptureInfoIcon id={`capture-domain-${d.domain}`} />
                   </span>
                 </div>
                 <p
@@ -4084,6 +4209,59 @@ ${workingText}`;
           </div>
         </CardContent>
       </Card>
+
+      {activeTooltip && tooltipLayout && CAPTURE_INFO_TOOLTIPS[activeTooltip] ? (
+        <div
+          className="pointer-events-none fixed z-[1000]"
+          style={{
+            left: tooltipLayout.left,
+            top: tooltipLayout.top,
+            transform: tooltipLayout.transform,
+          }}
+        >
+          <div className="relative inline-block" style={{ maxWidth: 240 }}>
+            {tooltipLayout.arrowSide === 'top' && (
+              <div
+                className="pointer-events-none absolute left-1/2 bottom-full -translate-x-1/2"
+                style={{
+                  width: 0,
+                  height: 0,
+                  borderLeft: '6px solid transparent',
+                  borderRight: '6px solid transparent',
+                  borderBottom: '7px solid #2D4459',
+                }}
+                aria-hidden
+              />
+            )}
+            <div
+              style={{
+                background: '#2D4459',
+                color: 'white',
+                fontSize: 12,
+                borderRadius: 8,
+                padding: '8px 12px',
+                lineHeight: 1.5,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              }}
+            >
+              {CAPTURE_INFO_TOOLTIPS[activeTooltip]}
+            </div>
+            {tooltipLayout.arrowSide === 'bottom' && (
+              <div
+                className="pointer-events-none absolute left-1/2 top-full -translate-x-1/2"
+                style={{
+                  width: 0,
+                  height: 0,
+                  borderLeft: '6px solid transparent',
+                  borderRight: '6px solid transparent',
+                  borderTop: '7px solid #2D4459',
+                }}
+                aria-hidden
+              />
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {uatReportToast ? (
         <div
