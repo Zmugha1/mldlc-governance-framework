@@ -26,6 +26,8 @@ import {
   FileText,
   MessageSquare,
   Copy,
+  UserPlus,
+  X,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -78,16 +80,45 @@ type SidebarRecFilter = 'all' | 'VALIDATE' | 'GATHER' | 'PAUSE' | 'gone_quiet';
 
 type NewClientStageCode = 'IC' | 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
 
-type NewClientOutcomeBucket = 'active' | 'paused' | 'converted';
-
 const ADD_CLIENT_STAGE_OPTIONS: { code: NewClientStageCode; label: string }[] = [
-  { code: 'IC', label: 'Initial Contact (IC)' },
-  { code: 'C1', label: 'Seeker Connection (C1)' },
-  { code: 'C2', label: 'Seeker Clarification (C2)' },
-  { code: 'C3', label: 'Possibilities (C3)' },
-  { code: 'C4', label: 'Client Career 2.0 (C4)' },
-  { code: 'C5', label: 'Business Purchase (C5)' },
+  { code: 'IC', label: 'IC — Initial Contact' },
+  { code: 'C1', label: 'C1 — Seeker Connection' },
+  { code: 'C2', label: 'C2 — Seeker Clarification' },
+  { code: 'C3', label: 'C3 — Possibilities' },
+  { code: 'C4', label: 'C4 — Initial Validation' },
+  { code: 'C5', label: 'C5 — Continued Validation' },
 ];
+
+const HOW_FOUND_OPTIONS = [
+  'Brand Building Fund',
+  'Referral from client',
+  'BNI referral',
+  'LinkedIn',
+  'Personal network',
+  'Other',
+] as const;
+
+/** Navigate to The Capture (admin) and stash client id for upload focus (AdminStreamliner may read localStorage). */
+function navigateToTheCapture(clientId: string): void {
+  try {
+    localStorage.setItem('sandi_capture_pending_client_id', clientId);
+    localStorage.setItem('sandi_capture_scroll_my_clients', '1');
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(
+    new CustomEvent('coachbot:navigate-module', {
+      bubbles: true,
+      detail: { module: 'admin' as const },
+    })
+  );
+  const rail = document.querySelector('.fixed.inset-y-0.left-0');
+  const footer = rail?.querySelector('.flex.items-center.justify-center.gap-1.px-4.py-3');
+  const firstBtn = footer?.querySelector('button');
+  if (firstBtn) {
+    (firstBtn as HTMLButtonElement).click();
+  }
+}
 
 function getStageDisplay(
   stage: string | null
@@ -6904,11 +6935,14 @@ export default function ClientIntelligence() {
   const [newClientNameError, setNewClientNameError] = useState(false);
   const [newClientEmail, setNewClientEmail] = useState('');
   const [newClientPhone, setNewClientPhone] = useState('');
-  const [newClientCompany, setNewClientCompany] = useState('');
+  const [newClientProfession, setNewClientProfession] = useState('');
   const [newClientStage, setNewClientStage] = useState<NewClientStageCode>('IC');
-  const [newClientStatus, setNewClientStatus] =
-    useState<NewClientOutcomeBucket>('active');
+  const [newClientHowFound, setNewClientHowFound] = useState('');
   const [newClientNotes, setNewClientNotes] = useState('');
+  const [addClientSuccessToast, setAddClientSuccessToast] = useState<{
+    name: string;
+    clientId: string;
+  } | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     bg: string;
@@ -7051,6 +7085,12 @@ export default function ClientIntelligence() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    if (!addClientSuccessToast) return;
+    const t = window.setTimeout(() => setAddClientSuccessToast(null), 8000);
+    return () => clearTimeout(t);
+  }, [addClientSuccessToast]);
+
   const undoRef = useRef<UndoState | null>(null);
   useEffect(() => {
     undoRef.current = undoState;
@@ -7143,9 +7183,9 @@ export default function ClientIntelligence() {
     setNewClientNameError(false);
     setNewClientEmail('');
     setNewClientPhone('');
-    setNewClientCompany('');
+    setNewClientProfession('');
     setNewClientStage('IC');
-    setNewClientStatus('active');
+    setNewClientHowFound('');
     setNewClientNotes('');
   }
 
@@ -7164,9 +7204,15 @@ export default function ClientIntelligence() {
       const displayStage = getStageDisplay(stageCode).label;
       const email = newClientEmail.trim() || null;
       const phone = newClientPhone.trim() || null;
-      const company = newClientCompany.trim() || null;
-      const notes = newClientNotes.trim() || null;
-      const bucket = newClientStatus;
+      const profession = newClientProfession.trim();
+      const howFound = newClientHowFound.trim();
+      const notesBody = newClientNotes.trim();
+      const parts: string[] = [];
+      if (profession) parts.push(`Current profession: ${profession}`);
+      if (howFound) parts.push(`Lead source: ${howFound}`);
+      if (notesBody) parts.push(notesBody);
+      const combinedNotes = parts.length > 0 ? parts.join('\n\n') : null;
+      const bucket = 'active';
 
       await dbExecute(
         `INSERT INTO clients (
@@ -7184,7 +7230,7 @@ export default function ClientIntelligence() {
           3, 3, 3, 3,
           50, 'NURTURE', 0
         )`,
-        [id, name, email, phone, company, displayStage, stageCode, bucket, notes, now]
+        [id, name, email, phone, null, displayStage, stageCode, bucket, combinedNotes, now]
       );
 
       await logEntry(
@@ -7201,11 +7247,7 @@ export default function ClientIntelligence() {
       loadClients();
       const created = await getClient(id);
       setSelectedClient(created);
-      setToast({
-        message: `${name} added to your pipeline.`,
-        bg: '#22c55e',
-        durationMs: 3000,
-      });
+      setAddClientSuccessToast({ name, clientId: id });
     } catch (err) {
       console.error(err);
     } finally {
@@ -7246,6 +7288,13 @@ export default function ClientIntelligence() {
     const cmpName = (a: Client, b: Client) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
 
+    const cmpCreated = (a: Client, b: Client) => {
+      const ta = new Date(a.created_at ?? 0).getTime();
+      const tb = new Date(b.created_at ?? 0).getTime();
+      if (tb !== ta) return tb - ta;
+      return cmpName(a, b);
+    };
+
     function urgencyTier(client: Client): 1 | 2 | 3 | 4 {
       const bucket = (client.outcome_bucket ?? '').toLowerCase();
       if (bucket === 'paused') return 4;
@@ -7265,7 +7314,7 @@ export default function ClientIntelligence() {
         const pB = countActivePinkFlagsOnClient(b);
         if (pB !== pA) return pB - pA;
       }
-      return cmpName(a, b);
+      return cmpCreated(a, b);
     });
   }, [clients, searchTerm, selectedStage, sidebarRecFilter, recommendationById, goneQuietById]);
 
@@ -7609,165 +7658,238 @@ export default function ClientIntelligence() {
             </div>
           </div>
 
-      <Dialog
-        open={addClientModalOpen}
-        onOpenChange={(open) => {
-          setAddClientModalOpen(open);
-          if (!open) resetAddClientForm();
-        }}
-      >
-        <DialogContent
-          className="max-w-[480px] gap-0 border-0 p-0 shadow-xl"
-          style={{
-            borderRadius: 12,
-            padding: '28px 32px',
-            background: 'white',
+      {addClientModalOpen ? (
+        <div
+          className="fixed inset-0 z-[800] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={() => {
+            setAddClientModalOpen(false);
+            resetAddClientForm();
           }}
+          role="presentation"
         >
-          <DialogHeader className="space-y-2 text-left">
-            <DialogTitle style={{ color: '#2D4459', fontSize: 18, fontWeight: 700 }}>
-              Add New Client
-            </DialogTitle>
-            <p className="text-[12px] leading-snug" style={{ color: '#7A8F95' }}>
-              Create a new client record. Upload files later from Admin Streamliner.
-            </p>
-          </DialogHeader>
-
-          <div className="mt-6 space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="add-client-name" className="text-sm text-[#2D4459]">
-                Full Name <span className="text-red-600">*</span>
-              </Label>
-              <Input
-                id="add-client-name"
-                value={newClientName}
-                onChange={(e) => {
-                  setNewClientName(e.target.value);
-                  setNewClientNameError(false);
-                }}
-                placeholder="First Last"
-                className="w-full"
-              />
-              {newClientNameError ? (
-                <p className="text-sm text-red-600">Name is required</p>
-              ) : null}
+          <div
+            className="relative max-h-[92vh] overflow-y-auto shadow-xl"
+            style={{ width: 480, borderRadius: 16, padding: 32, background: 'white' }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-client-modal-title"
+          >
+            <button
+              type="button"
+              className="absolute right-4 top-4 rounded p-1 text-[#7A8F95] transition-colors hover:bg-[#F4F7F8]"
+              aria-label="Close"
+              onClick={() => {
+                setAddClientModalOpen(false);
+                resetAddClientForm();
+              }}
+            >
+              <X className="h-5 w-5" aria-hidden />
+            </button>
+            <div className="flex items-start gap-3 pr-8">
+              <UserPlus className="shrink-0" style={{ color: '#3BBFBF', width: 24, height: 24 }} aria-hidden />
+              <div className="min-w-0">
+                <h2
+                  id="add-client-modal-title"
+                  className="font-bold leading-tight"
+                  style={{ color: '#2D4459', fontSize: 20 }}
+                >
+                  Add New Client
+                </h2>
+                <p className="mt-2 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+                  Enter their basic info.
+                  <br />
+                  You will upload their documents in The Capture.
+                </p>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="add-client-email" className="text-sm text-[#2D4459]">
-                  Email
-                </Label>
+            <div className="mt-6 space-y-4">
+              <div>
+                <label htmlFor="add-client-name" className="mb-1 block font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  Full Name <span className="text-red-600">*</span>
+                </label>
+                <Input
+                  id="add-client-name"
+                  value={newClientName}
+                  onChange={(e) => {
+                    setNewClientName(e.target.value);
+                    setNewClientNameError(false);
+                  }}
+                  placeholder="First Last"
+                  className="w-full rounded-[8px] border border-[#C8E8E5] px-[14px] py-[10px] text-[13px] outline-none focus:border-[#3BBFBF] focus:outline-none focus-visible:ring-0"
+                />
+                {newClientNameError ? (
+                  <p className="mt-1 text-sm text-red-600">Name is required</p>
+                ) : null}
+              </div>
+
+              <div>
+                <label htmlFor="add-client-email" className="mb-1 block font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  Email Address
+                </label>
                 <Input
                   id="add-client-email"
                   type="email"
                   value={newClientEmail}
                   onChange={(e) => setNewClientEmail(e.target.value)}
                   placeholder="email@example.com"
-                  className="w-full"
+                  className="w-full rounded-[8px] border border-[#C8E8E5] px-[14px] py-[10px] text-[13px] outline-none focus:border-[#3BBFBF] focus:outline-none focus-visible:ring-0"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="add-client-phone" className="text-sm text-[#2D4459]">
-                  Phone
-                </Label>
+
+              <div>
+                <label htmlFor="add-client-phone" className="mb-1 block font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  Phone Number
+                </label>
                 <Input
                   id="add-client-phone"
                   value={newClientPhone}
                   onChange={(e) => setNewClientPhone(e.target.value)}
-                  placeholder="(555) 555-5555"
-                  className="w-full"
+                  placeholder="000-000-0000"
+                  className="w-full rounded-[8px] border border-[#C8E8E5] px-[14px] py-[10px] text-[13px] outline-none focus:border-[#3BBFBF] focus:outline-none focus-visible:ring-0"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="add-client-profession" className="mb-1 block font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  Current Profession
+                </label>
+                <Input
+                  id="add-client-profession"
+                  value={newClientProfession}
+                  onChange={(e) => setNewClientProfession(e.target.value)}
+                  placeholder="What do they do now?"
+                  className="w-full rounded-[8px] border border-[#C8E8E5] px-[14px] py-[10px] text-[13px] outline-none focus:border-[#3BBFBF] focus:outline-none focus-visible:ring-0"
+                />
+                <p className="mt-1 text-[11px]" style={{ color: '#7A8F95' }}>
+                  e.g. &quot;Corporate HR Manager&quot;, &quot;Small business owner&quot;, &quot;Sales Director&quot;
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="add-client-stage" className="mb-1 block font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  Current Stage <span className="text-red-600">*</span>
+                </label>
+                <select
+                  id="add-client-stage"
+                  value={newClientStage}
+                  onChange={(e) => setNewClientStage(e.target.value as NewClientStageCode)}
+                  className="w-full rounded-[8px] border border-[#C8E8E5] bg-white px-[14px] py-[10px] text-[13px] outline-none focus:border-[#3BBFBF] focus:outline-none"
+                >
+                  {ADD_CLIENT_STAGE_OPTIONS.map((o) => (
+                    <option key={o.code} value={o.code}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="add-client-how-found" className="mb-1 block font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  How did you find them?
+                </label>
+                <select
+                  id="add-client-how-found"
+                  value={newClientHowFound}
+                  onChange={(e) => setNewClientHowFound(e.target.value)}
+                  className="w-full rounded-[8px] border border-[#C8E8E5] bg-white px-[14px] py-[10px] text-[13px] outline-none focus:border-[#3BBFBF] focus:outline-none"
+                >
+                  <option value="">Select…</option>
+                  {HOW_FOUND_OPTIONS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="add-client-notes" className="mb-1 block font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  Initial Notes
+                </label>
+                <Textarea
+                  id="add-client-notes"
+                  value={newClientNotes}
+                  onChange={(e) => setNewClientNotes(e.target.value)}
+                  placeholder={'Anything important to remember about this person...'}
+                  className="w-full resize-y rounded-[8px] border border-[#C8E8E5] px-[14px] py-[10px] text-[13px] outline-none focus:border-[#3BBFBF] focus:outline-none focus-visible:ring-0"
+                  style={{ minHeight: 80 }}
                 />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="add-client-company" className="text-sm text-[#2D4459]">
-                Company
-              </Label>
-              <Input
-                id="add-client-company"
-                value={newClientCompany}
-                onChange={(e) => setNewClientCompany(e.target.value)}
-                placeholder="Company name (optional)"
-                className="w-full"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="add-client-stage" className="text-sm text-[#2D4459]">
-                Starting Stage
-              </Label>
-              <select
-                id="add-client-stage"
-                value={newClientStage}
-                onChange={(e) => setNewClientStage(e.target.value as NewClientStageCode)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            <div className="mt-8 flex flex-row flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddClientModalOpen(false);
+                  resetAddClientForm();
+                }}
+                style={{
+                  background: 'white',
+                  border: '1px solid #C8E8E5',
+                  color: '#7A8F95',
+                  borderRadius: 8,
+                  padding: '10px 20px',
+                  fontSize: 14,
+                }}
               >
-                {ADD_CLIENT_STAGE_OPTIONS.map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="add-client-status" className="text-sm text-[#2D4459]">
-                Status
-              </Label>
-              <select
-                id="add-client-status"
-                value={newClientStatus}
-                onChange={(e) =>
-                  setNewClientStatus(e.target.value as NewClientOutcomeBucket)
-                }
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={addClientSaving}
+                className="font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                style={{
+                  background: '#3BBFBF',
+                  borderRadius: 8,
+                  padding: '10px 24px',
+                  fontSize: 14,
+                }}
+                onClick={() => void handleAddClientSubmit()}
               >
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
-                <option value="converted">Converted</option>
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="add-client-notes" className="text-sm text-[#2D4459]">
-                Notes (optional)
-              </Label>
-              <Textarea
-                id="add-client-notes"
-                rows={2}
-                value={newClientNotes}
-                onChange={(e) => setNewClientNotes(e.target.value)}
-                placeholder="Any initial notes about this client..."
-                className="w-full resize-none"
-              />
+                {addClientSaving ? 'Creating…' : 'Create Client →'}
+              </button>
             </div>
           </div>
+        </div>
+      ) : null}
 
-          <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              className="text-sm font-medium text-[#7A8F95] underline-offset-2 hover:underline"
-              onClick={() => {
-                setAddClientModalOpen(false);
-                resetAddClientForm();
-              }}
-            >
-              Cancel
-            </button>
-            <Button
-              type="button"
-              disabled={addClientSaving}
-              className="w-full border-0 text-white hover:opacity-90 sm:w-auto"
-              style={{ background: '#3BBFBF' }}
-              onClick={() => void handleAddClientSubmit()}
-            >
-              {addClientSaving ? 'Creating…' : 'Create Client'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {addClientSuccessToast ? (
+        <div
+          className="pointer-events-auto fixed bottom-6 left-1/2 z-[850] flex max-w-[calc(100vw-32px)] items-center justify-between gap-3 rounded-[10px] px-5 py-[14px] shadow-lg"
+          style={{
+            width: 380,
+            transform: 'translateX(-50%)',
+            background: '#2D4459',
+            color: 'white',
+          }}
+          role="status"
+        >
+          <p className="min-w-0 flex-1 text-[14px] leading-snug text-white">
+            ✓ {addClientSuccessToast.name} added to your pipeline
+          </p>
+          <button
+            type="button"
+            className="shrink-0 font-bold text-white transition-opacity hover:opacity-90"
+            style={{
+              background: '#3BBFBF',
+              borderRadius: 6,
+              padding: '4px 14px',
+              fontSize: 12,
+            }}
+            onClick={() => {
+              const id = addClientSuccessToast.clientId;
+              setAddClientSuccessToast(null);
+              navigateToTheCapture(id);
+            }}
+          >
+            Upload Documents →
+          </button>
+        </div>
+      ) : null}
 
       {toast ? (
         <div
