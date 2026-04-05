@@ -1,9 +1,11 @@
+import { ArrowRight, Layers, Rocket, User, UserPlus } from 'lucide-react';
+
 const CREAM = '#FEFAF6';
 const HEADER = '#2D4459';
 const MUTED = '#7A8F95';
 const BORDER = '#C8E8E5';
-const CORAL = '#C8613F';
 const CORAL_SOFT = '#F05F57';
+const TEAL = '#3BBFBF';
 const UAT_BG = '#FFF8F0';
 
 const cardStyle: React.CSSProperties = {
@@ -51,7 +53,7 @@ function UatBlock({ questions }: { questions: string[] }) {
     <div style={uatBoxStyle}>
       <h3
         className="mb-3 text-[13px] font-bold uppercase tracking-wide"
-        style={{ color: CORAL }}
+        style={{ color: CORAL_SOFT }}
       >
         📋 UAT Feedback Questions
       </h3>
@@ -63,6 +65,51 @@ function UatBlock({ questions }: { questions: string[] }) {
           <li key={i}>{q}</li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+function StepSeparator() {
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center px-1 py-2 md:py-0"
+      aria-hidden
+    >
+      <span className="text-2xl font-light md:hidden" style={{ color: '#C8E8E5' }}>
+        ↓
+      </span>
+      <ArrowRight className="hidden h-6 w-6 md:block" style={{ color: '#C8E8E5' }} strokeWidth={2} />
+    </div>
+  );
+}
+
+function GettingStartedStep({
+  n,
+  badgeBg,
+  title,
+  body,
+}: {
+  n: number;
+  badgeBg: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="flex flex-col items-center text-center md:items-start md:text-left">
+        <div
+          className="mb-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-white"
+          style={{ background: badgeBg, fontSize: 16 }}
+        >
+          {n}
+        </div>
+        <p className="mb-2 font-bold text-white" style={{ fontSize: 15 }}>
+          {title}
+        </p>
+        <p className="whitespace-pre-line leading-snug" style={{ color: '#C8E8E5', fontSize: 13 }}>
+          {body}
+        </p>
+      </div>
     </div>
   );
 }
@@ -79,16 +126,237 @@ export default function HowToUse() {
             Your daily coaching command center. Here is what each page does and how to get the most out of
             it.
           </p>
-          <p className="mt-2 text-[11px]" style={{ color: MUTED }}>
-            v2.0 — April 2026
-          </p>
         </header>
 
-        {/* PAGE 1 — MORNING BRIEF */}
+        {/* SECTION 0 — GETTING STARTED */}
+        <section
+          style={{
+            background: '#2D4459',
+            borderRadius: 12,
+            padding: 28,
+            marginBottom: 20,
+            color: 'white',
+          }}
+        >
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:gap-4">
+            <Rocket className="shrink-0" style={{ color: TEAL, width: 28, height: 28 }} aria-hidden />
+            <div>
+              <h2 className="font-bold text-white" style={{ fontSize: 22 }}>
+                Getting Started
+              </h2>
+              <p className="mt-1" style={{ color: '#C8E8E5', fontSize: 14 }}>
+                New to Coach Bot? Follow these steps in order.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-stretch gap-0 md:flex-row md:flex-wrap md:justify-center xl:flex-nowrap xl:justify-between xl:gap-1">
+            <GettingStartedStep
+              n={1}
+              badgeBg={TEAL}
+              title="Add Your Identity"
+              body={`Go to The Capture → My Identity. Upload your resume and describe your coaching philosophy. This teaches Coach Bot to speak in your voice.`}
+            />
+            <StepSeparator />
+            <GettingStartedStep
+              n={2}
+              badgeBg={CORAL_SOFT}
+              title="Upload Your Knowledge"
+              body={`Go to The Capture → My Knowledge. Upload your CLEAR framework docs, TES guides, and coaching resources. Fill as many domains as you can.`}
+            />
+            <StepSeparator />
+            <GettingStartedStep
+              n={3}
+              badgeBg={TEAL}
+              title="Add Your Clients"
+              body={`Go to Client Intelligence and click + Add New Client. Enter their basic info. Then go to The Capture → My Clients to upload their DISC, You 2.0, TUMAY, and Fathom documents.`}
+            />
+            <StepSeparator />
+            <GettingStartedStep
+              n={4}
+              badgeBg={CORAL_SOFT}
+              title="Start Coaching"
+              body={`Open Morning Brief every day. Before each call open the client card and click Best Next Questions. After each call upload their Fathom transcript in The Capture.`}
+            />
+          </div>
+
+          <div
+            className="mt-8 border-t pt-5 text-center italic"
+            style={{ borderColor: TEAL, color: '#C8E8E5', fontSize: 12 }}
+          >
+            Complete all four steps for the best Coach Bot experience.
+          </div>
+        </section>
+
+        {/* SECTION 1 — HOW TO ADD A CLIENT */}
+        <section
+          style={{
+            ...cardStyle,
+            borderLeft: `4px solid ${TEAL}`,
+          }}
+        >
+          <div className="mb-6 flex items-center gap-2">
+            <UserPlus className="shrink-0" style={{ color: TEAL, width: 22, height: 22 }} aria-hidden />
+            <h2 className="font-bold" style={{ color: HEADER, fontSize: 18 }}>
+              How to Add a New Client
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
+            <div>
+              <h3 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 14 }}>
+                Step 1 — Create Their Record
+              </h3>
+              <div className="whitespace-pre-line leading-[1.8]" style={{ color: HEADER, fontSize: 13 }}>
+                {`1. Go to Client Intelligence in the left sidebar
+2. Click + Add New Client
+3. Enter their:
+   • Full name
+   • Email and phone
+   • Current profession
+   • Starting stage (usually IC)
+   • How you found them
+   • Any initial notes
+4. Click Create Client →
+5. Their card appears in the client list`}
+              </div>
+            </div>
+            <div>
+              <h3 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 14 }}>
+                Step 2 — Upload Their Documents
+              </h3>
+              <div className="whitespace-pre-line leading-[1.8]" style={{ color: HEADER, fontSize: 13 }}>
+                {`1. Go to The Capture in the left sidebar
+2. Find their card in the client grid at the top
+3. Click their card to expand the upload panel
+4. Upload their documents:
+   📊 DISC PDF from TES
+   📋 You 2.0 PDF from TES
+   📝 TUMAY questionnaire
+   🎙️ Fathom transcripts after each call
+5. Each document extracts automatically
+6. Their client card populates immediately`}
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="mt-6 rounded-md py-2.5 pl-3.5 pr-3.5"
+            style={{
+              background: UAT_BG,
+              borderLeft: `3px solid ${CORAL_SOFT}`,
+              color: HEADER,
+              fontSize: 12,
+            }}
+          >
+            💡 Tip: You can upload documents one at a time as you receive them from TES. The client card gets
+            richer with every upload.
+          </div>
+        </section>
+
+        {/* SECTION 2 — HOW TO ADD YOUR IDENTITY */}
+        <section
+          style={{
+            ...cardStyle,
+            borderLeft: `4px solid ${CORAL_SOFT}`,
+          }}
+        >
+          <div className="mb-4 flex items-center gap-2">
+            <User className="shrink-0" style={{ color: CORAL_SOFT, width: 22, height: 22 }} aria-hidden />
+            <h2 className="font-bold" style={{ color: HEADER, fontSize: 18 }}>
+              How to Add Your Identity
+            </h2>
+          </div>
+          <p className="mb-4 text-[13px] leading-relaxed" style={{ color: MUTED }}>
+            Your identity teaches Coach Bot to speak in your voice — not like a generic AI assistant.
+          </p>
+          <div className="whitespace-pre-line leading-[1.8]" style={{ color: HEADER, fontSize: 13 }}>
+            {`1. Go to The Capture in the left sidebar
+2. Find the My Identity section
+3. Click Upload Resume → Select your resume PDF → Coach Bot extracts your bio, experience, and coaching credentials
+4. Add your Coaching Philosophy → Type how you coach → Your approach with seekers → What matters most to you as a franchise coach
+5. Click Save Philosophy
+6. Your identity is now active — every response Coach Bot generates will reflect your coaching voice`}
+          </div>
+          <div
+            className="mt-3 rounded-lg px-4 py-3 text-[13px] leading-relaxed"
+            style={{ background: '#F0FAFA', color: HEADER }}
+          >
+            ✓ After adding your identity Coach Bot will generate vision statements and coaching questions that
+            sound like you — using your language, your values, and your coaching philosophy.
+          </div>
+        </section>
+
+        {/* SECTION 3 — THE CAPTURE */}
+        <section
+          style={{
+            ...cardStyle,
+            borderLeft: `4px solid ${HEADER}`,
+          }}
+        >
+          <div className="mb-4 flex items-center gap-2">
+            <Layers className="shrink-0" style={{ color: HEADER, width: 22, height: 22 }} aria-hidden />
+            <h2 className="font-bold" style={{ color: HEADER, fontSize: 18 }}>
+              The Capture
+            </h2>
+          </div>
+          <p className="mb-6 text-[13px] leading-relaxed" style={{ color: MUTED }}>
+            Your coaching intelligence hub. Everything Sandi adds here makes Coach Bot smarter.
+          </p>
+
+          <div className="space-y-5 text-[13px] leading-relaxed" style={{ color: HEADER }}>
+            <div>
+              <p className="mb-1 font-bold" style={{ color: HEADER }}>
+                My Clients
+              </p>
+              <p>
+                The client grid shows all your active clients with document status dots. Click any client card
+                to upload their documents. The pipeline progress bar shows how complete your client data is.
+              </p>
+            </div>
+            <div>
+              <p className="mb-1 font-bold" style={{ color: HEADER }}>
+                My Identity
+              </p>
+              <p>
+                Upload your resume and coaching philosophy here. This is how Coach Bot learns your voice.
+              </p>
+            </div>
+            <div>
+              <p className="mb-1 font-bold" style={{ color: HEADER }}>
+                My Knowledge
+              </p>
+              <p>
+                Upload coaching frameworks, TES guides, and resources here. The domain grid shows which areas
+                are well covered and which need more documents.
+              </p>
+            </div>
+          </div>
+
+          <div
+            className="mt-6 rounded-lg px-4 py-3"
+            style={{
+              background: UAT_BG,
+              borderLeft: `4px solid ${CORAL_SOFT}`,
+            }}
+          >
+            <p className="mb-2 font-bold" style={{ color: HEADER, fontSize: 13 }}>
+              📋 UAT Feedback Questions:
+            </p>
+            <ol className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed" style={{ color: HEADER }}>
+              <li>Does The Capture feel easy to navigate?</li>
+              <li>Did you find where to upload client documents?</li>
+              <li>Did you upload your resume in My Identity?</li>
+              <li>Did you add documents to any knowledge domains?</li>
+              <li>Does the client grid show accurate status for your clients?</li>
+            </ol>
+          </div>
+        </section>
+
+        {/* SECTION 4 — MORNING BRIEF */}
         <PageSection icon="☀️" title="Morning Brief">
           <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            Your daily coaching command center. Open this every morning to see what needs your attention
-            today.
+            Your daily coaching command center. Open this every morning to see what needs your attention today.
           </p>
           <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
             Key elements
@@ -145,11 +413,11 @@ export default function HowToUse() {
           />
         </PageSection>
 
-        {/* PAGE 2 — BUSINESS GOALS */}
+        {/* SECTION 5 — BUSINESS GOALS */}
         <PageSection icon="🎯" title="Business Goals">
           <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            Your $300,000 business plan tracked in real time. Everything on this page connects directly to
-            your annual targets.
+            Your $300,000 business plan tracked in real time. Everything on this page connects directly to your
+            annual targets.
           </p>
           <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
             Key elements
@@ -159,8 +427,8 @@ export default function HowToUse() {
             style={{ color: HEADER }}
           >
             <li>
-              C3 North Star — your most important weekly metric. 2.5 C3 presentations per week puts you on
-              track for 11 placements and $300,000. This number resets every Monday.
+              C3 North Star — your most important weekly metric. 2.5 C3 presentations per week puts you on track
+              for 11 placements and $300,000. This number resets every Monday.
             </li>
             <li>
               Revenue Story — $84,000 made, $300,000 target, projected year end based on your current pace.
@@ -195,12 +463,19 @@ export default function HowToUse() {
           />
         </PageSection>
 
-        {/* PAGE 3 — CLIENT INTELLIGENCE */}
+        {/* SECTION 6 — CLIENT INTELLIGENCE */}
         <PageSection icon="👤" title="Client Intelligence">
           <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
             Everything about every client. Use this before every call to prepare and after every call to
             capture what you learned.
           </p>
+          <div
+            className="mt-4 rounded-lg border px-3 py-2.5 text-[13px] leading-relaxed"
+            style={{ borderColor: BORDER, background: '#F0FAFA', color: HEADER }}
+          >
+            Use <strong>+ Add New Client</strong> to create a client. Then go to <strong>The Capture</strong>{' '}
+            to upload their documents.
+          </div>
           <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
             Key elements — tabs explained
           </h3>
@@ -209,8 +484,8 @@ export default function HowToUse() {
             style={{ color: HEADER }}
           >
             <li>
-              Overview — stage, persona, readiness score, pink flags, and contact info. Move clients forward
-              or back using the stage movement buttons.
+              Overview — stage, persona, readiness score, pink flags, and contact info. Move clients forward or
+              back using the stage movement buttons.
             </li>
             <li>
               DISC — behavioral style scores, key traits, and coaching tips specific to this client&apos;s
@@ -225,12 +500,12 @@ export default function HowToUse() {
               and reasons for change.
             </li>
             <li>
-              Vision — generate a draft vision statement for this client. Review and edit it, then approve
-              it. Download as PowerPoint for your presentation or PDF for the client to keep.
+              Vision — generate a draft vision statement for this client. Review and edit it, then approve it.
+              Download as PowerPoint for your presentation or PDF for the client to keep.
             </li>
             <li>
-              Fathom — session history and 9-block coaching analysis. Upload Fathom transcripts in Admin
-              Streamliner to populate this tab with real session data.
+              Fathom — session history and 9-block coaching analysis. Upload Fathom transcripts in The Capture
+              to populate this tab with real session data.
             </li>
             <li>
               Reminders — set follow up reminders for this client. Use for re-engagement after going quiet or
@@ -238,8 +513,8 @@ export default function HowToUse() {
             </li>
             <li>
               Best Next Questions — generate coaching questions grounded in this client&apos;s DISC profile,
-              You 2.0 pain points, current stage, and last session. Questions follow the CLEAR framework.
-              Click Generate Questions before every call.
+              You 2.0 pain points, current stage, and last session. Questions follow the CLEAR framework. Click
+              Generate Questions before every call.
             </li>
           </ul>
           <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
@@ -294,7 +569,7 @@ export default function HowToUse() {
           />
         </PageSection>
 
-        {/* PAGE 4 — COACHING ACTIONS */}
+        {/* SECTION 7 — COACHING ACTIONS */}
         <PageSection icon="⚡" title="Coaching Actions">
           <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
             Every signal that needs your response in one place. Coach Bot monitors your pipeline and flags
@@ -333,8 +608,8 @@ export default function HowToUse() {
               </ul>
             </li>
             <li>
-              Golden Rules — what made each converted client say yes. These appear as you capture coaching
-              notes over time.
+              Golden Rules — what made each converted client say yes. These appear as you capture coaching notes
+              over time.
             </li>
             <li>
               Decision History — every response you log to a signal. Your track record of keeping clients
@@ -365,7 +640,7 @@ export default function HowToUse() {
           />
         </PageSection>
 
-        {/* PAGE 5 — MY PRACTICE */}
+        {/* SECTION 8 — MY PRACTICE */}
         <PageSection icon="📊" title="My Practice">
           <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
             Your coaching performance tracked and scored. This is the crown jewel — it tells you how you are
@@ -379,8 +654,8 @@ export default function HowToUse() {
             style={{ color: HEADER }}
           >
             <li>
-              Performance Score — 0 to 100. Starts low and grows every day you use Coach Bot. Your score
-              reflects six dimensions of coaching quality.
+              Performance Score — 0 to 100. Starts low and grows every day you use Coach Bot. Your score reflects
+              six dimensions of coaching quality.
             </li>
             <li>
               Score breakdown:
@@ -409,8 +684,7 @@ export default function HowToUse() {
             <li>Check your score weekly — watch it grow as you coach</li>
             <li>Look at which dimension is lowest — that is where to focus</li>
             <li>
-              Capture aha moments from client sessions — they improve your score and build your coaching
-              library
+              Capture aha moments from client sessions — they improve your score and build your coaching library
             </li>
             <li>Review DISC distribution — are you coaching the right mix of clients?</li>
           </ol>
@@ -425,7 +699,7 @@ export default function HowToUse() {
           />
         </PageSection>
 
-        {/* GENERAL UAT */}
+        {/* SECTION 9 — GENERAL UAT */}
         <section style={{ ...cardStyle, marginBottom: 24 }}>
           <h2 className="mb-4 font-bold" style={{ color: HEADER, fontSize: 16 }}>
             Overall Feedback
@@ -441,8 +715,8 @@ export default function HowToUse() {
             <li>On a scale of 1-10 how valuable is Coach Bot to your practice right now?</li>
           </ol>
           <p className="mt-4 italic leading-relaxed" style={{ color: MUTED, fontSize: 12 }}>
-            Your feedback directly shapes the next version of Coach Bot. Use the feedback button on each page
-            to share what you notice as you use it.
+            Your feedback directly shapes the next version of Coach Bot. Use the feedback button on each page to
+            share what you notice as you use it.
           </p>
         </section>
 
