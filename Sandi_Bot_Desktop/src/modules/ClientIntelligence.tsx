@@ -2443,7 +2443,6 @@ function ClientDetailModal({
       setStageMoveDialog(null);
       await onStageMoved?.(client.id, target);
 
-      const targetDisplay = getStageDisplay(target);
       onStageMoveUndoOffer?.({
         clientId: String(client.id),
         clientName: client.name,
