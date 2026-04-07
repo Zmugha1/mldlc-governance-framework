@@ -1373,6 +1373,27 @@ export default function AdminStreamliner() {
     });
   }, []);
 
+  const showCaptureTooltip = useCallback((id: string) => (e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    const center = r.left + r.width / 2;
+    const gap = 8;
+    const estH = 140;
+    const placeAbove = r.bottom + estH + gap > window.innerHeight && r.top > estH + 60;
+    setActiveTooltip(id);
+    setTooltipLayout({
+      left: center,
+      top: placeAbove ? r.top - gap : r.bottom + gap,
+      transform: placeAbove ? 'translate(-50%, -100%)' : 'translateX(-50%)',
+      arrowSide: placeAbove ? 'bottom' : 'top',
+    });
+  }, []);
+
+  const hideCaptureTooltip = useCallback(() => {
+    setActiveTooltip(null);
+    setTooltipLayout(null);
+  }, []);
+
   const handleBackupNow = async () => {
     setBackupRunning(true);
     setBackupMessage('Creating backup...');
@@ -2212,27 +2233,6 @@ ${workingText}`;
     if (!sessOk) return { label: 'Upload Session', kind: 'fathom' };
     return { label: '+ Add Session', kind: 'fathom' };
   };
-
-  const showCaptureTooltip = useCallback((id: string) => (e: React.MouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    const r = e.currentTarget.getBoundingClientRect();
-    const center = r.left + r.width / 2;
-    const gap = 8;
-    const estH = 140;
-    const placeAbove = r.bottom + estH + gap > window.innerHeight && r.top > estH + 60;
-    setActiveTooltip(id);
-    setTooltipLayout({
-      left: center,
-      top: placeAbove ? r.top - gap : r.bottom + gap,
-      transform: placeAbove ? 'translate(-50%, -100%)' : 'translateX(-50%)',
-      arrowSide: placeAbove ? 'bottom' : 'top',
-    });
-  }, []);
-
-  const hideCaptureTooltip = useCallback(() => {
-    setActiveTooltip(null);
-    setTooltipLayout(null);
-  }, []);
 
   const CaptureInfoIcon = ({ id }: { id: string }) => (
     <span
