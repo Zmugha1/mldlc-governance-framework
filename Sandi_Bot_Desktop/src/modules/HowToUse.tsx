@@ -1,4 +1,14 @@
-import { ArrowRight, Layers, Rocket, User, UserPlus } from 'lucide-react';
+import {
+  ArrowRight,
+  Cpu,
+  HardDrive,
+  Layers,
+  Monitor,
+  Rocket,
+  Settings,
+  User,
+  UserPlus,
+} from 'lucide-react';
 
 const CREAM = '#FEFAF6';
 const HEADER = '#2D4459';
@@ -7,6 +17,8 @@ const BORDER = '#C8E8E5';
 const CORAL_SOFT = '#F05F57';
 const TEAL = '#3BBFBF';
 const UAT_BG = '#FFF8F0';
+const CARD_BG = '#F4F7F8';
+const NAVY_CARD = '#2D4459';
 
 const cardStyle: React.CSSProperties = {
   background: 'white',
@@ -114,6 +126,416 @@ function GettingStartedStep({
   );
 }
 
+const reqInnerCard: React.CSSProperties = {
+  background: CARD_BG,
+  borderRadius: 10,
+  padding: 16,
+};
+
+const codeMono: React.CSSProperties = {
+  fontFamily: 'Courier New, Courier, monospace',
+  fontSize: 11,
+  color: HEADER,
+};
+
+function SystemRequirementsSection() {
+  return (
+    <section
+      style={{
+        background: 'white',
+        border: `1px solid ${BORDER}`,
+        borderLeft: `4px solid ${CORAL_SOFT}`,
+        borderRadius: 12,
+        padding: '24px 28px',
+        marginBottom: 16,
+      }}
+    >
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+        <Monitor className="shrink-0" style={{ color: CORAL_SOFT, width: 20, height: 20 }} aria-hidden />
+        <div>
+          <h2 className="font-bold" style={{ color: HEADER, fontSize: 18 }}>
+            System Requirements
+          </h2>
+          <p className="mt-1 leading-snug" style={{ color: MUTED, fontSize: 13 }}>
+            Check these before installing Coach Bot on a new machine.
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Card 1 — Storage */}
+        <div style={reqInnerCard}>
+          <div className="mb-3 flex items-center gap-2">
+            <HardDrive className="shrink-0" style={{ color: TEAL, width: 20, height: 20 }} aria-hidden />
+            <h3 className="font-bold" style={{ color: HEADER, fontSize: 14 }}>
+              Storage
+            </h3>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between gap-2">
+              <span style={{ color: MUTED, fontSize: 12 }}>Ollama AI models</span>
+              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
+                ~4.8 GB
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: MUTED, fontSize: 12 }}>Coach Bot app</span>
+              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
+                ~30 MB
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: MUTED, fontSize: 12 }}>Client database</span>
+              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
+                ~100 MB
+              </span>
+            </div>
+            <div
+              className="my-2 border-t"
+              style={{ borderColor: BORDER }}
+              aria-hidden
+            />
+            <div className="flex justify-between gap-2">
+              <span style={{ color: MUTED, fontSize: 12 }}>Total needed</span>
+              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
+                ~6 GB
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 flex justify-between gap-2">
+            <span style={{ color: MUTED, fontSize: 12 }}>Minimum free space</span>
+            <span className="font-bold" style={{ color: CORAL_SOFT, fontSize: 12 }}>
+              8 GB
+            </span>
+          </div>
+          <div
+            className="mt-3"
+            style={{
+              background: UAT_BG,
+              borderRadius: 6,
+              padding: '8px 12px',
+            }}
+          >
+            <pre className="m-0 whitespace-pre-wrap break-all" style={codeMono}>
+              (Get-PSDrive C).Free / 1GB
+            </pre>
+            <p className="mt-1 leading-snug" style={{ color: MUTED, fontSize: 10 }}>
+              Run in PowerShell.
+              <br />
+              Result must be above 8.
+            </p>
+          </div>
+        </div>
+
+        {/* Card 2 — Memory */}
+        <div style={reqInnerCard}>
+          <div className="mb-3 flex items-center gap-2">
+            <Cpu className="shrink-0" style={{ color: CORAL_SOFT, width: 20, height: 20 }} aria-hidden />
+            <h3 className="font-bold" style={{ color: HEADER, fontSize: 14 }}>
+              Memory (RAM)
+            </h3>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between gap-2">
+              <span style={{ color: MUTED, fontSize: 12 }}>AI model (qwen2.5:7b)</span>
+              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
+                ~6 GB
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: MUTED, fontSize: 12 }}>Windows OS</span>
+              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
+                ~3 GB
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: MUTED, fontSize: 12 }}>Coach Bot app</span>
+              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
+                ~200 MB
+              </span>
+            </div>
+            <div
+              className="my-2 border-t"
+              style={{ borderColor: BORDER }}
+              aria-hidden
+            />
+            <div className="flex justify-between gap-2">
+              <span style={{ color: MUTED, fontSize: 12 }}>Total needed</span>
+              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
+                ~8 GB
+              </span>
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
+              <span
+                className="inline-block w-fit font-bold"
+                style={{
+                  background: UAT_BG,
+                  color: CORAL_SOFT,
+                  borderRadius: 12,
+                  padding: '2px 8px',
+                  fontSize: 11,
+                }}
+              >
+                Minimum
+              </span>
+              <div className="min-w-0 flex-1">
+                <span className="font-semibold" style={{ color: HEADER, fontSize: 13 }}>
+                  8 GB RAM
+                </span>
+                <p className="italic" style={{ color: MUTED, fontSize: 11 }}>
+                  Works — responses take 20-40 seconds
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
+              <span
+                className="inline-block w-fit font-bold"
+                style={{
+                  background: '#F0FAFA',
+                  color: TEAL,
+                  borderRadius: 12,
+                  padding: '2px 8px',
+                  fontSize: 11,
+                }}
+              >
+                Recommended
+              </span>
+              <div className="min-w-0 flex-1">
+                <span className="font-semibold" style={{ color: HEADER, fontSize: 13 }}>
+                  16 GB RAM
+                </span>
+                <p className="italic" style={{ color: MUTED, fontSize: 11 }}>
+                  Comfortable — responses take 5-15 seconds
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
+              <span
+                className="inline-block w-fit font-bold"
+                style={{
+                  background: '#F0FAFA',
+                  color: TEAL,
+                  borderRadius: 12,
+                  padding: '2px 8px',
+                  fontSize: 11,
+                }}
+              >
+                Ideal
+              </span>
+              <div className="min-w-0 flex-1">
+                <span className="font-semibold" style={{ color: HEADER, fontSize: 13 }}>
+                  32 GB RAM
+                </span>
+                <p className="italic" style={{ color: MUTED, fontSize: 11 }}>
+                  Fast — responses take 2-5 seconds
+                </p>
+              </div>
+            </div>
+          </div>
+          <div
+            className="mt-3"
+            style={{
+              background: UAT_BG,
+              borderRadius: 6,
+              padding: '8px 12px',
+            }}
+          >
+            <pre className="m-0 whitespace-pre-wrap break-all" style={codeMono}>
+              {`(Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property capacity -Sum).sum /1gb`}
+            </pre>
+            <p className="mt-1 leading-snug" style={{ color: MUTED, fontSize: 10 }}>
+              Run in PowerShell.
+              <br />
+              Result must be above 8.
+            </p>
+          </div>
+        </div>
+
+        {/* Card 3 — System */}
+        <div style={reqInnerCard}>
+          <div className="mb-3 flex items-center gap-2">
+            <Settings className="shrink-0" style={{ color: TEAL, width: 20, height: 20 }} aria-hidden />
+            <h3 className="font-bold" style={{ color: HEADER, fontSize: 14 }}>
+              System
+            </h3>
+          </div>
+          <div>
+            <p className="font-semibold" style={{ color: MUTED, fontSize: 12 }}>
+              Windows
+            </p>
+            <p style={{ color: HEADER, fontSize: 13 }}>Windows 10 or 11</p>
+            <p style={{ color: MUTED, fontSize: 11 }}>Both versions supported</p>
+          </div>
+          <p className="mb-2 mt-3 font-bold" style={{ color: HEADER, fontSize: 13 }}>
+            GPU (optional)
+          </p>
+          <div className="space-y-3">
+            <div>
+              <span
+                className="inline-block font-bold"
+                style={{
+                  background: '#F0FAFA',
+                  color: TEAL,
+                  borderRadius: 12,
+                  padding: '2px 8px',
+                  fontSize: 11,
+                }}
+              >
+                With GPU
+              </span>
+              <p className="mt-1" style={{ color: HEADER, fontSize: 12 }}>
+                2-5 second responses
+              </p>
+              <p style={{ color: MUTED, fontSize: 10 }}>6+ GB VRAM needed</p>
+            </div>
+            <div>
+              <span
+                className="inline-block font-bold"
+                style={{
+                  background: CARD_BG,
+                  color: MUTED,
+                  borderRadius: 12,
+                  padding: '2px 8px',
+                  fontSize: 11,
+                }}
+              >
+                CPU only
+              </span>
+              <p className="mt-1" style={{ color: HEADER, fontSize: 12 }}>
+                15-45 second responses
+              </p>
+              <p style={{ color: MUTED, fontSize: 10 }}>Still works — just slower</p>
+            </div>
+          </div>
+          <p
+            className="mt-3 leading-snug"
+            style={{ color: TEAL, fontSize: 12, fontWeight: 700 }}
+          >
+            🔒 No internet required after setup. Coach Bot runs entirely on your machine.
+          </p>
+        </div>
+      </div>
+
+      {/* Quick Check */}
+      <div
+        style={{
+          background: NAVY_CARD,
+          borderRadius: 10,
+          padding: '16px 20px',
+          marginBottom: 16,
+        }}
+      >
+        <h3 className="font-bold text-white" style={{ fontSize: 14 }}>
+          Quick Check — Run This First
+        </h3>
+        <p className="mt-1 leading-snug" style={{ color: BORDER, fontSize: 12 }}>
+          Open PowerShell and paste these two commands:
+        </p>
+        <pre
+          className="mt-3 whitespace-pre-wrap break-all text-white"
+          style={{
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: 6,
+            padding: '10px 14px',
+            fontFamily: 'Courier New, Courier, monospace',
+            fontSize: 12,
+            margin: 0,
+          }}
+        >
+          {`# Check available RAM (need 8+)
+(Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property capacity -Sum).sum /1gb`}
+        </pre>
+        <pre
+          className="mt-3 whitespace-pre-wrap break-all text-white"
+          style={{
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: 6,
+            padding: '10px 14px',
+            fontFamily: 'Courier New, Courier, monospace',
+            fontSize: 12,
+            margin: 0,
+          }}
+        >
+          {`# Check free disk space (need 8+)
+(Get-PSDrive C).Free / 1GB`}
+        </pre>
+        <div className="mt-4 space-y-2">
+          <p style={{ color: TEAL, fontSize: 13 }}>
+            <span aria-hidden>✅ </span>
+            Both results above 8 — You are ready to install
+          </p>
+          <p style={{ color: CORAL_SOFT, fontSize: 13 }}>
+            <span aria-hidden>❌ </span>
+            Either result below 8 — Free up disk space or upgrade RAM before installing
+          </p>
+        </div>
+        <p className="mt-3 italic leading-snug" style={{ color: BORDER, fontSize: 11 }}>
+          Not sure? Send these results to Zubia before installing.
+        </p>
+      </div>
+
+      {/* Response speed table */}
+      <h3 className="mb-2 font-bold" style={{ color: HEADER, fontSize: 14, marginTop: 16 }}>
+        What Affects Response Speed
+      </h3>
+      <div className="overflow-hidden rounded-lg" style={{ border: `1px solid ${BORDER}` }}>
+        <table className="w-full border-collapse text-[13px]" style={{ color: HEADER }}>
+          <thead>
+            <tr style={{ background: '#F4F7F8' }}>
+              <th className="border-b px-[14px] py-2.5 text-left font-bold" style={{ borderColor: BORDER }}>
+                Situation
+              </th>
+              <th className="border-b px-[14px] py-2.5 text-left font-bold" style={{ borderColor: BORDER }}>
+                Speed
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ['16 GB RAM + NVIDIA GPU', '⚡ 2-5 seconds'],
+              ['16 GB RAM, no GPU', '🔄 5-15 seconds'],
+              ['8 GB RAM, no GPU', '⏳ 20-40 seconds'],
+              ['Less than 8 GB RAM', '❌ Not recommended'],
+            ].map(([situation, speed], i) => (
+              <tr key={situation} style={{ background: i % 2 === 0 ? '#F4F7F8' : 'white' }}>
+                <td className="border-b px-[14px] py-2.5" style={{ borderColor: BORDER }}>
+                  {situation}
+                </td>
+                <td className="border-b px-[14px] py-2.5" style={{ borderColor: BORDER }}>
+                  {speed}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* UAT */}
+      <div
+        style={{
+          background: UAT_BG,
+          borderLeft: `4px solid ${CORAL_SOFT}`,
+          borderRadius: 8,
+          padding: '12px 16px',
+          marginTop: 12,
+        }}
+      >
+        <p className="leading-relaxed" style={{ color: HEADER, fontSize: 13 }}>
+          📋 UAT Questions — System Check:
+        </p>
+        <ol className="mt-2 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed" style={{ color: HEADER }}>
+          <li>Did you run the PowerShell check before installing?</li>
+          <li>How much RAM does your machine have? (run the command above)</li>
+          <li>Are responses coming back in a reasonable time?</li>
+          <li>Did you notice any slowness when generating questions or vision statements?</li>
+        </ol>
+      </div>
+    </section>
+  );
+}
+
 export default function HowToUse() {
   return (
     <div className="min-h-full w-full py-8" style={{ background: CREAM }}>
@@ -187,6 +609,8 @@ export default function HowToUse() {
             Complete all four steps for the best Coach Bot experience.
           </div>
         </section>
+
+        <SystemRequirementsSection />
 
         {/* SECTION 1 — HOW TO ADD A CLIENT */}
         <section
