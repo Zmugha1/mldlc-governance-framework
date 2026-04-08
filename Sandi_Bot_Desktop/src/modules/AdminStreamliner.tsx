@@ -29,6 +29,7 @@ import {
   ChevronDown,
   ChevronRight,
   Info,
+  FileUp,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { Progress } from '@/components/ui/progress';
 import { knowledgeGraph } from '@/data/sampleClients';
@@ -807,6 +809,46 @@ function normalizeDialogPickToPaths(result: unknown): string[] {
   return [];
 }
 
+type CoachProfileState = {
+  bio: string;
+  resume_text: string;
+  resume_file_name: string;
+  years_experience: number;
+  certifications: string;
+  coaching_philosophy: string;
+  coaching_style: string;
+  identity_score: number;
+};
+
+function emptyCoachProfile(): CoachProfileState {
+  return {
+    bio: '',
+    resume_text: '',
+    resume_file_name: '',
+    years_experience: 0,
+    certifications: '',
+    coaching_philosophy: '',
+    coaching_style: '',
+    identity_score: 0,
+  };
+}
+
+function computeCoachIdentityScore(p: CoachProfileState): number {
+  let score = 0;
+  if (p.resume_text?.trim()) score += 40;
+  if ((p.coaching_philosophy?.trim().length ?? 0) > 50) score += 40;
+  if ((p.coaching_style?.trim().length ?? 0) > 20) score += 20;
+  return score;
+}
+
+function parseJsonFromOllama(raw: string): Record<string, unknown> {
+  let s = raw.trim();
+  const fence = /^```(?:json)?\s*([\s\S]*?)```$/im;
+  const m = s.match(fence);
+  if (m) s = m[1].trim();
+  return JSON.parse(s) as Record<string, unknown>;
+}
+
 // Stats Card
 function StatCard({ title, value, change, icon: Icon, color }: {
   title: string;
@@ -931,6 +973,13 @@ export default function AdminStreamliner() {
   const [knowledgeCardHover, setKnowledgeCardHover] = useState<string | null>(null);
   const [knowledgeUploadMessage, setKnowledgeUploadMessage] = useState<string | null>(null);
 
+  const [coachProfile, setCoachProfile] = useState<CoachProfileState | null>(null);
+  const [coachProfileLoading, setCoachProfileLoading] = useState(true);
+  const [resumeReadStatus, setResumeReadStatus] = useState<string | null>(null);
+  const [bioDraft, setBioDraft] = useState('');
+  const [bioEditing, setBioEditing] = useState(false);
+  const [bioSaving, setBioSaving] = useState(false);
+
   const refreshKnowledgeDocuments = useCallback(async () => {
     const statRows = await dbSelect<{
       domain: string;
@@ -1020,6 +1069,162 @@ export default function AdminStreamliner() {
     },
     [knowledgeModalDomain, refreshKnowledgeDocuments, loadKnowledgeModalDocs]
   );
+
+  const loadCoachProfile = useCallback(async () => {
+    setCoachProfileLoading(true);
+    try {
+      const rows = await dbSelect<{
+        id: string;
+        bio: string | null;
+        resume_text: string | null;
+        resume_file_name: string | null;
+        years_experience: number | null;
+        certifications: string | null;
+        coaching_philosophy: string | null;
+        coaching_style: string | null;
+        identity_score: number | null;
+      }>(
+        `SELECT id, bio, resume_text, resume_file_name, years_experience,
+          certifications, coaching_philosophy, coaching_style, identity_score
+        FROM coach_profile
+        WHERE id = 'coach'
+        LIMIT 1`,
+        []
+      );
+      if (rows[0]) {
+        const r = rows[0];
+        const next: CoachProfileState = {
+          bio: (r.bio ?? '').trim(),
+          resume_text: (r.resume_text ?? '').trim(),
+          resume_file_name: (r.resume_file_name ?? '').trim(),
+          years_experience: Number(r.years_experience ?? 0),
+          certifications: (r.certifications ?? '').trim(),
+          coaching_philosophy: (r.coaching_philosophy ?? '').trim(),
+          coaching_style: (r.coaching_style ?? '').trim(),
+          identity_score: Number(r.identity_score ?? 0),
+        };
+        setCoachProfile(next);
+        setBioDraft(next.bio);
+      } else {
+        const empty = emptyCoachProfile();
+        setCoachProfile(empty);
+        setBioDraft('');
+      }
+      setBioEditing(false);
+    } catch (e) {
+      console.error('[coach_profile] load failed:', e);
+      setCoachProfile(emptyCoachProfile());
+      setBioDraft('');
+    } finally {
+      setCoachProfileLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCoachProfile();
+  }, [loadCoachProfile]);
+
+  const processResumePdfPath = useCallback(
+    async (filePath: string) => {
+      const fileName = filePath.split(/[/\\]/).pop() ?? 'resume.pdf';
+      setResumeReadStatus('⟳ Reading your resume...');
+      try {
+        const extracted = await invoke<{
+          text: string;
+          success: boolean;
+          error?: string;
+        }>('extract_text_from_any_file', { filePath });
+        if (!extracted.success || !extracted.text?.trim()) {
+          throw new Error(extracted.error ?? 'Could not read PDF');
+        }
+        const resumeContent = extracted.text.trim();
+        const prompt = `
+        Extract the following from
+        this resume and return as JSON:
+        {
+          "bio": "2-3 sentence professional bio in third person",
+          "years_experience": 0,
+          "certifications": "comma separated list of certifications",
+          "key_expertise": "comma separated list of top expertise areas"
+        }
+        Resume content: ${resumeContent}
+        Return ONLY valid JSON.
+        `;
+        const raw = await invoke<string>('ollama_generate', {
+          prompt,
+          system:
+            'You extract structured information from resumes. Return only valid JSON.',
+          model: 'qwen2.5:7b',
+        });
+        const parsed = parseJsonFromOllama(raw);
+        const bio = String(parsed.bio ?? '').trim();
+        const years = Math.max(0, Math.round(Number(parsed.years_experience ?? 0)));
+        let certifications = String(parsed.certifications ?? '').trim();
+        const keyExpertise = String(parsed.key_expertise ?? '').trim();
+        if (!certifications && keyExpertise) certifications = keyExpertise;
+
+        await dbExecute(
+          `INSERT INTO coach_profile
+            (id, bio, resume_text, resume_file_name, years_experience, certifications, updated_at)
+          VALUES ('coach', ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET
+            bio = excluded.bio,
+            resume_text = excluded.resume_text,
+            resume_file_name = excluded.resume_file_name,
+            years_experience = excluded.years_experience,
+            certifications = excluded.certifications,
+            updated_at = excluded.updated_at`,
+          [bio, resumeContent, fileName, years, certifications]
+        );
+        await loadCoachProfile();
+        toast.success('Resume uploaded');
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      } finally {
+        setResumeReadStatus(null);
+      }
+    },
+    [loadCoachProfile]
+  );
+
+  const openResumePdfPicker = useCallback(async () => {
+    let result: string | string[] | null;
+    try {
+      result = await tauriDialogOpen({
+        multiple: false,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+    } catch (e) {
+      console.error('[resume] dialog open failed:', e);
+      toast.error('Could not open file picker.');
+      return;
+    }
+    const paths = normalizeDialogPickToPaths(result);
+    if (paths.length === 0) return;
+    await processResumePdfPath(paths[0]);
+  }, [processResumePdfPath]);
+
+  const saveBioDraft = useCallback(async () => {
+    const text = bioDraft.trim();
+    setBioSaving(true);
+    try {
+      await dbExecute(
+        `INSERT INTO coach_profile (id, bio, updated_at)
+         VALUES ('coach', ?, datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           bio = excluded.bio,
+           updated_at = excluded.updated_at`,
+        [text]
+      );
+      await loadCoachProfile();
+      setBioEditing(false);
+      toast.success('Bio saved');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBioSaving(false);
+    }
+  }, [bioDraft, loadCoachProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2350,22 +2555,6 @@ ${workingText}`;
     );
   }
 
-  const comingSoonBadge = (
-    <span
-      className="inline-block mt-3"
-      style={{
-        background: '#F4F7F8',
-        border: '1px solid #C8E8E5',
-        color: '#7A8F95',
-        borderRadius: 20,
-        padding: '4px 12px',
-        fontSize: 11,
-      }}
-    >
-      Coming in next update
-    </span>
-  );
-
   const knowledgeDomainsCovered = KNOWLEDGE_DOMAINS.filter(
     (d) => (domainStats[d.domain]?.doc_count ?? 0) > 0
   ).length;
@@ -2373,6 +2562,13 @@ ${workingText}`;
   const knowledgeModalMeta = knowledgeModalDomain
     ? KNOWLEDGE_DOMAINS.find((x) => x.domain === knowledgeModalDomain)
     : undefined;
+
+  const cp = coachProfile ?? emptyCoachProfile();
+  const identityScore = computeCoachIdentityScore(cp);
+  const hasResume = Boolean(cp.resume_text?.trim());
+  const philosophyDone = (cp.coaching_philosophy?.trim().length ?? 0) > 50;
+  const styleSet = (cp.coaching_style?.trim().length ?? 0) > 20;
+  const hasBio = Boolean(cp.bio?.trim());
 
   const totalCapture = captureRows.length;
   const pipelineCompleteCount = captureRows.filter((r) => {
@@ -3212,12 +3408,211 @@ ${workingText}`;
             <p className="mt-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
               Who you are as a coach. Used to personalize every response Coach Bot generates.
             </p>
-            <p className="mt-3 text-[13px] italic leading-relaxed" style={{ color: '#7A8F95' }}>
-              Upload your resume and coaching philosophy to help Coach Bot speak in your voice.
-            </p>
-            {comingSoonBadge}
           </div>
         </div>
+
+        {coachProfileLoading ? (
+          <p className="mt-4 text-[13px]" style={{ color: '#7A8F95' }}>
+            Loading…
+          </p>
+        ) : (
+          <>
+            <div className="mt-6 flex flex-wrap items-start justify-between gap-6">
+              <div className="min-w-0 flex-1">
+                <p
+                  className="font-semibold uppercase tracking-wide"
+                  style={{ color: '#7A8F95', fontSize: 11 }}
+                >
+                  Identity Score
+                </p>
+                <p className="mt-1 font-bold leading-tight" style={{ color: '#2D4459', fontSize: 32 }}>
+                  {identityScore}%
+                </p>
+                <div className="mt-2 overflow-hidden" style={{ width: 200, height: 8, borderRadius: 4, background: '#F4F7F8' }}>
+                  <div
+                    style={{
+                      width: `${identityScore}%`,
+                      height: '100%',
+                      borderRadius: 4,
+                      background: '#F05F57',
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="min-w-[220px] shrink-0 space-y-2 text-[12px]" style={{ color: '#2D4459' }}>
+                <p className="font-semibold" style={{ color: '#7A8F95', fontSize: 11 }}>
+                  Score breakdown
+                </p>
+                <div className="flex items-center gap-2">
+                  <span style={{ color: hasResume ? '#3BBFBF' : '#C8E8E5' }} aria-hidden>
+                    {hasResume ? '✓' : '○'}
+                  </span>
+                  <span>Resume uploaded: +40 pts</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span style={{ color: philosophyDone ? '#3BBFBF' : '#C8E8E5' }} aria-hidden>
+                    {philosophyDone ? '✓' : '○'}
+                  </span>
+                  <span>Philosophy written: +40 pts</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span style={{ color: styleSet ? '#3BBFBF' : '#C8E8E5' }} aria-hidden>
+                    {styleSet ? '✓' : '○'}
+                  </span>
+                  <span>Coaching style set: +20 pts</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="mt-6 bg-white"
+              style={{
+                border: '1px solid #C8E8E5',
+                borderRadius: 10,
+                padding: 20,
+                marginBottom: 16,
+              }}
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                  📄 Your Resume
+                </p>
+                <span
+                  className="text-[11px] font-medium"
+                  style={{
+                    background: '#F0FAFA',
+                    color: '#3BBFBF',
+                    borderRadius: 12,
+                    padding: '2px 8px',
+                  }}
+                >
+                  +40 pts
+                </span>
+              </div>
+
+              {resumeReadStatus ? (
+                <p className="text-[13px] font-medium" style={{ color: '#2D4459' }}>
+                  {resumeReadStatus}
+                </p>
+              ) : null}
+
+              {!hasResume && !resumeReadStatus ? (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-colors hover:bg-[#F4F7F8]"
+                  style={{ borderColor: '#C8E8E5' }}
+                  onClick={() => void openResumePdfPicker()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      void openResumePdfPicker();
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const f = e.dataTransfer.files?.[0];
+                    if (!f) return;
+                    const p = (f as File & { path?: string }).path;
+                    if (p && typeof p === 'string') void processResumePdfPath(p);
+                    else toast.error('Could not read file path. Use browse from the desktop app.');
+                  }}
+                >
+                  <FileUp className="mb-2" style={{ width: 24, height: 24, color: '#C8E8E5' }} aria-hidden />
+                  <p className="text-[13px]" style={{ color: '#7A8F95' }}>
+                    Drop your resume PDF here or click to browse
+                  </p>
+                </div>
+              ) : null}
+
+              {hasResume && !resumeReadStatus ? (
+                <div
+                  className="rounded-lg border-l-[3px] p-3 pl-4"
+                  style={{
+                    background: '#F0FAFA',
+                    borderLeftColor: '#3BBFBF',
+                    borderRadius: 8,
+                  }}
+                >
+                  <p className="font-semibold" style={{ color: '#2D4459', fontSize: 14 }}>
+                    ✅ Resume uploaded
+                  </p>
+                  <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
+                    {cp.resume_file_name || 'Resume'}
+                  </p>
+                  <div className="mt-2 space-y-1 text-[12px]" style={{ color: '#2D4459' }}>
+                    <p>Bio: {truncateKnowledgeText(cp.bio, 100)}</p>
+                    <p>Experience: {cp.years_experience} years</p>
+                    <p>Certifications: {cp.certifications || '—'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-3 text-[11px] font-medium underline-offset-2 hover:underline"
+                    style={{ color: '#7A8F95', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    onClick={() => void openResumePdfPicker()}
+                  >
+                    Re-upload Resume
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-2">
+              <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
+                Your Professional Bio
+              </p>
+              {hasBio && !bioEditing ? (
+                <>
+                  <div
+                    className="mt-2 rounded-lg p-3 pl-4 leading-relaxed"
+                    style={{
+                      background: '#F4F7F8',
+                      borderRadius: 8,
+                      color: '#2D4459',
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {cp.bio}
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-2 text-[12px] font-medium"
+                    style={{ color: '#7A8F95', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    onClick={() => setBioEditing(true)}
+                  >
+                    Edit Bio
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Textarea
+                    className="mt-2 min-h-[100px] resize-y rounded-lg border-[#C8E8E5] px-3 py-2 text-[13px]"
+                    style={{ borderRadius: 8 }}
+                    placeholder="Write a 2-3 sentence professional bio in third person. Example: Sandi Stahl is a franchise coach with 20+ years of experience helping seekers find their career 2.0..."
+                    value={bioDraft}
+                    onChange={(e) => setBioDraft(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    className="mt-3 rounded-lg px-4 py-2 text-[13px] font-bold"
+                    style={{ background: '#F05F57', color: 'white' }}
+                    disabled={bioSaving}
+                    onClick={() => void saveBioDraft()}
+                  >
+                    Save Bio
+                  </Button>
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* SECTION 3 — My Knowledge */}
