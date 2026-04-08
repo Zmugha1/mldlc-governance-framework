@@ -191,3 +191,89 @@ pub fn migration_62() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+pub fn migration_63() -> Migration {
+    Migration {
+        version: 63,
+        description: "knowledge_documents_enhanced_schema",
+        sql: "CREATE TABLE IF NOT EXISTS knowledge_documents (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                content TEXT,
+                excerpt TEXT,
+                domain TEXT NOT NULL,
+                doc_type TEXT DEFAULT 'pdf',
+                file_name TEXT,
+                file_size INTEGER DEFAULT 0,
+                word_count INTEGER DEFAULT 0,
+                extracted INTEGER DEFAULT 0,
+                embedded INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              );",
+        kind: MigrationKind::Up,
+    }
+}
+
+pub fn migration_64() -> Migration {
+    Migration {
+        version: 64,
+        description: "create_knowledge_embeddings_for_rag",
+        sql: "CREATE TABLE IF NOT EXISTS knowledge_embeddings (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                chunk_text TEXT NOT NULL,
+                chunk_index INTEGER DEFAULT 0,
+                embedding TEXT,
+                model_used TEXT DEFAULT 'nomic-embed-text',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (document_id)
+                  REFERENCES knowledge_documents(id)
+                  ON DELETE CASCADE
+              );",
+        kind: MigrationKind::Up,
+    }
+}
+
+pub fn migration_65() -> Migration {
+    Migration {
+        version: 65,
+        description: "create_coach_profile_for_identity",
+        sql: "CREATE TABLE IF NOT EXISTS coach_profile (
+                id TEXT PRIMARY KEY DEFAULT 'coach',
+                bio TEXT,
+                resume_text TEXT,
+                resume_file_name TEXT,
+                years_experience INTEGER,
+                certifications TEXT,
+                coaching_philosophy TEXT,
+                coaching_style TEXT,
+                identity_score INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              );",
+        kind: MigrationKind::Up,
+    }
+}
+
+pub fn migration_66() -> Migration {
+    Migration {
+        version: 66,
+        description: "create_tool_connections_mcp",
+        sql: "CREATE TABLE IF NOT EXISTS tool_connections (
+                id TEXT PRIMARY KEY,
+                tool_id TEXT NOT NULL UNIQUE,
+                display_name TEXT,
+                connected_email TEXT,
+                auth_token TEXT,
+                refresh_token TEXT,
+                token_expires_at TEXT,
+                settings_json TEXT,
+                is_connected INTEGER DEFAULT 0,
+                connected_at TIMESTAMP,
+                last_sync_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              );",
+        kind: MigrationKind::Up,
+    }
+}
