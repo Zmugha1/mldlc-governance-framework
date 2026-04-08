@@ -59,9 +59,6 @@ import { dbSelect, dbExecute } from '@/services/db';
 import {
   uploadKnowledgeDocument,
   getDocumentsByDomain,
-  getDomainCounts,
-  getAllDocuments,
-  getDomainWordTotals,
   deleteDocument,
   type KnowledgeDocument,
 } from '../services/knowledgeService';
@@ -768,16 +765,19 @@ type CaptureTooltipLayout = {
 };
 
 function knowledgeHealthMotivation(score: number): string {
+  if (score === 0) {
+    return 'No domains covered yet — upload PDFs to build your knowledge base.';
+  }
   if (score < 25) {
-    return 'Start by uploading your CLEAR framework documents';
+    return 'Early stage — add documents across more domains to raise your score.';
   }
   if (score < 50) {
-    return 'Good start — add more coaching resources to improve question quality';
+    return 'Good progress — keep adding coaching resources to improve question quality.';
   }
-  if (score <= 75) {
-    return 'Strong foundation — fill remaining domains for full coaching intelligence';
+  if (score < 100) {
+    return 'Strong foundation — fill remaining domains for full coaching intelligence.';
   }
-  return 'Excellent knowledge base — Coach Bot has rich context for every coaching session';
+  return 'Excellent knowledge base — Coach Bot has rich context for every coaching session.';
 }
 
 type TauriDialogOpenOptions = {
@@ -916,43 +916,93 @@ export default function AdminStreamliner() {
     tumay: { phase: 'idle' },
     fathom: { phase: 'idle' },
   });
-  const [knowledgeDomainCounts, setKnowledgeDomainCounts] = useState<Record<string, number>>({});
-  const [knowledgeDomainWordTotals, setKnowledgeDomainWordTotals] = useState<Record<string, number>>({});
-  const [knowledgeLatestByDomain, setKnowledgeLatestByDomain] = useState<
-    Record<string, KnowledgeDocument | null>
+  const [domainStats, setDomainStats] = useState<
+    Record<string, { doc_count: number; total_words: number }>
   >({});
-  const [knowledgeRecent, setKnowledgeRecent] = useState<KnowledgeDocument[]>([]);
+  const [domainLatestByDomain, setDomainLatestByDomain] = useState<
+    Record<
+      string,
+      { id: string; excerpt: string; title: string; word_count: number } | null
+    >
+  >({});
+  const [recentDocs, setRecentDocs] = useState<any[]>([]);
   const [knowledgeModalDomain, setKnowledgeModalDomain] = useState<string | null>(null);
   const [knowledgeModalDocs, setKnowledgeModalDocs] = useState<KnowledgeDocument[]>([]);
   const [knowledgeCardHover, setKnowledgeCardHover] = useState<string | null>(null);
   const [knowledgeUploadMessage, setKnowledgeUploadMessage] = useState<string | null>(null);
 
   const refreshKnowledgeDocuments = useCallback(async () => {
-    const counts = await getDomainCounts();
-    const map: Record<string, number> = {};
-    for (const d of KNOWLEDGE_DOMAINS) {
-      map[d.domain] = counts[d.domain] ?? 0;
-    }
-    setKnowledgeDomainCounts(map);
-
-    const wordTotals = await getDomainWordTotals();
-    const wordMap: Record<string, number> = {};
-    for (const d of KNOWLEDGE_DOMAINS) {
-      wordMap[d.domain] = wordTotals[d.domain] ?? 0;
-    }
-    setKnowledgeDomainWordTotals(wordMap);
-
-    const latest: Record<string, KnowledgeDocument | null> = {};
-    await Promise.all(
-      KNOWLEDGE_DOMAINS.map(async (d) => {
-        const docs = await getDocumentsByDomain(d.domain);
-        latest[d.domain] = docs[0] ?? null;
-      })
+    const statRows = await dbSelect<{
+      domain: string;
+      doc_count: number;
+      total_words: number | null;
+    }>(
+      `SELECT domain,
+        COUNT(*) as doc_count,
+        COALESCE(SUM(word_count), 0) as total_words
+      FROM knowledge_documents
+      GROUP BY domain`,
+      []
     );
-    setKnowledgeLatestByDomain(latest);
+    const stats: Record<string, { doc_count: number; total_words: number }> = {};
+    for (const d of KNOWLEDGE_DOMAINS) {
+      stats[d.domain] = { doc_count: 0, total_words: 0 };
+    }
+    for (const r of statRows) {
+      stats[r.domain] = {
+        doc_count: Number(r.doc_count),
+        total_words: Number(r.total_words ?? 0),
+      };
+    }
+    setDomainStats(stats);
 
-    const recent = await getAllDocuments();
-    setKnowledgeRecent(recent);
+    const recent = await dbSelect<{
+      id: string;
+      title: string;
+      domain: string;
+      excerpt: string | null;
+      word_count: number | null;
+      created_at: string;
+    }>(
+      `SELECT id, title, domain, excerpt, word_count, created_at
+      FROM knowledge_documents
+      ORDER BY datetime(created_at) DESC
+      LIMIT 5`,
+      []
+    );
+    setRecentDocs(recent);
+
+    const latestRows = await dbSelect<{
+      id: string;
+      domain: string;
+      excerpt: string | null;
+      title: string;
+      word_count: number | null;
+    }>(
+      `WITH ranked AS (
+         SELECT id, domain, excerpt, title, word_count,
+           ROW_NUMBER() OVER (PARTITION BY domain ORDER BY datetime(created_at) DESC, id DESC) AS rn
+         FROM knowledge_documents
+       )
+       SELECT id, domain, excerpt, title, word_count FROM ranked WHERE rn = 1`,
+      []
+    );
+    const latestMap: Record<
+      string,
+      { id: string; excerpt: string; title: string; word_count: number } | null
+    > = {};
+    for (const d of KNOWLEDGE_DOMAINS) {
+      latestMap[d.domain] = null;
+    }
+    for (const r of latestRows) {
+      latestMap[r.domain] = {
+        id: r.id,
+        excerpt: (r.excerpt ?? '').trim(),
+        title: r.title,
+        word_count: Number(r.word_count ?? 0),
+      };
+    }
+    setDomainLatestByDomain(latestMap);
   }, []);
 
   const loadKnowledgeModalDocs = useCallback(async (domain: string) => {
@@ -2317,7 +2367,7 @@ ${workingText}`;
   );
 
   const knowledgeDomainsCovered = KNOWLEDGE_DOMAINS.filter(
-    (d) => (knowledgeDomainCounts[d.domain] ?? 0) >= 1
+    (d) => (domainStats[d.domain]?.doc_count ?? 0) > 0
   ).length;
   const knowledgeHealthPct = Math.round((knowledgeDomainsCovered / 8) * 100);
   const knowledgeModalMeta = knowledgeModalDomain
@@ -3243,16 +3293,20 @@ ${workingText}`;
           style={{ gap: 12, marginTop: 16 }}
         >
           {KNOWLEDGE_DOMAINS.map((d) => {
-            const count = knowledgeDomainCounts[d.domain] ?? 0;
-            const totalWords = knowledgeDomainWordTotals[d.domain] ?? 0;
+            const count = domainStats[d.domain]?.doc_count ?? 0;
+            const totalWords = domainStats[d.domain]?.total_words ?? 0;
             const Icon = d.Icon;
             const showUploadBtn = count === 0 || knowledgeCardHover === d.domain;
             let coverageSymbol = '○';
             let coverageLabel = 'Not started';
             let coverageColor = '#C8E8E5';
-            if (count >= 1) {
-              coverageSymbol = '●';
+            if (count >= 1 && count <= 2) {
+              coverageSymbol = '◑';
               coverageLabel = `${count} document${count === 1 ? '' : 's'} — ${totalWords.toLocaleString()} words`;
+              coverageColor = '#F05F57';
+            } else if (count >= 3) {
+              coverageSymbol = '●';
+              coverageLabel = `${count} documents — ${totalWords.toLocaleString()} words`;
               coverageColor = '#3BBFBF';
             }
             return (
@@ -3297,24 +3351,21 @@ ${workingText}`;
                 <p className="mt-2 text-[11px]" style={{ color: coverageColor }}>
                   <span aria-hidden>{coverageSymbol}</span> {coverageLabel}
                 </p>
-                {count >= 1 && knowledgeLatestByDomain[d.domain] ? (
+                {count >= 1 && domainLatestByDomain[d.domain] ? (
                   <div className="mt-2 rounded-md border border-[#E8F4F3] bg-[#FAFCFC] p-2 text-[11px]">
-                    <p className="font-semibold leading-tight" style={{ color: '#2D4459' }}>
-                      {truncateKnowledgeText(knowledgeLatestByDomain[d.domain]!.title, 30)}
+                    <p
+                      className="italic leading-snug"
+                      style={{ color: '#7A8F95', fontSize: 11 }}
+                    >
+                      {truncateKnowledgeText(domainLatestByDomain[d.domain]!.excerpt, 80)}
                     </p>
-                    <p className="mt-1 leading-snug" style={{ color: '#7A8F95' }}>
-                      {truncateKnowledgeText(knowledgeLatestByDomain[d.domain]!.excerpt, 80)}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                      <span style={{ color: '#7A8F95' }}>
-                        {knowledgeLatestByDomain[d.domain]!.word_count.toLocaleString()} words
-                      </span>
+                    <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
                       <button
                         type="button"
                         className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 transition-colors hover:bg-red-50"
                         onClick={(e) => {
                           e.stopPropagation();
-                          void handleDeleteKnowledgeDocument(knowledgeLatestByDomain[d.domain]!.id);
+                          void handleDeleteKnowledgeDocument(domainLatestByDomain[d.domain]!.id);
                         }}
                       >
                         Delete
@@ -3339,7 +3390,7 @@ ${workingText}`;
                       setKnowledgeModalDomain(d.domain);
                     }}
                   >
-                    + Upload Documents
+                    {count === 0 ? '+ Upload Documents' : '+ Upload More'}
                   </button>
                 </div>
               </div>
@@ -3351,15 +3402,16 @@ ${workingText}`;
           <p className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
             Recently Added
           </p>
-          {knowledgeRecent.length === 0 ? (
-            <p className="mt-2 text-[13px] italic" style={{ color: '#7A8F95' }}>
-              No documents uploaded yet. Click any domain to get started.
+          {recentDocs.length === 0 ? (
+            <p className="mt-2 whitespace-pre-line text-[13px] italic" style={{ color: '#7A8F95' }}>
+              {`No documents uploaded yet.\nClick any domain to get started.`}
             </p>
           ) : (
             <ul className="mt-3 space-y-2">
-              {knowledgeRecent.map((row) => {
-                const displayName = row.file_name ?? row.title;
-                let rel = row.created_at;
+              {recentDocs.map((row: any) => {
+                const titleLine = truncateKnowledgeText(String(row.title ?? ''), 35);
+                const wc = Number(row.word_count ?? 0);
+                let rel = String(row.created_at ?? '');
                 try {
                   rel = formatDistanceToNow(new Date(row.created_at), { addSuffix: true });
                 } catch {
@@ -3368,17 +3420,20 @@ ${workingText}`;
                 return (
                   <li
                     key={row.id}
-                    className="flex flex-wrap items-center justify-between gap-2 text-[13px]"
+                    className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]"
                   >
                     <span className="min-w-0 flex-1 font-medium" style={{ color: '#2D4459' }}>
                       <span aria-hidden>📄 </span>
-                      {displayName}
+                      {titleLine}
                     </span>
                     <span
                       className="shrink-0 rounded-[12px] px-2 py-0.5 text-[11px]"
                       style={{ background: '#F4F7F8', color: '#7A8F95' }}
                     >
                       {row.domain}
+                    </span>
+                    <span className="shrink-0 text-[11px]" style={{ color: '#7A8F95' }}>
+                      {wc.toLocaleString()} words
                     </span>
                     <span className="shrink-0 text-[11px]" style={{ color: '#7A8F95' }}>
                       {rel}
