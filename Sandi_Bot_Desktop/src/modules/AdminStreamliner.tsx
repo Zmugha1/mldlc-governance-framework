@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -767,6 +767,33 @@ function knowledgeHealthMotivation(score: number): string {
   return 'Excellent knowledge base — Coach Bot has rich context for every coaching session';
 }
 
+type TauriDialogOpenOptions = {
+  multiple?: boolean;
+  filters?: { name: string; extensions: string[] }[];
+  directory?: boolean;
+};
+
+/** Tauri v2 `open()` from plugin-dialog — result is string | string[] | null (not `{ path }`). */
+async function tauriDialogOpen(
+  options: TauriDialogOpenOptions = {}
+): Promise<string | string[] | null> {
+  return invoke<string | string[] | null>('plugin:dialog|open', { options });
+}
+
+/** Normalize dialog pick — do not use `result.path` (invalid for Tauri v2). */
+function normalizeDialogPickToPaths(result: unknown): string[] {
+  if (result == null) return [];
+  if (typeof result === 'string') return result.trim() !== '' ? [result] : [];
+  if (Array.isArray(result)) {
+    return result.filter((x): x is string => typeof x === 'string');
+  }
+  if (typeof result === 'object' && result !== null && 'path' in result) {
+    const p = (result as { path: unknown }).path;
+    if (typeof p === 'string' && p.trim() !== '') return [p];
+  }
+  return [];
+}
+
 // Stats Card
 function StatCard({ title, value, change, icon: Icon, color }: {
   title: string;
@@ -876,11 +903,6 @@ export default function AdminStreamliner() {
     tumay: { phase: 'idle' },
     fathom: { phase: 'idle' },
   });
-  const captureDiscInputRef = useRef<HTMLInputElement>(null);
-  const captureYou2InputRef = useRef<HTMLInputElement>(null);
-  const captureTumayInputRef = useRef<HTMLInputElement>(null);
-  const captureFathomInputRef = useRef<HTMLInputElement>(null);
-
   const [knowledgeDomainCounts, setKnowledgeDomainCounts] = useState<Record<string, number>>({});
   const [knowledgeRecent, setKnowledgeRecent] = useState<
     Array<{ title: string; domain: string; created_at: string; file_name: string | null }>
@@ -890,7 +912,6 @@ export default function AdminStreamliner() {
     Array<{ title: string; file_name: string | null; created_at: string }>
   >([]);
   const [knowledgeCardHover, setKnowledgeCardHover] = useState<string | null>(null);
-  const knowledgeFileInputRef = useRef<HTMLInputElement>(null);
 
   const refreshKnowledgeDocuments = useCallback(async () => {
     const counts = await dbSelect<{ domain: string; c: number }>(
@@ -969,6 +990,10 @@ export default function AdminStreamliner() {
       for (const file of files) {
         const lower = file.name.toLowerCase();
         if (!lower.endsWith('.pdf')) continue;
+        const maybePath = (file as File & { path?: string }).path;
+        if (maybePath && typeof maybePath === 'string') {
+          console.log('File path:', maybePath);
+        }
         const id = crypto.randomUUID();
         await dbExecute(
           `INSERT INTO knowledge_documents (id, title, content, domain, doc_type, file_name, file_size, embedded)
@@ -981,6 +1006,45 @@ export default function AdminStreamliner() {
     },
     [knowledgeModalDomain, refreshKnowledgeDocuments, loadKnowledgeModalDocs]
   );
+
+  const uploadKnowledgePdfPaths = useCallback(
+    async (paths: string[]) => {
+      const domain = knowledgeModalDomain;
+      if (!domain) return;
+      for (const filePath of paths) {
+        console.log('File path:', filePath);
+        const lower = filePath.toLowerCase();
+        if (!lower.endsWith('.pdf')) continue;
+        const fileName = filePath.split(/[/\\]/).pop() ?? filePath;
+        const id = crypto.randomUUID();
+        await dbExecute(
+          `INSERT INTO knowledge_documents (id, title, content, domain, doc_type, file_name, file_size, embedded)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+          [id, fileName, KNOWLEDGE_UPLOAD_PLACEHOLDER, domain, 'pdf', fileName, 0]
+        );
+      }
+      await refreshKnowledgeDocuments();
+      await loadKnowledgeModalDocs(domain);
+    },
+    [knowledgeModalDomain, refreshKnowledgeDocuments, loadKnowledgeModalDocs]
+  );
+
+  const openKnowledgePdfPicker = async () => {
+    let result: string | string[] | null;
+    try {
+      result = await tauriDialogOpen({
+        multiple: true,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+    } catch (e) {
+      console.error('[knowledge] dialog open failed:', e);
+      toast.error('Could not open file picker.');
+      return;
+    }
+    const paths = normalizeDialogPickToPaths(result);
+    if (paths.length === 0) return;
+    await uploadKnowledgePdfPaths(paths);
+  };
 
   const fetchValidateReadyCount = async (): Promise<number> => {
     const rows = await dbSelect<{ c: number }>(
@@ -1508,11 +1572,11 @@ export default function AdminStreamliner() {
     }
   };
 
-  const runCaptureUpload = async (kind: CaptureDocKind, file: File) => {
+  const runCaptureUpload = async (kind: CaptureDocKind, filePath: string, fileName: string) => {
     const clientId = selectedCaptureClientId;
     if (!clientId) return;
-    const tauriPath = (file as File & { path?: string }).path;
-    if (!tauriPath || typeof tauriPath !== 'string' || tauriPath.trim() === '') {
+    const tauriPath = filePath.trim();
+    if (!tauriPath) {
       setCaptureUpload((prev) => ({
         ...prev,
         [kind]: {
@@ -1532,6 +1596,7 @@ export default function AdminStreamliner() {
     }));
 
     try {
+      console.log('File path:', tauriPath);
       let textToUse = '';
       if (kind !== 'tumay') {
         let extracted: { text: string; success: boolean; error?: string };
@@ -1575,7 +1640,7 @@ export default function AdminStreamliner() {
         clientId,
         docType,
         textToUse,
-        file.name,
+        fileName,
         tauriPath
       );
 
@@ -1637,6 +1702,32 @@ export default function AdminStreamliner() {
           message: `❌ Failed — ${msg}`,
         },
       }));
+    }
+  };
+
+  const pickCaptureFiles = async (kind: CaptureDocKind) => {
+    const clientId = selectedCaptureClientId;
+    if (!clientId) return;
+    const multiple = kind === 'fathom';
+    let result: string | string[] | null;
+    try {
+      result = await tauriDialogOpen({
+        multiple,
+        filters:
+          kind === 'fathom'
+            ? [{ name: 'PDF or text', extensions: ['pdf', 'txt'] }]
+            : [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+    } catch (e) {
+      console.error('[capture] dialog open failed:', e);
+      toast.error('Could not open file picker.');
+      return;
+    }
+    const paths = normalizeDialogPickToPaths(result);
+    if (paths.length === 0) return;
+    for (const filePath of paths) {
+      const fileName = filePath.split(/[/\\]/).pop() ?? 'file';
+      await runCaptureUpload(kind, filePath, fileName);
     }
   };
 
@@ -2211,10 +2302,7 @@ ${workingText}`;
   const selectedCaptureRow = captureRows.find((r) => r.id === selectedCaptureClientId) ?? null;
 
   const openCapturePicker = (kind: CaptureDocKind) => {
-    if (kind === 'disc') captureDiscInputRef.current?.click();
-    else if (kind === 'you2') captureYou2InputRef.current?.click();
-    else if (kind === 'tumay') captureTumayInputRef.current?.click();
-    else captureFathomInputRef.current?.click();
+    void pickCaptureFiles(kind);
   };
 
   const quickForRow = (row: CaptureClientRow): { label: string; kind: CaptureDocKind } => {
@@ -3000,57 +3088,6 @@ ${workingText}`;
             </div>
           ) : null}
         </div>
-
-        <input
-          ref={captureDiscInputRef}
-          type="file"
-          accept=".pdf,application/pdf"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = '';
-            if (f) void runCaptureUpload('disc', f);
-          }}
-        />
-        <input
-          ref={captureYou2InputRef}
-          type="file"
-          accept=".pdf,application/pdf"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = '';
-            if (f) void runCaptureUpload('you2', f);
-          }}
-        />
-        <input
-          ref={captureTumayInputRef}
-          type="file"
-          accept=".pdf,application/pdf"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = '';
-            if (f) void runCaptureUpload('tumay', f);
-          }}
-        />
-        <input
-          ref={captureFathomInputRef}
-          type="file"
-          accept=".pdf,.txt,application/pdf,text/plain"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const list = e.target.files;
-            e.target.value = '';
-            if (!list?.length) return;
-            void (async () => {
-              for (const f of Array.from(list)) {
-                await runCaptureUpload('fathom', f);
-              }
-            })();
-          }}
-        />
       </div>
 
       {/* SECTION 2 — My Identity */}
@@ -3302,29 +3339,16 @@ ${workingText}`;
                 {knowledgeModalMeta?.description ?? ''}
               </DialogDescription>
             </DialogHeader>
-            <input
-              ref={knowledgeFileInputRef}
-              type="file"
-              accept=".pdf,application/pdf"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                const files = e.target.files;
-                if (!files?.length) return;
-                void uploadKnowledgePdfFiles(Array.from(files));
-                e.target.value = '';
-              }}
-            />
             <div
               role="button"
               tabIndex={0}
               className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors hover:bg-[#F4F7F8]"
               style={{ borderColor: '#C8E8E5', color: '#7A8F95' }}
-              onClick={() => knowledgeFileInputRef.current?.click()}
+              onClick={() => void openKnowledgePdfPicker()}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  knowledgeFileInputRef.current?.click();
+                  void openKnowledgePdfPicker();
                 }
               }}
               onDragOver={(e) => {
