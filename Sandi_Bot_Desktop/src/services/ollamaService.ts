@@ -11,7 +11,7 @@ export async function callOllama(
 
   const response = await invoke<string>(
     'ollama_generate',
-    { model, prompt }
+    { model, prompt, system: '' }
   );
 
   console.log('[OLLAMA] response length:',
