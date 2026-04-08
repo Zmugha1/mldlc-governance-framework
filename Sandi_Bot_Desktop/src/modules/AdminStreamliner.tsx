@@ -62,6 +62,7 @@ import {
   uploadKnowledgeDocument,
   getDocumentsByDomain,
   deleteDocument,
+  embedKnowledgeDocument,
   type KnowledgeDocument,
 } from '../services/knowledgeService';
 import { createBackup, getLastBackup } from '@/services/backupService';
@@ -849,6 +850,46 @@ function parseJsonFromOllama(raw: string): Record<string, unknown> {
   return JSON.parse(s) as Record<string, unknown>;
 }
 
+const COACHING_STYLE_PILLS: readonly string[] = [
+  'Patient and methodical',
+  'Direct and decisive',
+  'Warm and encouraging',
+  'Analytical and structured',
+  'Story-driven',
+  'Question-focused',
+  'Data-informed',
+  'Intuition-led',
+  'High energy',
+  'Calm and steady',
+  'Challenging',
+  'Supportive',
+];
+
+const PHILOSOPHY_HINT_PILLS: readonly string[] = [
+  'What is your coaching approach?',
+  'How do you use CLEAR?',
+  'What makes a great session?',
+  'How do you handle objections?',
+];
+
+function parseStyleFromDb(style: string): {
+  selected: string[];
+  custom: string[];
+} {
+  const parts = style
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const pillSet = new Set(COACHING_STYLE_PILLS);
+  const selected: string[] = [];
+  const custom: string[] = [];
+  for (const p of parts) {
+    if (pillSet.has(p)) selected.push(p);
+    else custom.push(p);
+  }
+  return { selected, custom };
+}
+
 // Stats Card
 function StatCard({ title, value, change, icon: Icon, color }: {
   title: string;
@@ -980,6 +1021,14 @@ export default function AdminStreamliner() {
   const [bioEditing, setBioEditing] = useState(false);
   const [bioSaving, setBioSaving] = useState(false);
 
+  const [philosophyDraft, setPhilosophyDraft] = useState('');
+  const [philosophyEditing, setPhilosophyEditing] = useState(false);
+  const [philosophySaving, setPhilosophySaving] = useState(false);
+  const [styleSelected, setStyleSelected] = useState<string[]>([]);
+  const [styleCustomExtras, setStyleCustomExtras] = useState<string[]>([]);
+  const [styleCustomInput, setStyleCustomInput] = useState('');
+  const [styleSaving, setStyleSaving] = useState(false);
+
   const refreshKnowledgeDocuments = useCallback(async () => {
     const statRows = await dbSelect<{
       domain: string;
@@ -1105,16 +1154,27 @@ export default function AdminStreamliner() {
         };
         setCoachProfile(next);
         setBioDraft(next.bio);
+        setPhilosophyDraft(next.coaching_philosophy);
+        const sp = parseStyleFromDb(next.coaching_style);
+        setStyleSelected(sp.selected);
+        setStyleCustomExtras(sp.custom);
       } else {
         const empty = emptyCoachProfile();
         setCoachProfile(empty);
         setBioDraft('');
+        setPhilosophyDraft('');
+        setStyleSelected([]);
+        setStyleCustomExtras([]);
       }
       setBioEditing(false);
+      setPhilosophyEditing(false);
     } catch (e) {
       console.error('[coach_profile] load failed:', e);
       setCoachProfile(emptyCoachProfile());
       setBioDraft('');
+      setPhilosophyDraft('');
+      setStyleSelected([]);
+      setStyleCustomExtras([]);
     } finally {
       setCoachProfileLoading(false);
     }
@@ -1225,6 +1285,129 @@ export default function AdminStreamliner() {
       setBioSaving(false);
     }
   }, [bioDraft, loadCoachProfile]);
+
+  const syncCoachIdentityToKnowledge = useCallback(async () => {
+    const rows = await dbSelect<{
+      bio: string | null;
+      certifications: string | null;
+      coaching_philosophy: string | null;
+      coaching_style: string | null;
+    }>(
+      `SELECT bio, certifications, coaching_philosophy, coaching_style
+       FROM coach_profile WHERE id = 'coach'`,
+      []
+    );
+    const r = rows[0];
+    if (!r) return;
+    const combined = [
+      r.bio?.trim() && `Bio: ${r.bio.trim()}`,
+      r.certifications?.trim() && `Certifications: ${r.certifications.trim()}`,
+      r.coaching_philosophy?.trim() &&
+        `Coaching philosophy: ${r.coaching_philosophy.trim()}`,
+      r.coaching_style?.trim() && `Coaching style: ${r.coaching_style.trim()}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    if (!combined.trim()) return;
+    const wordCount = combined.split(/\s+/).filter(Boolean).length;
+    const excerpt = combined.substring(0, 200).trim();
+    await dbExecute(
+      `INSERT INTO knowledge_documents
+        (id, title, content, excerpt, domain, doc_type, file_name, file_size, word_count, extracted, embedded, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         content = excluded.content,
+         excerpt = excluded.excerpt,
+         word_count = excluded.word_count,
+         domain = excluded.domain,
+         doc_type = excluded.doc_type,
+         extracted = excluded.extracted,
+         embedded = 0`,
+      [
+        'coach-identity',
+        'Coach Identity and Voice',
+        combined,
+        excerpt,
+        'Coach Identity',
+        'profile',
+        '',
+        0,
+        wordCount,
+        1,
+        0,
+      ]
+    );
+    try {
+      await embedKnowledgeDocument('coach-identity');
+      await refreshKnowledgeDocuments();
+    } catch (e) {
+      console.error('[coach-identity] embed failed:', e);
+    }
+  }, [refreshKnowledgeDocuments]);
+
+  const savePhilosophy = useCallback(async () => {
+    const text = philosophyDraft.trim();
+    if (!text) return;
+    setPhilosophySaving(true);
+    try {
+      await dbExecute(
+        `INSERT INTO coach_profile (id, coaching_philosophy, updated_at)
+         VALUES ('coach', ?, datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           coaching_philosophy = excluded.coaching_philosophy,
+           updated_at = excluded.updated_at`,
+        [text]
+      );
+      await loadCoachProfile();
+      setPhilosophyEditing(false);
+      toast.success('✅ Philosophy saved', {
+        duration: 2000,
+        style: { background: '#3BBFBF', color: 'white' },
+      });
+      await syncCoachIdentityToKnowledge();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPhilosophySaving(false);
+    }
+  }, [philosophyDraft, loadCoachProfile, syncCoachIdentityToKnowledge]);
+
+  const saveStyle = useCallback(async () => {
+    const extras = [...styleCustomExtras];
+    if (styleCustomInput.trim()) extras.push(styleCustomInput.trim());
+    const parts = [...styleSelected, ...extras];
+    if (parts.length === 0) return;
+    const styleStr = parts.join(', ');
+    setStyleSaving(true);
+    try {
+      await dbExecute(
+        `INSERT INTO coach_profile (id, coaching_style, updated_at)
+         VALUES ('coach', ?, datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           coaching_style = excluded.coaching_style,
+           updated_at = excluded.updated_at`,
+        [styleStr]
+      );
+      setStyleCustomInput('');
+      await loadCoachProfile();
+      toast.success('✅ Style saved', {
+        duration: 2000,
+        style: { background: '#3BBFBF', color: 'white' },
+      });
+      await syncCoachIdentityToKnowledge();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStyleSaving(false);
+    }
+  }, [
+    styleSelected,
+    styleCustomExtras,
+    styleCustomInput,
+    loadCoachProfile,
+    syncCoachIdentityToKnowledge,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3417,6 +3600,29 @@ ${workingText}`;
           </p>
         ) : (
           <>
+            {identityScore === 100 ? (
+              <div
+                className="mt-4"
+                style={{
+                  background: 'linear-gradient(135deg, #2D4459 0%, #3BBFBF 100%)',
+                  borderRadius: 12,
+                  padding: '20px 24px',
+                  color: 'white',
+                }}
+              >
+                <p className="font-bold" style={{ fontSize: 16, color: 'white' }}>
+                  🎉 Identity Complete
+                </p>
+                <p className="mt-2 text-[13px] leading-relaxed" style={{ color: 'white' }}>
+                  Coach Bot now knows your voice. Every question it generates will reflect your coaching style,
+                  your philosophy, and your professional expertise.
+                </p>
+                <p className="mt-3 text-[12px]" style={{ color: '#C8E8E5' }}>
+                  Identity Score: 100%
+                </p>
+              </div>
+            ) : null}
+
             <div className="mt-6 flex flex-wrap items-start justify-between gap-6">
               <div className="min-w-0 flex-1">
                 <p
@@ -3610,6 +3816,238 @@ ${workingText}`;
                   </Button>
                 </>
               )}
+            </div>
+
+            <div
+              className="mt-2 bg-white"
+              style={{
+                border: '1px solid #C8E8E5',
+                borderRadius: 10,
+                padding: 20,
+                marginBottom: 16,
+              }}
+            >
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                  💭 Your Coaching Philosophy
+                </p>
+                <span
+                  className="text-[11px] font-medium"
+                  style={{
+                    background: '#F0FAFA',
+                    color: '#3BBFBF',
+                    borderRadius: 12,
+                    padding: '2px 8px',
+                  }}
+                >
+                  +40 pts
+                </span>
+              </div>
+              <p className="mb-3 text-[12px] leading-relaxed" style={{ color: '#7A8F95' }}>
+                How do you coach? What matters most to you when working with a seeker?
+              </p>
+
+              {cp.coaching_philosophy.trim().length > 0 && !philosophyEditing ? (
+                <>
+                  <div
+                    className="rounded-lg p-3 pl-4 leading-relaxed"
+                    style={{
+                      background: '#F4F7F8',
+                      borderRadius: 8,
+                      color: '#2D4459',
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {cp.coaching_philosophy}
+                  </div>
+                  <p className="mt-2 text-[11px]" style={{ color: '#7A8F95' }}>
+                    {cp.coaching_philosophy.trim().split(/\s+/).filter(Boolean).length} words captured
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 text-[11px] font-medium"
+                    style={{ color: '#7A8F95', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    onClick={() => setPhilosophyEditing(true)}
+                  >
+                    Edit Philosophy
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Textarea
+                    className="min-h-[140px] resize-y rounded-lg border-[#C8E8E5] px-3 py-3 text-[13px]"
+                    style={{ borderRadius: 8 }}
+                    maxLength={2000}
+                    placeholder="Example: I believe every seeker has a unique dream waiting to be discovered. My role is not to push them toward a business but to ask the right questions until they find their own answer. I use the CLEAR framework to structure every conversation..."
+                    value={philosophyDraft}
+                    onChange={(e) => setPhilosophyDraft(e.target.value.slice(0, 2000))}
+                  />
+                  <div className="mt-1 flex justify-end">
+                    <span
+                      className="text-[11px]"
+                      style={{
+                        color: philosophyDraft.length > 1800 ? '#F05F57' : '#7A8F95',
+                      }}
+                    >
+                      {philosophyDraft.length} / 2000 characters
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {PHILOSOPHY_HINT_PILLS.map((hint) => (
+                      <button
+                        key={hint}
+                        type="button"
+                        className="rounded-full px-3 py-1 text-[11px] font-medium transition-colors hover:opacity-90"
+                        style={{ background: '#3BBFBF', color: 'white' }}
+                        onClick={() => {
+                          setPhilosophyDraft((prev) => {
+                            const prefix = prev.trim() ? `${prev.trim()}\n\n` : '';
+                            return `${prefix}${hint}\n`;
+                          });
+                        }}
+                      >
+                        {hint}
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    className="mt-4 rounded-lg px-5 py-2 text-[13px] font-bold"
+                    style={{ background: '#F05F57', color: 'white' }}
+                    disabled={philosophySaving || !philosophyDraft.trim()}
+                    onClick={() => void savePhilosophy()}
+                  >
+                    Save Philosophy
+                  </Button>
+                </>
+              )}
+            </div>
+
+            <div
+              className="mt-2 bg-white"
+              style={{
+                border: '1px solid #C8E8E5',
+                borderRadius: 10,
+                padding: 20,
+                marginBottom: 16,
+              }}
+            >
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                  🎯 Your Coaching Style
+                </p>
+                <span
+                  className="text-[11px] font-medium"
+                  style={{
+                    background: '#F0FAFA',
+                    color: '#3BBFBF',
+                    borderRadius: 12,
+                    padding: '2px 8px',
+                  }}
+                >
+                  +20 pts
+                </span>
+              </div>
+              <p className="mb-3 text-[12px] leading-relaxed" style={{ color: '#7A8F95' }}>
+                How would you describe your approach in a few words?
+              </p>
+
+              <div className="space-y-2">
+                {[0, 4, 8].map((start) => (
+                  <div key={start} className="flex flex-wrap gap-2">
+                    {COACHING_STYLE_PILLS.slice(start, start + 4).map((pill) => {
+                      const selected = styleSelected.includes(pill);
+                      return (
+                        <button
+                          key={pill}
+                          type="button"
+                          className="rounded-full px-3 py-1.5 text-[12px] transition-colors"
+                          style={{
+                            cursor: 'pointer',
+                            background: selected ? '#F05F57' : '#F4F7F8',
+                            border: `1px solid ${selected ? '#F05F57' : '#C8E8E5'}`,
+                            color: selected ? 'white' : '#7A8F95',
+                          }}
+                          onClick={() => {
+                            setStyleSelected((prev) =>
+                              prev.includes(pill) ? prev.filter((x) => x !== pill) : [...prev, pill]
+                            );
+                          }}
+                        >
+                          {pill}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+
+              {styleCustomExtras.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {styleCustomExtras.map((c, i) => (
+                    <span
+                      key={`${c}-${i}`}
+                      className="rounded-full px-2 py-1 text-[11px]"
+                      style={{ background: '#F4F7F8', color: '#2D4459', border: '1px solid #C8E8E5' }}
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <p className="w-full text-[12px]" style={{ color: '#7A8F95' }}>
+                  Add your own style descriptor
+                </p>
+                <input
+                  type="text"
+                  className="rounded-lg border border-[#C8E8E5] px-3 py-2 text-[13px]"
+                  style={{ width: 200, borderRadius: 8 }}
+                  placeholder="e.g. Vision-focused"
+                  value={styleCustomInput}
+                  onChange={(e) => setStyleCustomInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const t = styleCustomInput.trim();
+                      if (!t) return;
+                      setStyleCustomExtras((prev) => [...prev, t]);
+                      setStyleCustomInput('');
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-lg px-3 py-2 text-[13px]"
+                  style={{ borderColor: '#C8E8E5' }}
+                  onClick={() => {
+                    const t = styleCustomInput.trim();
+                    if (!t) return;
+                    setStyleCustomExtras((prev) => [...prev, t]);
+                    setStyleCustomInput('');
+                  }}
+                >
+                  Add
+                </Button>
+              </div>
+
+              <Button
+                type="button"
+                className="mt-4 rounded-lg px-5 py-2 text-[13px] font-bold"
+                style={{ background: '#F05F57', color: 'white' }}
+                disabled={
+                  styleSaving ||
+                  (styleSelected.length === 0 &&
+                    styleCustomExtras.length === 0 &&
+                    !styleCustomInput.trim())
+                }
+                onClick={() => void saveStyle()}
+              >
+                Save Style
+              </Button>
             </div>
           </>
         )}
