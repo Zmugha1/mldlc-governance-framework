@@ -180,3 +180,14 @@ pub fn migration_61() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 62: Fathom pipeline updates `block_reflection` (v50 added `block_reflection_block` only).
+/// Other block_* columns already exist after migration 50; adding them again would fail on upgrade.
+pub fn migration_62() -> Migration {
+    Migration {
+        version: 62,
+        description: "add_missing_fathom_block_columns_to_coaching_sessions",
+        sql: "ALTER TABLE coaching_sessions ADD COLUMN block_reflection TEXT;",
+        kind: MigrationKind::Up,
+    }
+}
