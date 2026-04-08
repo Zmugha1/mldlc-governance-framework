@@ -7,8 +7,34 @@ mod you2_parser;
 mod tumay_parser;
 mod migrations;
 
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::TcpListener;
+
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
+
+/// OAuth client id from Google Cloud Console (set `GOOGLE_CLIENT_ID` in the environment).
+fn google_client_id() -> Result<String, String> {
+    std::env::var("GOOGLE_CLIENT_ID")
+        .map_err(|_| "GOOGLE_CLIENT_ID is not set".to_string())
+}
+
+/// OAuth client secret (set `GOOGLE_CLIENT_SECRET` in the environment; never commit real values).
+fn google_client_secret() -> Result<String, String> {
+    std::env::var("GOOGLE_CLIENT_SECRET")
+        .map_err(|_| "GOOGLE_CLIENT_SECRET is not set".to_string())
+}
+
+const GOOGLE_AUTH_URI: &str = "https://accounts.google.com/o/oauth2/auth";
+
+const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
+
+const GOOGLE_REDIRECT_URI: &str = "http://localhost:9879";
+
+const GOOGLE_SCOPES: &str = "https://www.googleapis.com/auth/gmail.readonly \
+     https://www.googleapis.com/auth/calendar.readonly \
+     https://www.googleapis.com/auth/userinfo.email";
 
 #[tauri::command]
 fn greet(name: String) -> String {
@@ -391,6 +417,129 @@ async fn ollama_embed(
     }
 
     Ok(embedding)
+}
+
+#[tauri::command]
+async fn google_auth_url() -> Result<String, String> {
+    let client_id = google_client_id()?;
+    let url = format!(
+        "{}?client_id={}&redirect_uri={}&response_type=code&scope={}&access_type=offline&prompt=consent",
+        GOOGLE_AUTH_URI,
+        urlencoding::encode(client_id.as_str()),
+        urlencoding::encode(GOOGLE_REDIRECT_URI),
+        urlencoding::encode(GOOGLE_SCOPES)
+    );
+    Ok(url)
+}
+
+#[tauri::command]
+async fn google_exchange_code(code: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let client_id = google_client_id()?;
+    let client_secret = google_client_secret()?;
+
+    let mut params = HashMap::new();
+    params.insert("code", code.as_str());
+    params.insert("client_id", client_id.as_str());
+    params.insert("client_secret", client_secret.as_str());
+    params.insert("redirect_uri", GOOGLE_REDIRECT_URI);
+    params.insert("grant_type", "authorization_code");
+
+    let response = client
+        .post(GOOGLE_TOKEN_URI)
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn google_refresh_token(refresh_token: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let client_id = google_client_id()?;
+    let client_secret = google_client_secret()?;
+
+    let mut params = HashMap::new();
+    params.insert("refresh_token", refresh_token.as_str());
+    params.insert("client_id", client_id.as_str());
+    params.insert("client_secret", client_secret.as_str());
+    params.insert("grant_type", "refresh_token");
+
+    let response = client
+        .post(GOOGLE_TOKEN_URI)
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn google_get_user_info(access_token: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get("https://www.googleapis.com/oauth2/v2/userinfo")
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+fn extract_oauth_code_from_http_request(request: &str) -> Result<String, String> {
+    let idx = request.find("code=").ok_or("No code in redirect")?;
+    let rest = &request[idx + 5..];
+    let end = rest
+        .find(|c| c == '&' || c == ' ' || c == '\r' || c == '\n')
+        .unwrap_or(rest.len());
+    let encoded = rest[..end].trim();
+    urlencoding::decode(encoded)
+        .map(|c| c.into_owned())
+        .map_err(|_| "Invalid authorization code encoding".to_string())
+}
+
+#[tauri::command]
+async fn google_start_local_server() -> Result<String, String> {
+    tokio::task::spawn_blocking(|| {
+        let listener = TcpListener::bind("127.0.0.1:9879").map_err(|e| e.to_string())?;
+        let (mut stream, _) = listener.accept().map_err(|e| e.to_string())?;
+        let mut buf = [0u8; 4096];
+        let n = stream.read(&mut buf).map_err(|e| e.to_string())?;
+        let request = String::from_utf8_lossy(&buf[..n]);
+        let code = extract_oauth_code_from_http_request(&request)?;
+        let response = "HTTP/1.1 200 OK\r\n\
+Content-Type: text/html; charset=utf-8\r\n\
+Connection: close\r\n\
+\r\n\
+<html><body>\
+<h2>Coach Bot Connected!</h2>\
+<p>You can close this window and return to Coach Bot.</p>\
+</body></html>";
+        stream.write_all(response.as_bytes()).map_err(|e| e.to_string())?;
+        Ok(code)
+    })
+    .await
+    .map_err(|e| format!("OAuth server task failed: {}", e))?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1070,6 +1219,11 @@ pub fn run() {
             pdf_parser::parse_pdf,
             file_watcher::watch_folder,
             backup::create_backup,
+            google_auth_url,
+            google_exchange_code,
+            google_refresh_token,
+            google_get_user_info,
+            google_start_local_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
