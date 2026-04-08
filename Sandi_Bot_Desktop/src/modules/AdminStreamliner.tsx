@@ -30,6 +30,8 @@ import {
   ChevronRight,
   Info,
   FileUp,
+  Briefcase,
+  Zap,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -3600,6 +3602,247 @@ ${workingText}`;
           </p>
         ) : (
           <>
+            <div
+              className="mt-4"
+              style={{
+                background: '#2D4459',
+                borderRadius: 12,
+                padding: '20px 24px',
+                marginBottom: 20,
+                color: 'white',
+              }}
+            >
+              <p className="font-bold" style={{ fontSize: 15, color: 'white', marginBottom: 12 }}>
+                What Coach Bot Knows About You
+              </p>
+
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <Briefcase
+                    className="mt-0.5 shrink-0"
+                    style={{ width: 16, height: 16, color: hasResume ? '#3BBFBF' : '#C8E8E5' }}
+                    aria-hidden
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium" style={{ color: 'white' }}>
+                      Professional Background
+                    </p>
+                  </div>
+                </div>
+                <div className="max-w-[min(100%,280px)] shrink-0 text-right">
+                  {hasResume ? (
+                    <>
+                      <p className="text-[13px] font-medium" style={{ color: '#3BBFBF' }}>
+                        ✅ Known
+                      </p>
+                      <p className="mt-0.5 text-[11px]" style={{ color: '#C8E8E5' }}>
+                        {cp.years_experience} years
+                        {cp.certifications?.trim()
+                          ? ` · ${truncateKnowledgeText(cp.certifications, 80)}`
+                          : ''}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[13px]" style={{ color: '#C8E8E5' }}>
+                      ⚪ Upload your resume
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <MessageSquare
+                    className="mt-0.5 shrink-0"
+                    style={{ width: 16, height: 16, color: philosophyDone ? '#3BBFBF' : '#C8E8E5' }}
+                    aria-hidden
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium" style={{ color: 'white' }}>
+                      Coaching Philosophy
+                    </p>
+                  </div>
+                </div>
+                <div className="max-w-[min(100%,280px)] shrink-0 text-right">
+                  {philosophyDone ? (
+                    <>
+                      <p className="text-[13px] font-medium" style={{ color: '#3BBFBF' }}>
+                        ✅ Known
+                      </p>
+                      <p
+                        className="mt-0.5 text-[11px] italic leading-snug"
+                        style={{ color: '#C8E8E5' }}
+                      >
+                        {truncateKnowledgeText(cp.coaching_philosophy, 60)}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[13px]" style={{ color: '#C8E8E5' }}>
+                      ⚪ Describe how you coach
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <Zap
+                    className="mt-0.5 shrink-0"
+                    style={{ width: 16, height: 16, color: styleSet ? '#3BBFBF' : '#C8E8E5' }}
+                    aria-hidden
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium" style={{ color: 'white' }}>
+                      Coaching Style
+                    </p>
+                  </div>
+                </div>
+                <div className="max-w-[min(100%,280px)] shrink-0 text-right">
+                  {styleSet ? (
+                    <>
+                      <p className="text-[13px] font-medium" style={{ color: '#3BBFBF' }}>
+                        ✅ Known
+                      </p>
+                      <div className="mt-1 flex flex-wrap justify-end gap-1">
+                        {cp.coaching_style
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                          .map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium"
+                              style={{
+                                background: 'rgba(59,191,191,0.2)',
+                                color: '#3BBFBF',
+                                borderRadius: 10,
+                              }}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-[13px]" style={{ color: '#C8E8E5' }}>
+                      ⚪ Select your style
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className="my-4"
+                style={{ height: 1, background: 'rgba(255,255,255,0.1)' }}
+                aria-hidden
+              />
+
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <span style={{ color: '#C8E8E5', fontSize: 12 }}>Voice captured</span>
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+                  <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden>
+                    <circle
+                      cx="20"
+                      cy="20"
+                      r="17"
+                      fill="none"
+                      stroke="rgba(255,255,255,0.15)"
+                      strokeWidth="3"
+                    />
+                    <circle
+                      cx="20"
+                      cy="20"
+                      r="17"
+                      fill="none"
+                      stroke="#3BBFBF"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeDasharray={`${(identityScore / 100) * 106.814} 106.814`}
+                      transform="rotate(-90 20 20)"
+                    />
+                  </svg>
+                  <span
+                    className="absolute font-bold"
+                    style={{ fontSize: 13, color: 'white' }}
+                  >
+                    {identityScore}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {!hasResume ? (
+              <div
+                className="mb-4"
+                style={{
+                  background: '#FFF8F0',
+                  borderLeft: '4px solid #F05F57',
+                  borderRadius: 8,
+                  padding: '12px 16px',
+                }}
+              >
+                <p className="font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  👉 Start here — upload your resume
+                </p>
+                <p className="mt-2 text-[12px] leading-relaxed" style={{ color: '#7A8F95' }}>
+                  Your resume gives Coach Bot your professional background and credentials. It takes 30 seconds.
+                </p>
+              </div>
+            ) : !philosophyDone ? (
+              <div
+                className="mb-4"
+                style={{
+                  background: '#FFF8F0',
+                  borderLeft: '4px solid #F05F57',
+                  borderRadius: 8,
+                  padding: '12px 16px',
+                }}
+              >
+                <p className="font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  👉 Next — describe your coaching philosophy
+                </p>
+                <p className="mt-2 text-[12px] leading-relaxed" style={{ color: '#7A8F95' }}>
+                  This is the most important step. Tell Coach Bot how you coach and it will generate questions that
+                  sound like you.
+                </p>
+              </div>
+            ) : !styleSet ? (
+              <div
+                className="mb-4"
+                style={{
+                  background: '#FFF8F0',
+                  borderLeft: '4px solid #F05F57',
+                  borderRadius: 8,
+                  padding: '12px 16px',
+                }}
+              >
+                <p className="font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  👉 Last step — select your coaching style
+                </p>
+                <p className="mt-2 text-[12px] leading-relaxed" style={{ color: '#7A8F95' }}>
+                  Choose the words that describe how you show up for seekers.
+                </p>
+              </div>
+            ) : (
+              <div
+                className="mb-4"
+                style={{
+                  background: '#F0FAFA',
+                  borderLeft: '4px solid #3BBFBF',
+                  borderRadius: 8,
+                  padding: '12px 16px',
+                }}
+              >
+                <p className="font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                  ✅ Your identity is complete
+                </p>
+                <p className="mt-2 text-[12px] leading-relaxed" style={{ color: '#7A8F95' }}>
+                  Coach Bot knows your voice. Every response it generates reflects your expertise, your philosophy,
+                  and your style.
+                </p>
+              </div>
+            )}
+
             {identityScore === 100 ? (
               <div
                 className="mt-4"
@@ -4048,6 +4291,39 @@ ${workingText}`;
               >
                 Save Style
               </Button>
+            </div>
+
+            <div
+              className="mt-6"
+              style={{
+                background: '#F4F7F8',
+                borderRadius: 8,
+                padding: '14px 16px',
+              }}
+            >
+              <p className="mb-2 font-bold text-[13px]" style={{ color: '#2D4459' }}>
+                How this improves Coach Bot
+              </p>
+              <ul className="space-y-2 text-[12px]" style={{ color: '#2D4459' }}>
+                <li className="flex gap-2">
+                  <span className="shrink-0" style={{ color: '#3BBFBF' }}>
+                    ✓
+                  </span>
+                  <span>Best Next Questions sound like Sandi — not generic AI</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="shrink-0" style={{ color: '#3BBFBF' }}>
+                    ✓
+                  </span>
+                  <span>Vision statements use your language and coaching voice</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="shrink-0" style={{ color: '#3BBFBF' }}>
+                    ✓
+                  </span>
+                  <span>Session grading reflects your coaching standards not a generic rubric</span>
+                </li>
+              </ul>
             </div>
           </>
         )}
