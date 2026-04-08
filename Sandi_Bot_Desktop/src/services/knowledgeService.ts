@@ -20,6 +20,8 @@ export interface KnowledgeUploadResult {
   success: boolean;
   document?: KnowledgeDocument;
   error?: string;
+  /** Shown after extraction + embedding when applicable */
+  embedCompleteMessage?: string;
 }
 
 function mapRow(row: Record<string, unknown>): KnowledgeDocument {
@@ -71,16 +73,196 @@ async function readFileContentForUpload(filePath: string): Promise<string> {
   return extracted.text;
 }
 
+/** Last sentence-boundary end index (exclusive) within words[from..exclusiveEnd), or exclusiveEnd if none. */
+function findSentenceEndExclusive(
+  words: string[],
+  from: number,
+  exclusiveEnd: number
+): number {
+  for (let j = exclusiveEnd - 1; j > from; j--) {
+    if (/[.!?]["']?$/.test(words[j])) {
+      return j + 1;
+    }
+  }
+  return exclusiveEnd;
+}
+
+/**
+ * Split text into overlapping word chunks, respecting sentence boundaries where possible.
+ * Each chunk has at most `chunkSize` words; consecutive chunks overlap by `overlap` words.
+ */
+export function chunkText(
+  text: string,
+  chunkSize: number = 500,
+  overlap: number = 50
+): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const chunks: string[] = [];
+  let start = 0;
+
+  while (start < words.length) {
+    let end = Math.min(start + chunkSize, words.length);
+    if (end < words.length) {
+      const sentEnd = findSentenceEndExclusive(words, start, end);
+      if (sentEnd > start) {
+        end = sentEnd;
+      }
+    }
+    const piece = words.slice(start, end).join(' ').trim();
+    if (piece) chunks.push(piece);
+
+    if (end >= words.length) break;
+    const nextStart = Math.max(start + 1, end - overlap);
+    start = nextStart;
+  }
+
+  return chunks;
+}
+
+function parseEmbeddingFromDb(raw: string | null | undefined): number[] {
+  if (raw == null || raw === '') return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.map((x) => Number(x));
+    }
+  } catch {
+    /* fall through */
+  }
+  return [];
+}
+
+async function invokeOllamaEmbed(text: string): Promise<number[]> {
+  return invoke<number[]>('ollama_embed', {
+    text,
+    model: 'nomic-embed-text',
+  });
+}
+
+export async function embedKnowledgeDocument(documentId: string): Promise<boolean> {
+  const rows = await dbSelect<{ content: string | null }>(
+    `SELECT content FROM knowledge_documents WHERE id = ?`,
+    [documentId]
+  );
+  const content = (rows[0]?.content ?? '').trim();
+  if (!content) {
+    return false;
+  }
+
+  const chunks = chunkText(content);
+  if (chunks.length === 0) {
+    return false;
+  }
+
+  await dbExecute(`DELETE FROM knowledge_embeddings WHERE document_id = ?`, [
+    documentId,
+  ]);
+
+  let chunkIndex = 0;
+  for (const chunk of chunks) {
+    const embedding = await invokeOllamaEmbed(chunk);
+    const id = crypto.randomUUID();
+    await dbExecute(
+      `INSERT INTO knowledge_embeddings
+        (id, document_id, chunk_text, chunk_index, embedding, model_used, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+      [
+        id,
+        documentId,
+        chunk,
+        chunkIndex,
+        JSON.stringify(embedding),
+        'nomic-embed-text',
+      ]
+    );
+    chunkIndex += 1;
+  }
+
+  await dbExecute(
+    `UPDATE knowledge_documents
+     SET embedded = 1,
+         updated_at = datetime('now')
+     WHERE id = ?`,
+    [documentId]
+  );
+
+  return true;
+}
+
+export async function embedAllPending(): Promise<number> {
+  const pending = await dbSelect<{ id: string }>(
+    `SELECT id FROM knowledge_documents
+     WHERE embedded = 0 AND extracted = 1`,
+    []
+  );
+  let okCount = 0;
+  for (const row of pending) {
+    const ok = await embedKnowledgeDocument(row.id);
+    if (ok) okCount += 1;
+  }
+  return okCount;
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length === 0 || b.length === 0 || a.length !== b.length) {
+    return 0;
+  }
+  let dotProduct = 0;
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+  }
+  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+  if (magnitudeA === 0 || magnitudeB === 0) return 0;
+  return dotProduct / (magnitudeA * magnitudeB);
+}
+
+export async function searchKnowledge(
+  query: string,
+  limit: number = 5
+): Promise<string[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const queryEmbedding = await invokeOllamaEmbed(q);
+
+  const rows = await dbSelect<{
+    chunk_text: string;
+    embedding: string | null;
+  }>(
+    `SELECT ke.chunk_text, ke.embedding
+     FROM knowledge_embeddings ke
+     JOIN knowledge_documents kd ON ke.document_id = kd.id`,
+    []
+  );
+
+  const scored: { text: string; score: number }[] = [];
+  for (const row of rows) {
+    const emb = parseEmbeddingFromDb(row.embedding);
+    if (emb.length === 0) continue;
+    const score = cosineSimilarity(queryEmbedding, emb);
+    scored.push({ text: row.chunk_text, score });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map((s) => s.text);
+}
+
 export async function uploadKnowledgeDocument(
   filePath: string,
   domain: string,
   fileName: string,
-  fileSizeOverride?: number
+  fileSizeOverride?: number,
+  onProgress?: (message: string) => void
 ): Promise<KnowledgeUploadResult> {
   const lower = filePath.toLowerCase();
   if (!lower.endsWith('.pdf')) {
     return { success: false, error: 'Only PDF files are supported.' };
   }
+
+  onProgress?.('⟳ Extracting text...');
 
   let fileContent: string;
   try {
@@ -125,8 +307,7 @@ Document: ${fileContent}
   const id = crypto.randomUUID();
   const baseTitle = fileName.replace(/\.[^/.]+$/, '') || fileName;
   const fileSize =
-    fileSizeOverride ??
-    new TextEncoder().encode(trimmed).length;
+    fileSizeOverride ?? new TextEncoder().encode(trimmed).length;
 
   const createdAt = new Date().toISOString();
 
@@ -159,7 +340,45 @@ Document: ${fileContent}
     return { success: false, error: 'Document was not saved.' };
   }
 
-  return { success: true, document: mapRow(row) };
+  onProgress?.('⟳ Building knowledge base embeddings...');
+
+  let embedOk = false;
+  let chunkCount = 0;
+  try {
+    embedOk = await embedKnowledgeDocument(id);
+    const cntRows = await dbSelect<{ c: number }>(
+      `SELECT COUNT(*) as c FROM knowledge_embeddings WHERE document_id = ?`,
+      [id]
+    );
+    chunkCount = Number(cntRows[0]?.c ?? 0);
+  } catch (e) {
+    const docRows = await dbSelect<Record<string, unknown>>(
+      `SELECT * FROM knowledge_documents WHERE id = ?`,
+      [id]
+    );
+    const docRow = docRows[0] ?? row;
+    return {
+      success: true,
+      document: mapRow(docRow),
+      embedCompleteMessage: `✅ Text saved — embedding failed: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  const docRows = await dbSelect<Record<string, unknown>>(
+    `SELECT * FROM knowledge_documents WHERE id = ?`,
+    [id]
+  );
+  const docRow = docRows[0] ?? row;
+
+  const embedCompleteMessage = embedOk
+    ? `✅ Ready — ${chunkCount} chunks embedded`
+    : '✅ Text saved — no chunks embedded.';
+
+  return {
+    success: true,
+    document: mapRow(docRow),
+    embedCompleteMessage,
+  };
 }
 
 export async function getDocumentsByDomain(
