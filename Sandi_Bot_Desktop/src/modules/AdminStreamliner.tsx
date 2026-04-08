@@ -32,6 +32,8 @@ import {
   FileUp,
   Briefcase,
   Zap,
+  Plug,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -72,6 +74,7 @@ import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter
 import { rebuildClientProfile } from '@/services/profileBuilderService';
 import { cn } from '@/lib/utils';
 import FeedbackButton from '../components/FeedbackButton';
+import { ToolManager, type ToolConnection } from '../services/toolManager';
 import {
   Dialog,
   DialogContent,
@@ -892,6 +895,55 @@ function parseStyleFromDb(style: string): {
   return { selected, custom };
 }
 
+const CAPTURE_INTEGRATION_TOOLS = [
+  {
+    id: 'gmail',
+    emoji: '📧',
+    name: 'Gmail',
+    description:
+      'See the most recent email from each client directly on their card. Reply using DISC-appropriate templates.',
+    adds: 'Adds email history to every client card',
+    comingSoon: false,
+  },
+  {
+    id: 'google-calendar',
+    emoji: '📅',
+    name: 'Google Calendar',
+    description:
+      "See today's coaching calls on Morning Brief. Get pre-call question prep with one click.",
+    adds: "Adds Today's Calls to Morning Brief",
+    comingSoon: false,
+  },
+  {
+    id: 'fathom-sync',
+    emoji: '🎙️',
+    name: 'Fathom Direct Sync',
+    description:
+      'When Fathom finishes a call transcript it sends automatically to Coach Bot. No manual upload ever again.',
+    adds: 'Auto-imports sessions after every call',
+    comingSoon: true,
+  },
+  {
+    id: 'youcanbookme',
+    emoji: '📆',
+    name: 'YouCanBookMe',
+    description:
+      'See your scheduled calls from YouCanBookMe synced with your client cards.',
+    adds: 'Syncs booking schedule with client pipeline',
+    comingSoon: true,
+  },
+] as const;
+
+function formatToolSyncRelative(syncAt: string): string {
+  const t = (syncAt ?? '').trim();
+  if (!t) return 'Never synced';
+  try {
+    return formatDistanceToNow(new Date(t), { addSuffix: true });
+  } catch {
+    return '—';
+  }
+}
+
 // Stats Card
 function StatCard({ title, value, change, icon: Icon, color }: {
   title: string;
@@ -988,6 +1040,9 @@ export default function AdminStreamliner() {
     kind: 'success' | 'error';
     text: string;
   } | null>(null);
+
+  const [toolConnections, setToolConnections] = useState<ToolConnection[]>([]);
+  const [disconnectConfirm, setDisconnectConfirm] = useState<ToolConnection | null>(null);
 
   const [captureRows, setCaptureRows] = useState<CaptureClientRow[]>([]);
   const [captureLoading, setCaptureLoading] = useState(false);
@@ -1185,6 +1240,19 @@ export default function AdminStreamliner() {
   useEffect(() => {
     void loadCoachProfile();
   }, [loadCoachProfile]);
+
+  const reloadToolConnections = useCallback(async () => {
+    try {
+      const rows = await ToolManager.getToolConnections();
+      setToolConnections(rows);
+    } catch (e) {
+      console.error('[tool_connections] load failed:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadToolConnections();
+  }, [reloadToolConnections]);
 
   const processResumePdfPath = useCallback(
     async (filePath: string) => {
@@ -2754,6 +2822,8 @@ ${workingText}`;
   const philosophyDone = (cp.coaching_philosophy?.trim().length ?? 0) > 50;
   const styleSet = (cp.coaching_style?.trim().length ?? 0) > 20;
   const hasBio = Boolean(cp.bio?.trim());
+
+  const connectedToolRows = toolConnections.filter((t) => t.is_connected);
 
   const totalCapture = captureRows.length;
   const pipelineCompleteCount = captureRows.filter((r) => {
@@ -5498,6 +5568,270 @@ ${workingText}`;
           </div>
         </CardContent>
       </Card>
+
+      <div className="mt-8">
+        <div className="mb-4 flex items-start gap-3">
+          <Plug className="shrink-0" style={{ color: '#3BBFBF', width: 22, height: 22 }} aria-hidden />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold" style={{ color: '#2D4459', fontSize: 18 }}>
+              Connected Tools
+            </h2>
+            <p className="mt-1 text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+              Connect your existing tools. Your data stays on your machine. All connections are read-only.
+            </p>
+            <div
+              className="mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1"
+              style={{
+                background: '#F0FAFA',
+                borderColor: '#C8E8E5',
+                color: '#3BBFBF',
+                fontSize: 12,
+              }}
+            >
+              <span aria-hidden>🔒</span>
+              <span>Private — nothing leaves your machine</span>
+            </div>
+          </div>
+        </div>
+
+        {connectedToolRows.length > 0 ? (
+          <div className="mb-6">
+            <p
+              className="mb-2 font-semibold uppercase tracking-wide"
+              style={{ color: '#7A8F95', fontSize: 11 }}
+            >
+              Active
+            </p>
+            {connectedToolRows.map((conn) => {
+              const meta = CAPTURE_INTEGRATION_TOOLS.find((t) => t.id === conn.tool_id);
+              const emoji = meta?.emoji ?? '🔌';
+              const label = conn.display_name?.trim() || meta?.name || conn.tool_id;
+              return (
+                <div
+                  key={conn.tool_id}
+                  className="mb-2 flex flex-wrap items-center justify-between gap-3"
+                  style={{
+                    background: 'white',
+                    border: '1px solid #C8E8E5',
+                    borderLeftWidth: 4,
+                    borderLeftColor: '#3BBFBF',
+                    borderRadius: 10,
+                    padding: '16px 20px',
+                  }}
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="text-2xl leading-none" aria-hidden>
+                      {emoji}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-bold text-[14px]" style={{ color: '#2D4459' }}>
+                        {label}
+                      </p>
+                      <p className="text-[12px]" style={{ color: '#7A8F95' }}>
+                        {conn.connected_email || '—'}
+                      </p>
+                      <p className="mt-0.5 text-[11px]" style={{ color: '#7A8F95' }}>
+                        Synced {formatToolSyncRelative(conn.last_sync_at)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="text-[12px] font-medium transition-opacity hover:opacity-90"
+                      style={{
+                        background: 'white',
+                        border: '1px solid #C8E8E5',
+                        color: '#7A8F95',
+                        borderRadius: 6,
+                        padding: '4px 12px',
+                      }}
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            await ToolManager.updateLastSync(conn.tool_id);
+                            await reloadToolConnections();
+                            toast.success('Sync complete');
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : String(e));
+                          }
+                        })();
+                      }}
+                    >
+                      Sync Now
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[12px] font-medium transition-opacity hover:opacity-90"
+                      style={{
+                        background: 'white',
+                        border: '1px solid #F05F57',
+                        color: '#F05F57',
+                        borderRadius: 6,
+                        padding: '4px 12px',
+                      }}
+                      onClick={() => setDisconnectConfirm(conn)}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <p
+          className="mb-2 font-semibold uppercase tracking-wide"
+          style={{ color: '#7A8F95', fontSize: 11 }}
+        >
+          Available to Connect
+        </p>
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {CAPTURE_INTEGRATION_TOOLS.map((tool) => {
+            const isConn = toolConnections.some(
+              (c) => c.tool_id === tool.id && c.is_connected
+            );
+            return (
+              <div
+                key={tool.id}
+                className="flex flex-col gap-2"
+                style={{
+                  background: 'white',
+                  border: '1px solid #C8E8E5',
+                  borderRadius: 10,
+                  padding: 16,
+                }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="text-2xl leading-none" aria-hidden>
+                      {tool.emoji}
+                    </span>
+                    <span className="font-bold text-[14px]" style={{ color: '#2D4459' }}>
+                      {tool.name}
+                    </span>
+                  </div>
+                  <span
+                    className="shrink-0 text-[11px] font-medium"
+                    style={{
+                      background: isConn ? '#F0FAFA' : '#F4F7F8',
+                      color: isConn ? '#3BBFBF' : '#7A8F95',
+                      borderRadius: 12,
+                      padding: '2px 8px',
+                    }}
+                  >
+                    {isConn ? '● Connected' : '○ Not connected'}
+                  </span>
+                </div>
+                <p className="text-[12px] leading-relaxed" style={{ color: '#7A8F95' }}>
+                  {tool.description}
+                </p>
+                <p className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#3BBFBF' }}>
+                  <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
+                  {tool.adds}
+                </p>
+                {tool.comingSoon ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="mt-1 w-full rounded-lg py-2 text-[13px] font-medium"
+                    style={{ background: '#F4F7F8', color: '#7A8F95' }}
+                  >
+                    Coming Soon
+                  </button>
+                ) : isConn ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="mt-1 w-full rounded-lg py-2 text-[13px]"
+                    style={{ background: '#F0FAFA', color: '#3BBFBF' }}
+                  >
+                    Connected ✓
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="mt-1 w-full rounded-lg py-2 text-[13px] font-bold text-white transition-opacity hover:opacity-90"
+                    style={{ background: '#3BBFBF' }}
+                    onClick={() => {
+                      if (tool.id === 'gmail' || tool.id === 'google-calendar') {
+                        toast.info('Google sign-in will connect Gmail and Calendar in a future update.');
+                      }
+                    }}
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          className="rounded-lg"
+          style={{
+            background: '#F4F7F8',
+            borderRadius: 10,
+            padding: '16px 20px',
+          }}
+        >
+          <p className="mb-2 font-bold text-[13px]" style={{ color: '#2D4459' }}>
+            How connections work
+          </p>
+          <ul className="space-y-1 text-[12px] leading-[1.8]" style={{ color: '#7A8F95' }}>
+            <li>🔒 Your data never leaves your machine</li>
+            <li>
+              👁️ Read-only access only — Coach Bot cannot send or delete anything
+            </li>
+            <li>⚡ Disconnect anytime — your Coach Bot data is never affected</li>
+          </ul>
+        </div>
+      </div>
+
+      <Dialog
+        open={disconnectConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setDisconnectConfirm(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" style={{ borderColor: '#C8E8E5' }}>
+          <DialogHeader>
+            <DialogTitle style={{ color: '#2D4459' }}>Disconnect tool</DialogTitle>
+            <DialogDescription className="whitespace-pre-line text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+              {disconnectConfirm
+                ? `Disconnect ${disconnectConfirm.display_name || disconnectConfirm.tool_id}?\nThis will remove access.\nYour Coach Bot data is not affected.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setDisconnectConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="text-white"
+              style={{ background: '#F05F57' }}
+              onClick={() => {
+                void (async () => {
+                  if (!disconnectConfirm) return;
+                  const name = disconnectConfirm.display_name?.trim() || disconnectConfirm.tool_id;
+                  try {
+                    await ToolManager.disconnectTool(disconnectConfirm.tool_id);
+                    setDisconnectConfirm(null);
+                    await reloadToolConnections();
+                    toast.success(`Disconnected from ${name}`);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : String(e));
+                  }
+                })();
+              }}
+            >
+              Disconnect
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {activeTooltip && tooltipLayout && CAPTURE_INFO_TOOLTIPS[activeTooltip] ? (
         <div
