@@ -56,6 +56,15 @@ import type { DocumentType } from '@/types/extractions';
 import { getAllClients, getRankedClients, getAverageConfidence, getSupportiveSpouseClients } from '@/services/clientService';
 import { logEntry } from '@/services/auditService';
 import { dbSelect, dbExecute } from '@/services/db';
+import {
+  uploadKnowledgeDocument,
+  getDocumentsByDomain,
+  getDomainCounts,
+  getAllDocuments,
+  getDomainWordTotals,
+  deleteDocument,
+  type KnowledgeDocument,
+} from '../services/knowledgeService';
 import { createBackup, getLastBackup } from '@/services/backupService';
 import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter';
 import { rebuildClientProfile } from '@/services/profileBuilderService';
@@ -98,6 +107,12 @@ function formatFeedbackTableDate(iso: string): string {
 }
 
 function truncateFeedbackText(s: string | null | undefined, maxLen: number): string {
+  const t = (s ?? '').trim();
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, maxLen)}…`;
+}
+
+function truncateKnowledgeText(s: string | null | undefined, maxLen: number): string {
   const t = (s ?? '').trim();
   if (t.length <= maxLen) return t;
   return `${t.slice(0, maxLen)}…`;
@@ -644,8 +659,6 @@ function activityAuditRollbackable(row: ActivityAuditRow): boolean {
   );
 }
 
-const KNOWLEDGE_UPLOAD_PLACEHOLDER = 'Uploaded — extraction coming in next update';
-
 const KNOWLEDGE_DOMAINS: ReadonlyArray<{
   domain: string;
   description: string;
@@ -904,47 +917,59 @@ export default function AdminStreamliner() {
     fathom: { phase: 'idle' },
   });
   const [knowledgeDomainCounts, setKnowledgeDomainCounts] = useState<Record<string, number>>({});
-  const [knowledgeRecent, setKnowledgeRecent] = useState<
-    Array<{ title: string; domain: string; created_at: string; file_name: string | null }>
-  >([]);
+  const [knowledgeDomainWordTotals, setKnowledgeDomainWordTotals] = useState<Record<string, number>>({});
+  const [knowledgeLatestByDomain, setKnowledgeLatestByDomain] = useState<
+    Record<string, KnowledgeDocument | null>
+  >({});
+  const [knowledgeRecent, setKnowledgeRecent] = useState<KnowledgeDocument[]>([]);
   const [knowledgeModalDomain, setKnowledgeModalDomain] = useState<string | null>(null);
-  const [knowledgeModalDocs, setKnowledgeModalDocs] = useState<
-    Array<{ title: string; file_name: string | null; created_at: string }>
-  >([]);
+  const [knowledgeModalDocs, setKnowledgeModalDocs] = useState<KnowledgeDocument[]>([]);
   const [knowledgeCardHover, setKnowledgeCardHover] = useState<string | null>(null);
+  const [knowledgeUploadMessage, setKnowledgeUploadMessage] = useState<string | null>(null);
 
   const refreshKnowledgeDocuments = useCallback(async () => {
-    const counts = await dbSelect<{ domain: string; c: number }>(
-      `SELECT domain, COUNT(*) as c FROM knowledge_documents GROUP BY domain`,
-      []
-    );
+    const counts = await getDomainCounts();
     const map: Record<string, number> = {};
     for (const d of KNOWLEDGE_DOMAINS) {
-      map[d.domain] = 0;
-    }
-    for (const row of counts) {
-      map[row.domain] = Number(row.c);
+      map[d.domain] = counts[d.domain] ?? 0;
     }
     setKnowledgeDomainCounts(map);
-    const recent = await dbSelect<{
-      title: string;
-      domain: string;
-      created_at: string;
-      file_name: string | null;
-    }>(
-      `SELECT title, domain, created_at, file_name FROM knowledge_documents ORDER BY datetime(created_at) DESC LIMIT 5`,
-      []
+
+    const wordTotals = await getDomainWordTotals();
+    const wordMap: Record<string, number> = {};
+    for (const d of KNOWLEDGE_DOMAINS) {
+      wordMap[d.domain] = wordTotals[d.domain] ?? 0;
+    }
+    setKnowledgeDomainWordTotals(wordMap);
+
+    const latest: Record<string, KnowledgeDocument | null> = {};
+    await Promise.all(
+      KNOWLEDGE_DOMAINS.map(async (d) => {
+        const docs = await getDocumentsByDomain(d.domain);
+        latest[d.domain] = docs[0] ?? null;
+      })
     );
+    setKnowledgeLatestByDomain(latest);
+
+    const recent = await getAllDocuments();
     setKnowledgeRecent(recent);
   }, []);
 
   const loadKnowledgeModalDocs = useCallback(async (domain: string) => {
-    const rows = await dbSelect<{ title: string; file_name: string | null; created_at: string }>(
-      `SELECT title, file_name, created_at FROM knowledge_documents WHERE domain = ? ORDER BY datetime(created_at) DESC`,
-      [domain]
-    );
-    setKnowledgeModalDocs(rows);
+    const docs = await getDocumentsByDomain(domain);
+    setKnowledgeModalDocs(docs);
   }, []);
+
+  const handleDeleteKnowledgeDocument = useCallback(
+    async (id: string) => {
+      await deleteDocument(id);
+      await refreshKnowledgeDocuments();
+      if (knowledgeModalDomain) {
+        await loadKnowledgeModalDocs(knowledgeModalDomain);
+      }
+    },
+    [knowledgeModalDomain, refreshKnowledgeDocuments, loadKnowledgeModalDocs]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -955,14 +980,28 @@ export default function AdminStreamliner() {
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
             content TEXT,
+            excerpt TEXT,
             domain TEXT NOT NULL,
             doc_type TEXT,
             file_name TEXT,
             file_size INTEGER,
+            word_count INTEGER DEFAULT 0,
+            extracted INTEGER DEFAULT 0,
             embedded INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )`
         );
+        for (const stmt of [
+          `ALTER TABLE knowledge_documents ADD COLUMN excerpt TEXT`,
+          `ALTER TABLE knowledge_documents ADD COLUMN word_count INTEGER DEFAULT 0`,
+          `ALTER TABLE knowledge_documents ADD COLUMN extracted INTEGER DEFAULT 0`,
+        ]) {
+          try {
+            await dbExecute(stmt);
+          } catch {
+            /* column exists */
+          }
+        }
       } catch (e) {
         console.error('knowledge_documents table:', e);
       }
@@ -991,15 +1030,23 @@ export default function AdminStreamliner() {
         const lower = file.name.toLowerCase();
         if (!lower.endsWith('.pdf')) continue;
         const maybePath = (file as File & { path?: string }).path;
-        if (maybePath && typeof maybePath === 'string') {
-          console.log('File path:', maybePath);
+        if (!maybePath || typeof maybePath !== 'string') {
+          setKnowledgeUploadMessage('❌ Could not extract. Try a text-based PDF.');
+          toast.error(
+            'Could not read file path for extraction. Pick files from the desktop app or a build that exposes paths.'
+          );
+          continue;
         }
-        const id = crypto.randomUUID();
-        await dbExecute(
-          `INSERT INTO knowledge_documents (id, title, content, domain, doc_type, file_name, file_size, embedded)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
-          [id, file.name, KNOWLEDGE_UPLOAD_PLACEHOLDER, domain, 'pdf', file.name, file.size]
-        );
+        setKnowledgeUploadMessage('⟳ Extracting...');
+        const result = await uploadKnowledgeDocument(maybePath, domain, file.name, file.size);
+        if (result.success && result.document) {
+          const wc = result.document.word_count;
+          setKnowledgeUploadMessage(`✅ Extracted — ${wc.toLocaleString()} words`);
+          toast.success(`Extracted — ${wc.toLocaleString()} words`);
+        } else {
+          setKnowledgeUploadMessage('❌ Could not extract. Try a text-based PDF.');
+          toast.error(result.error ?? 'Could not extract.');
+        }
       }
       await refreshKnowledgeDocuments();
       await loadKnowledgeModalDocs(domain);
@@ -1012,16 +1059,19 @@ export default function AdminStreamliner() {
       const domain = knowledgeModalDomain;
       if (!domain) return;
       for (const filePath of paths) {
-        console.log('File path:', filePath);
         const lower = filePath.toLowerCase();
         if (!lower.endsWith('.pdf')) continue;
         const fileName = filePath.split(/[/\\]/).pop() ?? filePath;
-        const id = crypto.randomUUID();
-        await dbExecute(
-          `INSERT INTO knowledge_documents (id, title, content, domain, doc_type, file_name, file_size, embedded)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
-          [id, fileName, KNOWLEDGE_UPLOAD_PLACEHOLDER, domain, 'pdf', fileName, 0]
-        );
+        setKnowledgeUploadMessage('⟳ Extracting...');
+        const result = await uploadKnowledgeDocument(filePath, domain, fileName, 0);
+        if (result.success && result.document) {
+          const wc = result.document.word_count;
+          setKnowledgeUploadMessage(`✅ Extracted — ${wc.toLocaleString()} words`);
+          toast.success(`Extracted — ${wc.toLocaleString()} words`);
+        } else {
+          setKnowledgeUploadMessage('❌ Could not extract. Try a text-based PDF.');
+          toast.error(result.error ?? 'Could not extract.');
+        }
       }
       await refreshKnowledgeDocuments();
       await loadKnowledgeModalDocs(domain);
@@ -3194,19 +3244,16 @@ ${workingText}`;
         >
           {KNOWLEDGE_DOMAINS.map((d) => {
             const count = knowledgeDomainCounts[d.domain] ?? 0;
+            const totalWords = knowledgeDomainWordTotals[d.domain] ?? 0;
             const Icon = d.Icon;
             const showUploadBtn = count === 0 || knowledgeCardHover === d.domain;
             let coverageSymbol = '○';
             let coverageLabel = 'Not started';
             let coverageColor = '#C8E8E5';
-            if (count >= 3) {
+            if (count >= 1) {
               coverageSymbol = '●';
-              coverageLabel = `${count} documents — well covered`;
+              coverageLabel = `${count} document${count === 1 ? '' : 's'} — ${totalWords.toLocaleString()} words`;
               coverageColor = '#3BBFBF';
-            } else if (count >= 1) {
-              coverageSymbol = '◑';
-              coverageLabel = `${count} document${count === 1 ? '' : 's'} — building`;
-              coverageColor = '#F05F57';
             }
             return (
               <div
@@ -3250,6 +3297,31 @@ ${workingText}`;
                 <p className="mt-2 text-[11px]" style={{ color: coverageColor }}>
                   <span aria-hidden>{coverageSymbol}</span> {coverageLabel}
                 </p>
+                {count >= 1 && knowledgeLatestByDomain[d.domain] ? (
+                  <div className="mt-2 rounded-md border border-[#E8F4F3] bg-[#FAFCFC] p-2 text-[11px]">
+                    <p className="font-semibold leading-tight" style={{ color: '#2D4459' }}>
+                      {truncateKnowledgeText(knowledgeLatestByDomain[d.domain]!.title, 30)}
+                    </p>
+                    <p className="mt-1 leading-snug" style={{ color: '#7A8F95' }}>
+                      {truncateKnowledgeText(knowledgeLatestByDomain[d.domain]!.excerpt, 80)}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                      <span style={{ color: '#7A8F95' }}>
+                        {knowledgeLatestByDomain[d.domain]!.word_count.toLocaleString()} words
+                      </span>
+                      <button
+                        type="button"
+                        className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 transition-colors hover:bg-red-50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDeleteKnowledgeDocument(knowledgeLatestByDomain[d.domain]!.id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div style={{ marginTop: 8, minHeight: 28 }}>
                   <button
                     type="button"
@@ -3295,7 +3367,7 @@ ${workingText}`;
                 }
                 return (
                   <li
-                    key={`${row.domain}-${row.created_at}-${displayName}`}
+                    key={row.id}
                     className="flex flex-wrap items-center justify-between gap-2 text-[13px]"
                   >
                     <span className="min-w-0 flex-1 font-medium" style={{ color: '#2D4459' }}>
@@ -3321,7 +3393,10 @@ ${workingText}`;
         <Dialog
           open={knowledgeModalDomain !== null}
           onOpenChange={(open) => {
-            if (!open) setKnowledgeModalDomain(null);
+            if (!open) {
+              setKnowledgeModalDomain(null);
+              setKnowledgeUploadMessage(null);
+            }
           }}
         >
           <DialogContent
@@ -3339,6 +3414,11 @@ ${workingText}`;
                 {knowledgeModalMeta?.description ?? ''}
               </DialogDescription>
             </DialogHeader>
+            {knowledgeUploadMessage ? (
+              <p className="text-center text-sm font-medium" style={{ color: '#2D4459' }}>
+                {knowledgeUploadMessage}
+              </p>
+            ) : null}
             <div
               role="button"
               tabIndex={0}
@@ -3376,10 +3456,32 @@ ${workingText}`;
                 <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#7A8F95' }}>
                   Uploaded in this domain
                 </p>
-                <ul className="max-h-40 space-y-1 overflow-y-auto text-sm" style={{ color: '#2D4459' }}>
+                <ul className="max-h-40 space-y-2 overflow-y-auto text-sm" style={{ color: '#2D4459' }}>
                   {knowledgeModalDocs.map((doc) => (
-                    <li key={`${doc.created_at}-${doc.title}`} className="truncate">
-                      {doc.file_name ?? doc.title}
+                    <li
+                      key={doc.id}
+                      className="rounded-md border border-[#E8F4F3] bg-[#FAFCFC] p-2 text-[12px]"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {doc.file_name ?? doc.title}
+                        </span>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                          onClick={() => void handleDeleteKnowledgeDocument(doc.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                      {doc.excerpt ? (
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-snug" style={{ color: '#7A8F95' }}>
+                          {doc.excerpt}
+                        </p>
+                      ) : null}
+                      <p className="mt-1 text-[10px]" style={{ color: '#7A8F95' }}>
+                        {doc.word_count.toLocaleString()} words
+                      </p>
                     </li>
                   ))}
                 </ul>
