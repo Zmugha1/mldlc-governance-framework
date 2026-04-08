@@ -6158,7 +6158,7 @@ function ClientDetailModal({
                     No sessions yet.
                   </p>
                   <p className="mt-2 max-w-sm px-4 text-center whitespace-pre-line" style={{ color: '#7A8F95', fontSize: 13 }}>
-                    {`Add your first session above\nor upload a Fathom transcript\nin Admin Streamliner.`}
+                    {`Add your first session above\nor upload a Fathom transcript\nin The Capture → My Clients.`}
                   </p>
                 </div>
               ) : (
@@ -6298,8 +6298,7 @@ function ClientDetailModal({
                   fontSize: 12,
                 }}
               >
-                Have Fathom transcripts? Upload them in Admin Streamliner → Import to get richer session
-                data.
+                Upload Fathom transcripts in The Capture → My Clients to populate this tab automatically.
               </div>
             </div>
           </TabsContent>
