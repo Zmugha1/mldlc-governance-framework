@@ -32,6 +32,13 @@ import { normalizeDisplayStage } from '@/services/clientAdapter';
 import { deriveDominantStyle } from '@/config/discCoachingTips';
 import { dbSelect, dbExecute } from '@/services/db';
 import { cn } from '@/lib/utils';
+import {
+  calendarTool,
+  registerCalendarTool,
+  type TodaysCall,
+} from '../services/calendarTool';
+import { registerGmailTool } from '../services/gmailTool';
+import { isGoogleConnected } from '../services/googleAuthService';
 
 const recommendationStyleMap: Record<
   'VALIDATE' | 'GATHER' | 'PAUSE',
@@ -387,9 +394,17 @@ function needAttentionSignalLabel(kind: NeedAttentionKind): string {
 }
 
 /** Switch to Client Intelligence and stash name for auto-select (read in Client Intelligence). */
-function navigateToClientIntelligence(clientName: string): void {
+function navigateToClientIntelligence(
+  clientName: string,
+  tab?: 'best-next-questions' | 'fathom'
+): void {
   try {
     localStorage.setItem('selected_client_name', clientName);
+    if (tab) {
+      localStorage.setItem('sandi_ci_detail_tab', tab);
+    } else {
+      localStorage.removeItem('sandi_ci_detail_tab');
+    }
   } catch {
     /* ignore */
   }
@@ -666,6 +681,79 @@ export default function ExecutiveDashboard() {
     weeklyHoursSaved: 2,
     installDateWasNull: true,
   }));
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [todaysCalls, setTodaysCalls] = useState<TodaysCall[]>([]);
+  const [callsLoading, setCallsLoading] = useState(false);
+  const [postCallClient, setPostCallClient] = useState<TodaysCall | null>(null);
+  const [showPostCallToast, setShowPostCallToast] = useState(false);
+  const [briefCallsExpanded, setBriefCallsExpanded] = useState(false);
+  const todaysCallsRef = useRef<TodaysCall[]>([]);
+  const postCallPromptedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    todaysCallsRef.current = todaysCalls;
+  }, [todaysCalls]);
+
+  useEffect(() => {
+    registerCalendarTool();
+    registerGmailTool();
+    void (async () => {
+      const connected = await isGoogleConnected();
+      setCalendarConnected(connected);
+      if (!connected) return;
+      setCallsLoading(true);
+      try {
+        const result = await calendarTool.execute('get_todays_calls', {});
+        if (result.success) {
+          setTodaysCalls((result.data as TodaysCall[]) ?? []);
+        }
+      } finally {
+        setCallsLoading(false);
+      }
+    })();
+  }, []);
+
+  const refreshTodaysCalls = useCallback(async () => {
+    if (!calendarConnected) return;
+    setCallsLoading(true);
+    try {
+      const result = await calendarTool.execute('get_todays_calls', {});
+      if (result.success) {
+        setTodaysCalls((result.data as TodaysCall[]) ?? []);
+      }
+    } finally {
+      setCallsLoading(false);
+    }
+  }, [calendarConnected]);
+
+  useEffect(() => {
+    if (!calendarConnected) return;
+    const tick = () => {
+      const now = new Date();
+      for (const call of todaysCallsRef.current) {
+        if (!call.clientId) continue;
+        const key = call.event.id || `${call.startTime}-${call.event.endTime}`;
+        if (postCallPromptedRef.current.has(key)) continue;
+        const end = new Date(call.event.endTime);
+        if (Number.isNaN(end.getTime())) continue;
+        if (end < now) {
+          postCallPromptedRef.current.add(key);
+          setPostCallClient(call);
+          setShowPostCallToast(true);
+          break;
+        }
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 5 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [calendarConnected, todaysCalls]);
+
+  useEffect(() => {
+    if (!showPostCallToast) return;
+    const t = window.setTimeout(() => setShowPostCallToast(false), 30_000);
+    return () => window.clearTimeout(t);
+  }, [showPostCallToast]);
 
   useEffect(() => {
     const id = window.setInterval(() => setGreetingNow(Date.now()), 60_000);
@@ -1462,6 +1550,146 @@ export default function ExecutiveDashboard() {
             </div>
           </div>
         </div>
+        {calendarConnected && callsLoading ? (
+          <div className="flex items-center gap-2" style={{ margin: '8px 0' }}>
+            <Loader2 className="h-3 w-3 shrink-0 animate-spin" style={{ color: '#C8E8E5' }} aria-hidden />
+            <span style={{ fontSize: 12, color: '#C8E8E5' }}>📅 Loading today&apos;s calls...</span>
+          </div>
+        ) : null}
+        {calendarConnected && !callsLoading && todaysCalls.length > 0 ? (
+          <div
+            style={{
+              margin: '12px 0',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              paddingTop: 12,
+            }}
+          >
+            <div
+              className="mb-2 flex flex-wrap items-center justify-between gap-2"
+              style={{ marginBottom: 8 }}
+            >
+              <div className="flex items-center gap-2">
+                <p
+                  className="uppercase"
+                  style={{
+                    fontSize: 11,
+                    color: '#C8E8E5',
+                    letterSpacing: '0.5px',
+                    margin: 0,
+                  }}
+                >
+                  TODAY&apos;S CALLS
+                </p>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded p-0.5 transition-opacity hover:opacity-80"
+                  style={{ color: '#C8E8E5', cursor: 'pointer' }}
+                  aria-label="Refresh today&apos;s calls"
+                  onClick={() => void refreshTodaysCalls()}
+                >
+                  <RefreshCw className="h-3 w-3" aria-hidden />
+                </button>
+              </div>
+            </div>
+            {(briefCallsExpanded ? todaysCalls : todaysCalls.slice(0, 3)).map((call) => {
+              const matched = Boolean(call.clientId);
+              const title = call.event.summary || 'Event';
+              return (
+                <div
+                  key={`${call.event.id}-${call.startTime}`}
+                  className="flex flex-wrap items-center gap-3"
+                  style={{
+                    background: 'rgba(255,255,255,0.05)',
+                    borderRadius: 8,
+                    padding: '10px 14px',
+                    marginBottom: 6,
+                  }}
+                >
+                  <div
+                    className="shrink-0 font-bold text-white"
+                    style={{ fontSize: 14, minWidth: 70 }}
+                  >
+                    {call.formattedTime}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {matched ? (
+                      <>
+                        <div className="font-bold text-white" style={{ fontSize: 13 }}>
+                          {call.clientName}
+                        </div>
+                        {call.clientStage ? (
+                          <span
+                            className="mt-1 inline-block rounded-full px-2 py-0.5 font-medium"
+                            style={{
+                              background: 'rgba(59,191,191,0.2)',
+                              color: '#3BBFBF',
+                              fontSize: 10,
+                            }}
+                          >
+                            {call.clientStage}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 13, color: '#C8E8E5' }}>{title}</div>
+                        <span style={{ fontSize: 10, color: '#7A8F95' }}>Not in pipeline</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {matched ? (
+                      <>
+                        <button
+                          type="button"
+                          className="font-bold text-white transition-opacity hover:opacity-90"
+                          style={{
+                            background: '#F05F57',
+                            borderRadius: 6,
+                            padding: '4px 10px',
+                            fontSize: 11,
+                            border: 'none',
+                          }}
+                          onClick={() =>
+                            navigateToClientIntelligence(call.clientName, 'best-next-questions')
+                          }
+                        >
+                          Prep Questions
+                        </button>
+                        <button
+                          type="button"
+                          className="text-white transition-opacity hover:opacity-90"
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid rgba(255,255,255,0.3)',
+                            borderRadius: 6,
+                            padding: '4px 10px',
+                            fontSize: 11,
+                          }}
+                          onClick={() => navigateToClientIntelligence(call.clientName)}
+                        >
+                          Open Card
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+            {todaysCalls.length > 3 ? (
+              <button
+                type="button"
+                className="mt-1 w-full text-left transition-opacity hover:opacity-90"
+                style={{ fontSize: 11, color: '#C8E8E5', background: 'none', border: 'none', cursor: 'pointer' }}
+                onClick={() => setBriefCallsExpanded((v) => !v)}
+              >
+                {briefCallsExpanded
+                  ? 'Show fewer'
+                  : `+ ${todaysCalls.length - 3} more today`}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '16px 0' }} />
         {greetingSignalPills.length === 0 ? (
           <p style={{ fontSize: 14, color: '#C8E8E5' }}>
@@ -1990,6 +2218,60 @@ export default function ExecutiveDashboard() {
           </div>
         </CardContent>
       </Card>
+      {showPostCallToast && postCallClient ? (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 z-[9999] flex w-[min(420px,calc(100vw-32px))] -translate-x-1/2 flex-col gap-3 rounded-xl px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+          style={{
+            background: '#2D4459',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-white" style={{ fontSize: 14 }}>
+              📝 Your call with {postCallClient.clientName} just ended
+            </p>
+            <p className="mt-1" style={{ fontSize: 12, color: '#C8E8E5' }}>
+              Add a session note to keep their card up to date
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="font-bold text-white transition-opacity hover:opacity-90"
+              style={{
+                background: '#3BBFBF',
+                borderRadius: 8,
+                padding: '8px 16px',
+                fontSize: 13,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              onClick={() => {
+                setShowPostCallToast(false);
+                navigateToClientIntelligence(postCallClient.clientName, 'fathom');
+              }}
+            >
+              Add Note →
+            </button>
+            <button
+              type="button"
+              className="transition-opacity hover:opacity-90"
+              style={{
+                background: 'transparent',
+                color: '#C8E8E5',
+                fontSize: 12,
+                border: 'none',
+                cursor: 'pointer',
+                marginLeft: 8,
+              }}
+              onClick={() => setShowPostCallToast(false)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
       <UATFeedback currentPage="Morning Brief" />
     </div>
   );
