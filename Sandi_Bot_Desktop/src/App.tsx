@@ -1,4 +1,12 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  useContext,
+  createContext,
+} from 'react';
 import { flushSync } from 'react-dom';
 import {
   Sun,
@@ -34,8 +42,21 @@ import AdminStreamliner from '@/modules/AdminStreamliner';
 import AuditTransparency from '@/modules/AuditTransparency';
 import HowToUse from '@/modules/HowToUse';
 import { seedKnowledgeBase } from '@/services/knowledgeSeed';
+import { registerGmailTool } from './services/gmailTool';
+import { registerCalendarTool } from './services/calendarTool';
+import { isGoogleConnected } from './services/googleAuthService';
 
 const REFLECTION_LAST_SHOWN_KEY = 'reflection_last_shown';
+
+export type GoogleContextValue = {
+  googleConnected: boolean;
+  setGoogleConnected: (v: boolean) => void;
+};
+
+export const GoogleContext = createContext<GoogleContextValue>({
+  googleConnected: false,
+  setGoogleConnected: () => {},
+});
 
 const brandRootStyle = {
   '--color-navy': '#2D4459',
@@ -148,6 +169,7 @@ function Sidebar({
   activeModule: ModuleType;
   onModuleChange: (module: ModuleType) => void;
 }) {
+  const { googleConnected } = useContext(GoogleContext);
   const [aiStatus, setAiStatus] = useState<AIStatus>('offline');
   const aiPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -353,6 +375,14 @@ function Sidebar({
             🟢 AI Ready
           </p>
         ) : null}
+        {googleConnected ? (
+          <p
+            className="mt-1 text-center"
+            style={{ color: '#3BBFBF', fontSize: 11 }}
+          >
+            🔗 Google Connected
+          </p>
+        ) : null}
       </div>
 
       <div
@@ -530,6 +560,7 @@ function ModuleHeader({ title, description }: { title: string; description: stri
 
 function App() {
   const [activeModule, setActiveModule] = useState<ModuleType>('morning');
+  const [googleConnected, setGoogleConnected] = useState(false);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [reflectionWorked, setReflectionWorked] = useState('');
   const [reflectionHard, setReflectionHard] = useState('');
@@ -551,6 +582,32 @@ function App() {
 
   useEffect(() => {
     seedKnowledgeBase().catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    registerGmailTool();
+    registerCalendarTool();
+    console.log('Tools registered: Gmail, Google Calendar');
+
+    const refreshGoogle = async () => {
+      try {
+        const connected = await isGoogleConnected();
+        if (!cancelled) setGoogleConnected(connected);
+      } catch {
+        if (!cancelled) setGoogleConnected(false);
+      }
+    };
+
+    void refreshGoogle();
+    const pollId = window.setInterval(() => {
+      void refreshGoogle();
+    }, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollId);
+    };
   }, []);
 
   useEffect(() => {
@@ -763,6 +820,9 @@ function App() {
   };
 
   return (
+    <GoogleContext.Provider
+      value={{ googleConnected, setGoogleConnected }}
+    >
     <div className="flex min-h-screen" style={brandRootStyle}>
       <Toaster richColors closeButton position="top-center" />
       {reflectionOpen && (
@@ -876,6 +936,7 @@ function App() {
         <AppFooterStatusBar />
       </div>
     </div>
+    </GoogleContext.Provider>
   );
 }
 
