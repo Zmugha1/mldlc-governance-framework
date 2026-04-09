@@ -1,11 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
-import {
+import type {
   CoachBotTool,
   ToolCapability,
   ToolResult,
   ToolSetting,
-  ToolManager,
 } from './toolManager';
+import { ToolManager } from './toolManager';
 import { getDb } from './db';
 import {
   connectGoogle,
