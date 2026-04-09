@@ -34,6 +34,7 @@ import {
   Zap,
   Plug,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -75,6 +76,11 @@ import { rebuildClientProfile } from '@/services/profileBuilderService';
 import { cn } from '@/lib/utils';
 import FeedbackButton from '../components/FeedbackButton';
 import { ToolManager, type ToolConnection } from '../services/toolManager';
+import {
+  connectGoogle,
+  isGoogleConnected,
+  disconnectGoogle,
+} from '../services/googleAuthService';
 import {
   Dialog,
   DialogContent,
@@ -1043,6 +1049,11 @@ export default function AdminStreamliner() {
 
   const [toolConnections, setToolConnections] = useState<ToolConnection[]>([]);
   const [disconnectConfirm, setDisconnectConfirm] = useState<ToolConnection | null>(null);
+  const [googleConnecting, setGoogleConnecting] = useState(false);
+  const [googleConnectProgress, setGoogleConnectProgress] = useState<string | null>(null);
+  const [googleConnectActiveCard, setGoogleConnectActiveCard] = useState<
+    'gmail' | 'google-calendar' | null
+  >(null);
 
   const [captureRows, setCaptureRows] = useState<CaptureClientRow[]>([]);
   const [captureLoading, setCaptureLoading] = useState(false);
@@ -1253,6 +1264,10 @@ export default function AdminStreamliner() {
   useEffect(() => {
     void reloadToolConnections();
   }, [reloadToolConnections]);
+
+  useEffect(() => {
+    void isGoogleConnected();
+  }, []);
 
   const processResumePdfPath = useCallback(
     async (filePath: string) => {
@@ -5750,18 +5765,95 @@ ${workingText}`;
                     Connected ✓
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    className="mt-1 w-full rounded-lg py-2 text-[13px] font-bold text-white transition-opacity hover:opacity-90"
-                    style={{ background: '#3BBFBF' }}
-                    onClick={() => {
-                      if (tool.id === 'gmail' || tool.id === 'google-calendar') {
-                        toast.info('Google sign-in will connect Gmail and Calendar in a future update.');
+                  <>
+                    <button
+                      type="button"
+                      disabled={
+                        googleConnecting &&
+                        (tool.id === 'gmail' || tool.id === 'google-calendar')
                       }
-                    }}
-                  >
-                    Connect
-                  </button>
+                      className="mt-1 flex w-full items-center justify-center rounded-lg py-2 text-[13px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-70"
+                      style={{ background: '#3BBFBF' }}
+                      onClick={() => {
+                        if (tool.id !== 'gmail' && tool.id !== 'google-calendar') {
+                          return;
+                        }
+                        void (async () => {
+                          setGoogleConnecting(true);
+                          setGoogleConnectActiveCard(tool.id as 'gmail' | 'google-calendar');
+                          setGoogleConnectProgress('');
+                          try {
+                            const result = await connectGoogle((message) => {
+                              setGoogleConnectProgress(message);
+                            });
+                            if (result.success) {
+                              await reloadToolConnections();
+                              const em = (result.email ?? '').trim() || 'your account';
+                              toast.success(
+                                `✅ Google connected as ${em}\nGmail and Calendar are now active`,
+                                {
+                                  duration: 4000,
+                                  style: {
+                                    background: '#3BBFBF',
+                                    color: 'white',
+                                  },
+                                }
+                              );
+                            } else {
+                              toast.error(
+                                `❌ Could not connect Google. ${result.error ?? 'Unknown error'}`,
+                                {
+                                  duration: 4000,
+                                  style: {
+                                    background: '#F05F57',
+                                    color: 'white',
+                                  },
+                                }
+                              );
+                            }
+                          } catch (e) {
+                            toast.error(
+                              `❌ Could not connect Google. ${e instanceof Error ? e.message : String(e)}`,
+                              {
+                                duration: 4000,
+                                style: {
+                                  background: '#F05F57',
+                                  color: 'white',
+                                },
+                              }
+                            );
+                          } finally {
+                            setGoogleConnecting(false);
+                            setGoogleConnectActiveCard(null);
+                            setGoogleConnectProgress(null);
+                          }
+                        })();
+                      }}
+                    >
+                      {googleConnecting &&
+                      (tool.id === 'gmail' || tool.id === 'google-calendar') ? (
+                        <>
+                          <Loader2
+                            className="mr-2 h-4 w-4 shrink-0 animate-spin"
+                            aria-hidden
+                          />
+                          Connecting...
+                        </>
+                      ) : (
+                        'Connect'
+                      )}
+                    </button>
+                    {(tool.id === 'gmail' || tool.id === 'google-calendar') &&
+                    googleConnectProgress &&
+                    googleConnectActiveCard === tool.id ? (
+                      <p
+                        className="mt-1 text-[11px] italic leading-snug"
+                        style={{ color: '#7A8F95' }}
+                      >
+                        {googleConnectProgress}
+                      </p>
+                    ) : null}
+                  </>
                 )}
               </div>
             );
@@ -5817,7 +5909,14 @@ ${workingText}`;
                   if (!disconnectConfirm) return;
                   const name = disconnectConfirm.display_name?.trim() || disconnectConfirm.tool_id;
                   try {
-                    await ToolManager.disconnectTool(disconnectConfirm.tool_id);
+                    if (
+                      disconnectConfirm.tool_id === 'gmail' ||
+                      disconnectConfirm.tool_id === 'google-calendar'
+                    ) {
+                      await disconnectGoogle();
+                    } else {
+                      await ToolManager.disconnectTool(disconnectConfirm.tool_id);
+                    }
                     setDisconnectConfirm(null);
                     await reloadToolConnections();
                     toast.success(`Disconnected from ${name}`);
