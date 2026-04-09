@@ -542,6 +542,147 @@ Connection: close\r\n\
     .map_err(|e| format!("OAuth server task failed: {}", e))?
 }
 
+#[tauri::command]
+async fn gmail_get_messages(
+    access_token: String,
+    query: String,
+    max_results: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let max = max_results.unwrap_or(10);
+
+    let url = format!(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages?q={}&maxResults={}",
+        urlencoding::encode(&query),
+        max
+    );
+
+    let response = client
+        .get(&url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn gmail_get_message(
+    access_token: String,
+    message_id: String,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
+        message_id
+    );
+
+    let response = client
+        .get(&url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn gmail_get_thread(
+    access_token: String,
+    thread_id: String,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "https://gmail.googleapis.com/gmail/v1/users/me/threads/{}?format=full",
+        thread_id
+    );
+
+    let response = client
+        .get(&url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn gmail_send_message(
+    access_token: String,
+    to: String,
+    subject: String,
+    body: String,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    let raw_message = format!(
+        "To: {}\r\nSubject: {}\r\n\
+         Content-Type: text/plain\r\n\r\n{}",
+        to, subject, body
+    );
+
+    use base64::{Engine as _, engine::general_purpose};
+    let encoded = general_purpose::URL_SAFE.encode(raw_message.as_bytes());
+
+    let body_json = serde_json::json!({
+        "raw": encoded
+    });
+
+    let response = client
+        .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
+        .bearer_auth(&access_token)
+        .json(&body_json)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn gmail_get_profile(access_token: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get("https://gmail.googleapis.com/gmail/v1/users/me/profile")
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // ─────────────────────────────────────────────
@@ -1224,6 +1365,11 @@ pub fn run() {
             google_refresh_token,
             google_get_user_info,
             google_start_local_server,
+            gmail_get_messages,
+            gmail_get_message,
+            gmail_get_thread,
+            gmail_send_message,
+            gmail_get_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
