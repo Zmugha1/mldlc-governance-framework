@@ -216,3 +216,96 @@ export async function isGoogleConnected(): Promise<boolean> {
   const n = rows[0]?.cnt ?? 0;
   return Number(n) > 0;
 }
+
+export async function validateGoogleToken(
+  toolId: string
+): Promise<boolean> {
+  const token = await getValidToken(toolId);
+  if (!token) return false;
+  try {
+    const profile = await invoke<Record<string, unknown>>(
+      'gmail_get_profile',
+      { accessToken: token }
+    );
+    const email =
+      typeof profile.emailAddress === 'string'
+        ? profile.emailAddress
+        : typeof profile.email === 'string'
+          ? profile.email
+          : '';
+    return email.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function checkAndReconnect(
+  toolId: string
+): Promise<boolean> {
+  const isValid = await validateGoogleToken(toolId);
+  if (isValid) return true;
+
+  const db = await getDb();
+  const connections = (await db.select(
+    `SELECT refresh_token
+     FROM tool_connections
+     WHERE tool_id = ? AND is_connected = 1`,
+    [toolId]
+  )) as Array<{ refresh_token: string | null }>;
+
+  if (!connections.length) return false;
+  const refreshToken = connections[0].refresh_token;
+  if (!refreshToken) return false;
+
+  try {
+    const full = await invoke<Record<string, unknown>>(
+      'google_refresh_token',
+      { refreshToken }
+    );
+    if (isOAuthErrorResponse(full)) return false;
+    const newToken = full.access_token;
+    if (typeof newToken !== 'string' || !newToken) return false;
+    const expiresInSec = Number(full.expires_in ?? 3600);
+    const newExpiry = new Date(
+      Date.now() + expiresInSec * 1000
+    ).toISOString();
+
+    await db.execute(
+      `UPDATE tool_connections
+       SET auth_token = ?,
+           token_expires_at = ?
+       WHERE (tool_id = 'gmail' OR tool_id = ?)
+       AND is_connected = 1`,
+      [newToken, newExpiry, GOOGLE_CALENDAR_TOOL_ID]
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function logPrivacyAudit(
+  action: string,
+  toolId: string,
+  dataType: string
+): Promise<void> {
+  try {
+    const db = await getDb();
+    const details = JSON.stringify({
+      action,
+      dataType,
+      readOnly: true,
+      dataStaysLocal: true,
+      timestamp: new Date().toISOString(),
+    });
+    await db.execute(
+      `INSERT INTO audit_log
+        (action_type, client_id, input_data, output_data, reasoning, model_used)
+       VALUES (?, NULL, ?, NULL, NULL, ?)`,
+      ['privacy_audit', details, 'privacy']
+    );
+  } catch (e) {
+    console.warn('logPrivacyAudit failed', e);
+  }
+}

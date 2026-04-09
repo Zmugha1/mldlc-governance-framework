@@ -117,7 +117,35 @@ class ToolManagerClass {
           'Tool not connected. Connect in The Capture.',
       };
     }
-    return tool.execute(capabilityId, params);
+    if (
+      toolId === 'gmail' ||
+      toolId === 'gcal' ||
+      toolId === 'google-calendar'
+    ) {
+      const { logPrivacyAudit } = await import('./googleAuthService');
+      await logPrivacyAudit('read', toolId, capabilityId);
+    }
+
+    let result: ToolResult;
+    try {
+      result = await tool.execute(capabilityId, params);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      result = { success: false, error: msg };
+    }
+
+    await logToolCall(
+      toolId,
+      capabilityId,
+      result.success,
+      result.error
+    );
+
+    if (result.success) {
+      await this.updateLastSync(toolId);
+    }
+
+    return result;
   }
 
   async getToolConnections(): Promise<ToolConnection[]> {
@@ -251,3 +279,69 @@ class ToolManagerClass {
 }
 
 export const ToolManager = new ToolManagerClass();
+
+/** Attempt network-backed tools; individual calls fail gracefully when offline. */
+export async function isOnline(): Promise<boolean> {
+  return true;
+}
+
+export async function withOfflineFallback<T>(
+  toolId: string,
+  capabilityId: string,
+  params: Record<string, unknown>,
+  fallback: T
+): Promise<T> {
+  try {
+    const online = await isOnline();
+    if (!online) {
+      console.log('Offline — skipping tool call:', toolId);
+      return fallback;
+    }
+    const result = await ToolManager.execute(toolId, capabilityId, params);
+    if (result.success) {
+      return result.data as T;
+    }
+    return fallback;
+  } catch (error) {
+    console.log('Tool error — returning fallback:', error);
+    return fallback;
+  }
+}
+
+export async function logToolCall(
+  toolId: string,
+  capabilityId: string,
+  success: boolean,
+  error?: string
+): Promise<void> {
+  try {
+    const db = await getDb();
+    const details = JSON.stringify({
+      success,
+      error: error ?? null,
+      timestamp: new Date().toISOString(),
+      toolId,
+      capabilityId,
+    });
+    await db.execute(
+      `INSERT INTO audit_log
+        (action_type, client_id, input_data, output_data, reasoning, model_used)
+       VALUES (?, NULL, ?, NULL, NULL, ?)`,
+      ['tool_call', details, 'tool_manager']
+    );
+  } catch (e) {
+    console.warn('logToolCall failed', e);
+  }
+}
+
+export function getOfflineMessage(toolId: string): string {
+  switch (toolId) {
+    case 'gmail':
+      return 'Email unavailable — connect to internet to see client emails';
+    case 'gcal':
+    case 'google-calendar':
+      return "Calendar unavailable — connect to internet to see today's calls";
+    default:
+      return 'Tool unavailable offline';
+  }
+}
