@@ -67,6 +67,14 @@ import {
 } from '@/services/stageReadinessService';
 import { getDiscProfilesMap } from '@/services/dashboardService';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
+import {
+  gmailTool,
+  getDiscEmailTemplate,
+  type EmailMessage,
+} from '../services/gmailTool';
+import { isGoogleConnected } from '../services/googleAuthService';
 
 /** Client Intelligence sidebar / header — DISC ring colors (solid + ~20% fill). */
 const CI_DISC_STYLE: Record<'D' | 'I' | 'S' | 'C', { solid: string; muted: string }> = {
@@ -419,6 +427,23 @@ type DisplayClient = ReturnType<typeof clientToDisplay> & {
   vision_approved?: number | null;
   vision_approved_date?: string | null;
 };
+
+const DISC_STYLE_LABEL: Record<'D' | 'I' | 'S' | 'C', string> = {
+  D: 'High D — Dominance',
+  I: 'High I — Influence',
+  S: 'High S — Steadiness',
+  C: 'High C — Compliance',
+};
+
+function formatEmailRelative(dateStr: string): string {
+  const t = Date.parse(dateStr);
+  if (Number.isNaN(t)) return '—';
+  try {
+    return formatDistanceToNow(new Date(t), { addSuffix: true });
+  } catch {
+    return '—';
+  }
+}
 
 type AhaMomentType =
   | 'client_specific'
@@ -1444,6 +1469,17 @@ function ClientDetailModal({
     dbId?: string;
   } | null>(null);
   const [reminderSaving, setReminderSaving] = useState(false);
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [lastEmail, setLastEmail] = useState<EmailMessage | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [showReplyModal, setShowReplyModal] = useState(false);
+  const [replyBody, setReplyBody] = useState('');
+  const [replySubject, setReplySubject] = useState('');
+  const [replyDiscStyle, setReplyDiscStyle] = useState<'D' | 'I' | 'S' | 'C'>('I');
+  const [replySending, setReplySending] = useState(false);
+  const [showThreadModal, setShowThreadModal] = useState(false);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadEmails, setThreadEmails] = useState<EmailMessage[]>([]);
   const [localPinkFlagsJson, setLocalPinkFlagsJson] = useState<string>('[]');
   const [resolvingPinkFlag, setResolvingPinkFlag] = useState<string | null>(
     null
@@ -2014,8 +2050,47 @@ function ClientDetailModal({
       setLastContactDateDb(null);
       setIsEditingLastContact(false);
       setLastContactDraft('');
+      setGmailConnected(false);
+      setLastEmail(null);
+      setEmailLoading(false);
+      setShowReplyModal(false);
+      setShowThreadModal(false);
+      setThreadEmails([]);
     }
   }, [client?.id, client?.inferred_stage]);
+
+  const refreshRecentEmail = useCallback(async () => {
+    setEmailLoading(true);
+    try {
+      const connected = await isGoogleConnected();
+      setGmailConnected(connected);
+      if (!connected) {
+        setLastEmail(null);
+        return;
+      }
+      const result = await gmailTool.execute('get_last_email', {
+        clientName: client.name,
+        clientEmail: (contact.email ?? client.email ?? '').trim() || undefined,
+      });
+      if (result.success) {
+        if (result.data === null || result.data === undefined) {
+          setLastEmail(null);
+        } else {
+          setLastEmail(result.data as EmailMessage);
+        }
+      } else {
+        setLastEmail(null);
+      }
+    } catch {
+      setLastEmail(null);
+    } finally {
+      setEmailLoading(false);
+    }
+  }, [client.name, client.email, contact.email]);
+
+  useEffect(() => {
+    void refreshRecentEmail();
+  }, [client.id, refreshRecentEmail]);
 
   const mostRecentSessionDate = useMemo(() => {
     for (const s of fathomSessions) {
@@ -5125,6 +5200,179 @@ function ClientDetailModal({
               </Card>
             )}
 
+            <div
+              style={{
+                background: '#F4F7F8',
+                borderRadius: 10,
+                border: '1px solid #C8E8E5',
+                padding: '16px 20px',
+              }}
+            >
+              {!gmailConnected ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Mail
+                      className="h-5 w-5 shrink-0"
+                      style={{ color: '#C8E8E5' }}
+                      aria-hidden
+                    />
+                    <span className="font-bold" style={{ color: '#7A8F95', fontSize: 14 }}>
+                      Recent Email
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[12px] font-medium transition-opacity hover:opacity-90"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #C8E8E5',
+                      color: '#7A8F95',
+                      borderRadius: 6,
+                      padding: '4px 12px',
+                    }}
+                    onClick={() => navigateToTheCapture(client.id)}
+                  >
+                    Connect Gmail
+                  </button>
+                </div>
+              ) : emailLoading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2
+                    className="h-4 w-4 shrink-0 animate-spin"
+                    style={{ color: '#7A8F95' }}
+                    aria-hidden
+                  />
+                  <span className="text-[13px] italic" style={{ color: '#7A8F95' }}>
+                    Loading emails...
+                  </span>
+                </div>
+              ) : !lastEmail ? (
+                <div className="flex items-start gap-2">
+                  <Mail
+                    className="h-4 w-4 shrink-0 mt-0.5"
+                    style={{ color: '#C8E8E5' }}
+                    aria-hidden
+                  />
+                  <p className="text-[13px]" style={{ color: '#7A8F95' }}>
+                    No emails found with {client.name}
+                  </p>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: 'white',
+                    border: '1px solid #C8E8E5',
+                    borderLeftWidth: 4,
+                    borderLeftColor: '#3BBFBF',
+                    borderRadius: 10,
+                    padding: '16px 20px',
+                  }}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Mail
+                        className="h-4 w-4 shrink-0"
+                        style={{ color: '#3BBFBF' }}
+                        aria-hidden
+                      />
+                      <span className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
+                        Recent Email
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-[12px]" style={{ color: '#7A8F95' }}>
+                      {formatEmailRelative(lastEmail.date)}
+                    </span>
+                  </div>
+                  <p
+                    className="mt-2 font-bold line-clamp-2"
+                    style={{ color: '#2D4459', fontSize: 13 }}
+                    title={lastEmail.subject}
+                  >
+                    {lastEmail.subject.length > 50
+                      ? `${lastEmail.subject.slice(0, 50)}…`
+                      : lastEmail.subject}
+                  </p>
+                  <p className="mt-1 text-[12px]" style={{ color: '#7A8F95' }}>
+                    {(() => {
+                      const ce = (contact.email ?? client.email ?? '')
+                        .trim()
+                        .toLowerCase();
+                      const fromE = (lastEmail.fromEmail ?? '').trim().toLowerCase();
+                      if (ce && fromE === ce) {
+                        return `From: ${lastEmail.from.replace(/<[^>]+>/, '').trim() || client.name}`;
+                      }
+                      return `To: ${client.name}`;
+                    })()}
+                  </p>
+                  <p
+                    className="mt-1 text-[12px] italic leading-[1.5]"
+                    style={{ color: '#7A8F95' }}
+                  >
+                    {(lastEmail.snippet ?? '').length > 120
+                      ? `${(lastEmail.snippet ?? '').slice(0, 120)}…`
+                      : lastEmail.snippet ?? ''}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="text-[12px] font-medium transition-opacity hover:opacity-90"
+                      style={{
+                        background: 'white',
+                        border: '1px solid #C8E8E5',
+                        color: '#7A8F95',
+                        borderRadius: 6,
+                        padding: '6px 14px',
+                      }}
+                      onClick={() => {
+                        if (!lastEmail.threadId) return;
+                        setShowThreadModal(true);
+                        setThreadLoading(true);
+                        setThreadEmails([]);
+                        void (async () => {
+                          try {
+                            const r = await gmailTool.execute('get_thread', {
+                              threadId: lastEmail.threadId,
+                            });
+                            if (r.success && Array.isArray(r.data)) {
+                              setThreadEmails(r.data as EmailMessage[]);
+                            } else {
+                              setThreadEmails([]);
+                            }
+                          } catch {
+                            setThreadEmails([]);
+                          } finally {
+                            setThreadLoading(false);
+                          }
+                        })();
+                      }}
+                    >
+                      View Thread
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[12px] font-bold text-white transition-opacity hover:opacity-90"
+                      style={{
+                        background: '#3BBFBF',
+                        borderRadius: 6,
+                        padding: '6px 14px',
+                        border: 'none',
+                      }}
+                      onClick={() => {
+                        const style = (client.disc?.style ?? 'I') as 'D' | 'I' | 'S' | 'C';
+                        setReplyDiscStyle(style);
+                        const t = getDiscEmailTemplate(style, client.name);
+                        setReplySubject(t.subject);
+                        setReplyBody(t.body);
+                        setShowReplyModal(true);
+                      }}
+                    >
+                      Reply with DISC template
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Coaching Notes</CardTitle>
@@ -6891,6 +7139,230 @@ Use reminders for:
             >
               {ahaSaving ? 'Saving…' : 'Save Aha Moment'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showReplyModal}
+        onOpenChange={(open) => {
+          setShowReplyModal(open);
+          if (!open) setReplySending(false);
+        }}
+      >
+        <DialogContent
+          className="max-h-[92vh] max-w-[min(96vw,560px)] gap-0 overflow-y-auto border-0 p-0 shadow-xl"
+          style={{ borderRadius: 12, background: 'white' }}
+        >
+          <DialogHeader
+            className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-4 text-left"
+            style={{ borderColor: '#C8E8E5' }}
+          >
+            <DialogTitle style={{ color: '#2D4459', fontSize: 18, fontWeight: 700 }}>
+              Reply to {client.name}
+            </DialogTitle>
+            <button
+              type="button"
+              className="rounded-md p-1 text-[#7A8F95] hover:bg-slate-100"
+              aria-label="Close"
+              onClick={() => setShowReplyModal(false)}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </DialogHeader>
+          <div className="space-y-4 px-6 py-4">
+            <div
+              className="rounded-lg px-3.5 py-2.5 text-[12px]"
+              style={{ background: '#F0FAFA', color: '#3BBFBF' }}
+            >
+              ✨ Template based on their DISC style: {DISC_STYLE_LABEL[replyDiscStyle]}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(['D', 'I', 'S', 'C'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="rounded-md px-3 py-1.5 text-[11px] font-semibold transition-colors"
+                  style={
+                    replyDiscStyle === s
+                      ? { background: '#3BBFBF', color: 'white' }
+                      : {
+                          background: 'white',
+                          border: '1px solid #C8E8E5',
+                          color: '#7A8F95',
+                        }
+                  }
+                  onClick={() => {
+                    setReplyDiscStyle(s);
+                    const t = getDiscEmailTemplate(s, client.name);
+                    setReplySubject(t.subject);
+                    setReplyBody(t.body);
+                  }}
+                >
+                  {s === 'D'
+                    ? 'High D'
+                    : s === 'I'
+                      ? 'High I'
+                      : s === 'S'
+                        ? 'High S'
+                        : 'High C'}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gmail-reply-subject" className="text-sm" style={{ color: '#2D4459' }}>
+                Subject
+              </Label>
+              <Input
+                id="gmail-reply-subject"
+                value={replySubject}
+                onChange={(e) => setReplySubject(e.target.value)}
+                className="rounded-lg"
+                style={{ borderColor: '#C8E8E5', padding: '10px 12px' }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gmail-reply-body" className="text-sm" style={{ color: '#2D4459' }}>
+                Message
+              </Label>
+              <Textarea
+                id="gmail-reply-body"
+                value={replyBody}
+                onChange={(e) => setReplyBody(e.target.value)}
+                rows={8}
+                className="min-h-[200px] resize-y rounded-lg"
+                style={{ borderColor: '#C8E8E5', padding: 12 }}
+              />
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <button
+                type="button"
+                className="rounded-md px-4 py-2 text-[13px] font-medium"
+                style={{
+                  background: 'white',
+                  border: '1px solid #C8E8E5',
+                  color: '#7A8F95',
+                }}
+                onClick={() => setShowReplyModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={replySending}
+                className="rounded-md px-4 py-2 text-[13px] font-bold text-white disabled:opacity-60"
+                style={{ background: '#3BBFBF' }}
+                onClick={() => {
+                  void (async () => {
+                    const toAddr = (contact.email ?? client.email ?? '').trim();
+                    if (!toAddr) {
+                      toast.error('❌ Client has no email address.', {
+                        style: { background: '#F05F57', color: 'white' },
+                        duration: 4000,
+                      });
+                      return;
+                    }
+                    setReplySending(true);
+                    try {
+                      const result = await gmailTool.execute('send_email', {
+                        to: toAddr,
+                        subject: replySubject,
+                        body: replyBody,
+                      });
+                      if (result.success) {
+                        setShowReplyModal(false);
+                        toast.success(`✅ Email sent to ${client.name}`, {
+                          style: { background: '#3BBFBF', color: 'white' },
+                          duration: 4000,
+                        });
+                        await refreshRecentEmail();
+                      } else {
+                        toast.error(`❌ Could not send email. ${result.error ?? 'Unknown error'}`, {
+                          style: { background: '#F05F57', color: 'white' },
+                          duration: 4000,
+                        });
+                      }
+                    } catch (e) {
+                      toast.error(
+                        `❌ Could not send email. ${e instanceof Error ? e.message : String(e)}`,
+                        {
+                          style: { background: '#F05F57', color: 'white' },
+                          duration: 4000,
+                        }
+                      );
+                    } finally {
+                      setReplySending(false);
+                    }
+                  })();
+                }}
+              >
+                {replySending ? 'Sending…' : 'Send Email'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showThreadModal}
+        onOpenChange={(open) => {
+          setShowThreadModal(open);
+          if (!open) {
+            setThreadEmails([]);
+            setThreadLoading(false);
+          }
+        }}
+      >
+        <DialogContent
+          className="max-h-[92vh] max-w-[min(96vw,560px)] gap-0 overflow-hidden border-0 p-0 shadow-xl"
+          style={{ borderRadius: 12, background: 'white' }}
+        >
+          <DialogHeader
+            className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-4 text-left"
+            style={{ borderColor: '#C8E8E5' }}
+          >
+            <DialogTitle style={{ color: '#2D4459', fontSize: 16, fontWeight: 700 }}>
+              Email thread with {client.name}
+            </DialogTitle>
+            <button
+              type="button"
+              className="rounded-md p-1 text-[#7A8F95] hover:bg-slate-100"
+              aria-label="Close"
+              onClick={() => setShowThreadModal(false)}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </DialogHeader>
+          <div className="max-h-[min(70vh,520px)] overflow-y-auto px-6 py-4">
+            {threadLoading ? (
+              <div className="flex items-center gap-2 py-8">
+                <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#3BBFBF' }} aria-hidden />
+                <span className="text-sm italic" style={{ color: '#7A8F95' }}>
+                  Loading thread…
+                </span>
+              </div>
+            ) : threadEmails.length === 0 ? (
+              <p className="text-sm" style={{ color: '#7A8F95' }}>
+                No messages in this thread.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {threadEmails.map((em, idx) => (
+                  <div
+                    key={`${em.id}-${idx}`}
+                    className={idx > 0 ? 'border-t border-[#C8E8E5] pt-4' : ''}
+                  >
+                    <div className="flex flex-wrap justify-between gap-2 text-[12px]" style={{ color: '#7A8F95' }}>
+                      <span className="font-medium">{em.from || '—'}</span>
+                      <span>{formatEmailRelative(em.date)}</span>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed" style={{ color: '#2D4459' }}>
+                      {em.body || em.snippet || '—'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
