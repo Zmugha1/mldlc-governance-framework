@@ -683,6 +683,159 @@ async fn gmail_get_profile(access_token: String) -> Result<serde_json::Value, St
     Ok(json)
 }
 
+#[tauri::command]
+async fn gcal_get_events(
+    access_token: String,
+    time_min: String,
+    time_max: String,
+    max_results: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let max = max_results.unwrap_or(50);
+
+    let url = format!(
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events\
+     ?timeMin={}&timeMax={}&maxResults={}\
+     &singleEvents=true&orderBy=startTime",
+        urlencoding::encode(&time_min),
+        urlencoding::encode(&time_max),
+        max
+    );
+
+    let response = client
+        .get(&url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn gcal_get_todays_events(access_token: String) -> Result<serde_json::Value, String> {
+    use chrono::{Datelike, Local, TimeZone, Utc};
+
+    let now = Local::now();
+    let start_of_day = Local
+        .with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
+        .unwrap()
+        .with_timezone(&Utc);
+
+    let end_of_day = Local
+        .with_ymd_and_hms(now.year(), now.month(), now.day(), 23, 59, 59)
+        .unwrap()
+        .with_timezone(&Utc);
+
+    let time_min = start_of_day.to_rfc3339();
+    let time_max = end_of_day.to_rfc3339();
+
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events\
+     ?timeMin={}&timeMax={}&maxResults=20\
+     &singleEvents=true&orderBy=startTime",
+        urlencoding::encode(&time_min),
+        urlencoding::encode(&time_max)
+    );
+
+    let response = client
+        .get(&url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn gcal_get_this_week(access_token: String) -> Result<serde_json::Value, String> {
+    use chrono::{Datelike, Duration, Local, TimeZone, Utc};
+
+    let now = Local::now();
+    let start = Local
+        .with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
+        .unwrap()
+        .with_timezone(&Utc);
+
+    let end = start + Duration::days(7);
+
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events\
+     ?timeMin={}&timeMax={}&maxResults=50\
+     &singleEvents=true&orderBy=startTime",
+        urlencoding::encode(&start.to_rfc3339()),
+        urlencoding::encode(&end.to_rfc3339())
+    );
+
+    let response = client
+        .get(&url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
+#[tauri::command]
+async fn gcal_create_event(
+    access_token: String,
+    summary: String,
+    description: String,
+    start_datetime: String,
+    end_datetime: String,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    let event = serde_json::json!({
+        "summary": summary,
+        "description": description,
+        "start": {
+            "dateTime": start_datetime,
+            "timeZone": "America/Chicago"
+        },
+        "end": {
+            "dateTime": end_datetime,
+            "timeZone": "America/Chicago"
+        }
+    });
+
+    let response = client
+        .post("https://www.googleapis.com/calendar/v3/calendars/primary/events")
+        .bearer_auth(&access_token)
+        .json(&event)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(json)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // ─────────────────────────────────────────────
@@ -1370,6 +1523,10 @@ pub fn run() {
             gmail_get_thread,
             gmail_send_message,
             gmail_get_profile,
+            gcal_get_events,
+            gcal_get_todays_events,
+            gcal_get_this_week,
+            gcal_create_event,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
