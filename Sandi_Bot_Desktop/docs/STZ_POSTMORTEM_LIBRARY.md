@@ -256,3 +256,50 @@ Fix applied: Operational discipline — PRAGMA
 Prevention rule: Build migration manager in v2.0
   Promoted from v3.1 to v2.0 roadmap
 Layer: Tech
+
+## INC-019
+Date: 2026-04-01
+What broke: Start AI Engine failed — spawn
+  ollama serve: program not allowed on the
+  configured shell scope
+Root cause: plugin:shell|spawn requires a
+  matching scoped allow entry (name cmd args)
+  in capabilities not only the string
+  shell:allow-spawn permission
+Fix applied: Added scoped shell:allow-spawn
+  allow entry for name ollama cmd ollama
+  args ["serve"] in default.json
+Commit: ee84795
+Prevention rule: When spawning any new shell
+  command add a capability scope row before
+  shipping the UI that calls it
+Layer: Tech
+
+## INC-020
+Date: 2026-04-01
+What broke: Resume upload showed
+  years_experience = 0 for real resumes
+Root cause: Extraction prompt asked for an
+  explicit years statement most PDFs do not use
+Fix applied: New prompt returns
+  earliest_work_year; TS computes years from
+  date; upsertCoachProfileFromResumeText in
+  knowledgeService
+Commit: 8a79376
+Prevention rule: Derive tenure from earliest
+  work date range across experience not from
+  a single phrase
+Layer: Tech
+
+## INC-021
+Date: 2026-04-01
+What broke: CoachBotTool module export error
+  at runtime in Vite
+Root cause: TypeScript interfaces imported as
+  values from toolManager
+Fix applied: import type for CoachBotTool and
+  related interfaces in calendar and gmail tools
+Commit: 0d43cc4
+Prevention rule: Use import type for every
+  interface-only import from toolManager
+Layer: Tech

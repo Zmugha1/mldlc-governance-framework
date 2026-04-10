@@ -563,3 +563,19 @@ Phase 5: MOSTLY COMPLETE
   Remaining: 5B emotional detection, 5E coaching plan tab
 
 Phase 6-15: Not started — retainer months 2-24
+
+---
+
+## Rules added 2026-04-01
+
+- Shell spawn and execute allowlists are defined in src-tauri/capabilities/default.json as scoped permissions (identifier shell:allow-spawn or shell:allow-execute with allow array entries name cmd args). The invoke program string must match the configured name. Do not add execute or allowlist keys under plugins.shell in tauri.conf.json — tauri-plugin-shell v2 Config only exposes shell.open (unknown fields cause errors).
+
+- Use import type for CoachBotTool ToolCapability ToolResult ToolSetting when importing from toolManager.ts so Vite does not treat interfaces as runtime exports.
+
+- Coach resume extraction and years_experience computation belong in knowledgeService upsertCoachProfileFromResumeText: model returns earliest_work_year; application computes currentYear minus earliest. Do not rely on a single explicit years phrase in the resume prompt.
+
+- Google MCP tools: privacy_audit and tool_call audit rows are emitted from ToolManager.execute path; keep gmail and google-calendar calls going through ToolManager for consistent logging.
+
+- The Capture identity clear and per-document knowledge deletes must remove knowledge_embeddings rows before knowledge_documents rows for the same ids or domains.
+
+- Exceptions to the default never touch default.json rule apply only when explicitly requested for shell scope or capability updates; always run cargo check after capability edits.

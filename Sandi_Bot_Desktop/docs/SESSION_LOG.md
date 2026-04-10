@@ -57,5 +57,25 @@ Additional runbooks: RUN-009 through RUN-011
   Data accuracy audit, production tsc fix,
   Pre-Sequence 12 preflight
 
-## Session 2026-04-08
-[Will be populated by END OF SESSION]
+## Session 2026-04-01
+Commits this session:
+  1a00092 3e2b69c 6516f9c 0d43cc4 ca0c98e
+  4fe3220 8a79376 ee84795
+ADRs added: 3 (ADR-024 shell capability scope,
+  ADR-025 resume years in knowledgeService,
+  ADR-026 tool audit and privacy logging)
+Incidents resolved: 3 (INC-019 shell spawn
+  ollama, INC-020 resume years zero,
+  INC-021 import type CoachBotTool)
+Runbooks added: 1 (RUN-012 shell allowlist)
+Voice rules added: 0
+Next session should start with:
+  Confirm resume upload uses
+  upsertCoachProfileFromResumeText from UI
+  if years still wrong; verify Start AI Engine
+  after shell capabilities
+Blockers or open items:
+  Wire AdminStreamliner to
+  upsertCoachProfileFromResumeText if not
+  already done; Client Intelligence may need
+  to read selected_client_name for tab jumps

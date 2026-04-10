@@ -312,3 +312,55 @@ Layer: L3 Architecture
 Consequence: Separation of concerns and
   licensing enforced at file boundary
 Never do: Merge knowledge DB into client DB
+
+## ADR-024
+Date: 2026-04-01
+Decision: Tauri shell spawn and execute are
+  gated by capability scope entries with
+  matching name cmd and args — not by
+  tauri.conf.json allowlists
+Layer: Tech
+Context: tauri-plugin-shell v2 Config in
+  tauri.conf.json only defines shell.open
+  (deny_unknown_fields). Program allowlists
+  live under src-tauri/capabilities as scoped
+  permissions for shell:allow-spawn and
+  shell:allow-execute
+Consequence: Each allowed CLI (e.g. ollama
+  with args serve) is declared in default.json
+  with identifier shell:allow-spawn and an
+  allow array entry name cmd args
+Never do: Add execute or allowlist blocks to
+  plugins.shell in tauri.conf.json expecting
+  them to deserialize — they will fail
+
+## ADR-025
+Date: 2026-04-01
+Decision: Coach resume profile extraction and
+  years_experience live in knowledgeService
+  upsertCoachProfileFromResumeText using
+  earliest_work_year from the model then
+  years_experience = currentYear - earliest
+Layer: Tech
+Context: Prompts that asked for explicit
+  years statements returned 0 when resumes
+  only had date ranges
+Consequence: Single place for Ollama JSON
+  parse markdown strip and coach_profile upsert
+Never do: Rely on years_experience from the
+  model when date ranges are the real signal
+
+## ADR-026
+Date: 2026-04-01
+Decision: Google tool privacy and tool-call
+  audit hooks live in toolManager execute path
+  and googleAuthService logPrivacyAudit
+Layer: Governance
+Context: Airgap and offline graceful handling
+  require consistent logging without duplicating
+  calls in every tool file
+Consequence: gmail and google-calendar calls
+  log privacy_audit before execute; tool_call
+  rows written after each execute
+Never do: Bypass ToolManager for Google tool
+  execution in new integrations

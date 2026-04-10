@@ -218,3 +218,26 @@ Steps:
   6. All TypeScript errors resolved
 Expected output: All six gates green
 Watch out for: Do not skip any step
+
+## RUN-012
+Task: Allowlist a shell command for spawn
+  (or execute) in Tauri v2
+Trigger: Console shows program not allowed
+  on the configured shell scope for
+  plugin:shell|spawn or Command.spawn
+Steps:
+  1. Open src-tauri/capabilities/default.json
+  2. Ensure shell:allow-spawn (or execute)
+     string permission is present
+  3. Add a scoped object with identifier
+     shell:allow-spawn and allow array with
+     name (API id) cmd (binary) args (fixed
+     list or validator objects)
+  4. Match invoke program field to name
+  5. cargo check --manifest-path src-tauri/Cargo.toml
+  6. Restart tauri dev and retry the action
+Expected output: Spawn succeeds without
+  scope denial
+Watch out for: Do not add unknown keys under
+  plugins.shell in tauri.conf.json — only
+  open is valid there for shell plugin config

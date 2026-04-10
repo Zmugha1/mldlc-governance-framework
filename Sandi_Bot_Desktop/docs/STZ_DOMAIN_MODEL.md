@@ -254,3 +254,31 @@ Rules:
   C4 conversion target: 80%
 Source: Sandi business plan 2026
 Layer: L1
+
+DOMAIN-015
+Entity: Coach identity knowledge row sync
+Rules:
+  Domain label for synced coach identity
+    text in knowledge_documents is
+    "Coach Identity"
+  Stable document id coach-identity used for
+    embed sync from coach_profile fields
+  Clearing identity removes coach_profile row
+    and Coach Identity domain rows and
+    embeddings in dependency order
+Source: AdminStreamliner syncCoachIdentityToKnowledge
+  and clear identity flow 2026-04-01
+Layer: L2
+
+DOMAIN-016
+Entity: Morning Brief calendar calls
+Rules:
+  Today calls come from Google Calendar via
+    MCP calendar tool when connected
+  Matched clients show stage and actions
+    unmatched events show title only
+  Post-call reminder uses event end time
+    and matched client only
+Source: ExecutiveDashboard Morning Brief
+  build session 2026-04-01
+Layer: L1
