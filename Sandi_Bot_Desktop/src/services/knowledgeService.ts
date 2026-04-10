@@ -121,6 +121,105 @@ export function chunkText(
   return chunks;
 }
 
+/**
+ * Extract coach profile fields from resume text via Ollama, compute years from
+ * earliest work date range, and upsert `coach_profile` id `coach`.
+ */
+export async function upsertCoachProfileFromResumeText(
+  resumeText: string,
+  resumeFileName: string
+): Promise<void> {
+  const prompt = `
+Extract the following from this resume
+and return as JSON only. No other text.
+
+{
+  "bio": "2-3 sentence professional bio
+    in third person based on their
+    experience and expertise",
+  "earliest_work_year": the earliest
+    year found in any work experience
+    date range as a 4 digit number,
+  "certifications": "comma separated
+    list of certifications credentials
+    and training programs mentioned",
+  "key_expertise": "comma separated
+    list of top 5 expertise areas
+    based on their experience"
+}
+
+Look for date patterns like:
+  2001 - Present
+  January 2001 to Present
+  2001-2024
+  Jan 2001 - Dec 2005
+Find the EARLIEST year across all
+work experience entries.
+Return it as earliest_work_year
+as a plain number like 2001.
+
+If no dates found return 2000
+as a safe default.
+
+Return ONLY valid JSON.
+No explanation. No markdown.
+Just the JSON object.
+
+Resume content:
+${resumeText}
+`;
+
+  const raw = await invoke<string>('ollama_generate', {
+    prompt,
+    system:
+      'You extract structured information from resumes. Return only valid JSON.',
+    model: 'qwen2.5:7b',
+  });
+
+  const clean = raw
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(clean) as Record<string, unknown>;
+  } catch {
+    const m = clean.match(/\{[\s\S]*\}/);
+    if (!m) {
+      throw new Error('Could not parse resume extraction JSON');
+    }
+    parsed = JSON.parse(m[0]) as Record<string, unknown>;
+  }
+
+  const currentYear = new Date().getFullYear();
+  const eyRaw = parsed.earliest_work_year;
+  const earliest =
+    typeof eyRaw === 'number' && !Number.isNaN(eyRaw)
+      ? Math.floor(eyRaw)
+      : parseInt(String(eyRaw ?? ''), 10) || 2000;
+  const yearsExperience = Math.max(0, currentYear - earliest);
+
+  const bio = String(parsed.bio ?? '').trim();
+  let certifications = String(parsed.certifications ?? '').trim();
+  const keyExpertise = String(parsed.key_expertise ?? '').trim();
+  if (!certifications && keyExpertise) certifications = keyExpertise;
+
+  await dbExecute(
+    `INSERT INTO coach_profile
+      (id, bio, resume_text, resume_file_name, years_experience, certifications, updated_at)
+     VALUES ('coach', ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET
+       bio = excluded.bio,
+       resume_text = excluded.resume_text,
+       resume_file_name = excluded.resume_file_name,
+       years_experience = excluded.years_experience,
+       certifications = excluded.certifications,
+       updated_at = excluded.updated_at`,
+    [bio, resumeText.trim(), resumeFileName, yearsExperience, certifications]
+  );
+}
+
 function parseEmbeddingFromDb(raw: string | null | undefined): number[] {
   if (raw == null || raw === '') return [];
   try {
