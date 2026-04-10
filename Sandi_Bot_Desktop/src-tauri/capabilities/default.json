@@ -25,6 +25,16 @@
     "shell:allow-open",
     "shell:allow-spawn",
     {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "ollama",
+          "cmd": "ollama",
+          "args": ["serve"]
+        }
+      ]
+    },
+    {
       "identifier": "fs:scope",
       "allow": [
         {
