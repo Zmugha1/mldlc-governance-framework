@@ -1477,6 +1477,9 @@ pub fn run() {
         migrations::migration_64(),
         migrations::migration_65(),
         migrations::migration_66(),
+        migrations::migration_67(),
+        migrations::migration_68(),
+        migrations::migration_69(),
     ];
 
     tauri::Builder::default()

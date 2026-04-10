@@ -277,3 +277,67 @@ pub fn migration_66() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 67: `extraction_corrections` for correction logging and QLoRA-style training exports.
+///
+/// Application-level `correction_type` values include: `vision_edit`, `question_thumbs_up`,
+/// `question_thumbs_down`, `question_edit`, `field_correction`, `council_feedback`, `rating`.
+pub fn migration_67() -> Migration {
+    Migration {
+        version: 67,
+        description: "create_extraction_corrections",
+        sql: "CREATE TABLE IF NOT EXISTS extraction_corrections (
+                id TEXT PRIMARY KEY,
+                coach_id TEXT NOT NULL DEFAULT 'coach',
+                client_id TEXT,
+                field_name TEXT NOT NULL,
+                original_value TEXT,
+                corrected_value TEXT NOT NULL,
+                correction_type TEXT NOT NULL,
+                page TEXT,
+                session_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              );",
+        kind: MigrationKind::Up,
+    }
+}
+
+/// Migration 68: `prompt_templates` for DB-backed prompts (no reinstall for text updates).
+pub fn migration_68() -> Migration {
+    Migration {
+        version: 68,
+        description: "create_prompt_templates",
+        sql: "CREATE TABLE IF NOT EXISTS prompt_templates (
+                id TEXT PRIMARY KEY,
+                prompt_name TEXT NOT NULL UNIQUE,
+                prompt_text TEXT NOT NULL,
+                system_text TEXT DEFAULT '',
+                version INTEGER DEFAULT 1,
+                active INTEGER DEFAULT 1,
+                description TEXT,
+                last_edited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              );",
+        kind: MigrationKind::Up,
+    }
+}
+
+/// Migration 69: `system_health_log` for per-page health metrics over time.
+pub fn migration_69() -> Migration {
+    Migration {
+        version: 69,
+        description: "create_system_health_log",
+        sql: "CREATE TABLE IF NOT EXISTS system_health_log (
+                id TEXT PRIMARY KEY,
+                page TEXT NOT NULL,
+                metric_name TEXT NOT NULL,
+                metric_value REAL NOT NULL,
+                data_completeness_score REAL,
+                rating_score REAL,
+                combined_score REAL,
+                sample_size INTEGER DEFAULT 0,
+                logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              );",
+        kind: MigrationKind::Up,
+    }
+}
