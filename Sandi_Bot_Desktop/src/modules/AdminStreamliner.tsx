@@ -35,6 +35,7 @@ import {
   Plug,
   Sparkles,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -66,7 +67,6 @@ import { dbSelect, dbExecute } from '@/services/db';
 import {
   uploadKnowledgeDocument,
   getDocumentsByDomain,
-  deleteDocument,
   embedKnowledgeDocument,
   type KnowledgeDocument,
 } from '../services/knowledgeService';
@@ -1082,6 +1082,15 @@ export default function AdminStreamliner() {
   const [knowledgeCardHover, setKnowledgeCardHover] = useState<string | null>(null);
   const [knowledgeUploadMessage, setKnowledgeUploadMessage] = useState<string | null>(null);
 
+  const [clearIdentityConfirmOpen, setClearIdentityConfirmOpen] = useState(false);
+  const [pendingDeleteDoc, setPendingDeleteDoc] = useState<{ id: string; title: string } | null>(
+    null
+  );
+  const [pendingDeleteDomain, setPendingDeleteDomain] = useState<{
+    domain: string;
+    count: number;
+  } | null>(null);
+
   const [coachProfile, setCoachProfile] = useState<CoachProfileState | null>(null);
   const [coachProfileLoading, setCoachProfileLoading] = useState(true);
   const [resumeReadStatus, setResumeReadStatus] = useState<string | null>(null);
@@ -1176,13 +1185,41 @@ export default function AdminStreamliner() {
     setKnowledgeModalDocs(docs);
   }, []);
 
-  const handleDeleteKnowledgeDocument = useCallback(
-    async (id: string) => {
-      await deleteDocument(id);
+  const performDeleteKnowledgeDocument = useCallback(
+    async (id: string, titleForToast?: string) => {
+      await dbExecute(`DELETE FROM knowledge_embeddings WHERE document_id = ?`, [id]);
+      await dbExecute(`DELETE FROM knowledge_documents WHERE id = ?`, [id]);
       await refreshKnowledgeDocuments();
       if (knowledgeModalDomain) {
         await loadKnowledgeModalDocs(knowledgeModalDomain);
       }
+      if (titleForToast) {
+        toast.success(`${titleForToast} deleted`, {
+          duration: 2000,
+          style: { background: '#F05F57', color: 'white' },
+        });
+      }
+    },
+    [knowledgeModalDomain, refreshKnowledgeDocuments, loadKnowledgeModalDocs]
+  );
+
+  const performDeleteDomainDocuments = useCallback(
+    async (domain: string) => {
+      await dbExecute(
+        `DELETE FROM knowledge_embeddings WHERE document_id IN (
+          SELECT id FROM knowledge_documents WHERE domain = ?
+        )`,
+        [domain]
+      );
+      await dbExecute(`DELETE FROM knowledge_documents WHERE domain = ?`, [domain]);
+      await refreshKnowledgeDocuments();
+      if (knowledgeModalDomain === domain) {
+        await loadKnowledgeModalDocs(domain);
+      }
+      toast.success(`All documents in ${domain} removed`, {
+        duration: 2000,
+        style: { background: '#F05F57', color: 'white' },
+      });
     },
     [knowledgeModalDomain, refreshKnowledgeDocuments, loadKnowledgeModalDocs]
   );
@@ -1247,6 +1284,33 @@ export default function AdminStreamliner() {
       setCoachProfileLoading(false);
     }
   }, []);
+
+  const performClearIdentity = useCallback(async () => {
+    try {
+      await dbExecute(
+        `DELETE FROM knowledge_embeddings WHERE document_id IN (
+          SELECT id FROM knowledge_documents WHERE domain = 'Coach Identity'
+        )`,
+        []
+      );
+      await dbExecute(`DELETE FROM knowledge_documents WHERE domain = 'Coach Identity'`, []);
+      await dbExecute(`DELETE FROM coach_profile WHERE id = 'coach'`, []);
+      await loadCoachProfile();
+      await refreshKnowledgeDocuments();
+      setClearIdentityConfirmOpen(false);
+      setBioDraft('');
+      setPhilosophyDraft('');
+      setStyleSelected([]);
+      setStyleCustomExtras([]);
+      setStyleCustomInput('');
+      toast.success('Identity cleared', {
+        duration: 2000,
+        style: { background: '#F05F57', color: 'white' },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }, [loadCoachProfile, refreshKnowledgeDocuments]);
 
   useEffect(() => {
     void loadCoachProfile();
@@ -3697,9 +3761,26 @@ ${workingText}`;
                 color: 'white',
               }}
             >
-              <p className="font-bold" style={{ fontSize: 15, color: 'white', marginBottom: 12 }}>
-                What Coach Bot Knows About You
-              </p>
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <p className="font-bold" style={{ fontSize: 15, color: 'white' }}>
+                  What Coach Bot Knows About You
+                </p>
+                <button
+                  type="button"
+                  className="shrink-0 transition-opacity hover:opacity-90"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    color: '#C8E8E5',
+                    borderRadius: 6,
+                    padding: '4px 12px',
+                    fontSize: 11,
+                  }}
+                  onClick={() => setClearIdentityConfirmOpen(true)}
+                >
+                  Clear Identity
+                </button>
+              </div>
 
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-2">
@@ -4542,9 +4623,29 @@ ${workingText}`;
                 >
                   {d.description}
                 </p>
-                <p className="mt-2 text-[11px]" style={{ color: coverageColor }}>
-                  <span aria-hidden>{coverageSymbol}</span> {coverageLabel}
-                </p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="min-w-0 flex-1 text-[11px]" style={{ color: coverageColor }}>
+                    <span aria-hidden>{coverageSymbol}</span> {coverageLabel}
+                  </p>
+                  {count >= 1 ? (
+                    <button
+                      type="button"
+                      title="Delete all documents in this domain"
+                      className="shrink-0 p-0.5 transition-opacity hover:opacity-80"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingDeleteDomain({ domain: d.domain, count });
+                      }}
+                    >
+                      <Trash2
+                        className="h-3 w-3"
+                        style={{ color: '#F05F57' }}
+                        aria-hidden
+                      />
+                    </button>
+                  ) : null}
+                </div>
                 {count >= 1 && domainLatestByDomain[d.domain] ? (
                   <div className="mt-2 rounded-md border border-[#E8F4F3] bg-[#FAFCFC] p-2 text-[11px]">
                     <p
@@ -4553,18 +4654,6 @@ ${workingText}`;
                     >
                       {truncateKnowledgeText(domainLatestByDomain[d.domain]!.excerpt, 80)}
                     </p>
-                    <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 transition-colors hover:bg-red-50"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleDeleteKnowledgeDocument(domainLatestByDomain[d.domain]!.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
                   </div>
                 ) : null}
                 <div style={{ marginTop: 8, minHeight: 28 }}>
@@ -4614,24 +4703,44 @@ ${workingText}`;
                 return (
                   <li
                     key={row.id}
-                    className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]"
+                    className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[13px]"
                   >
-                    <span className="min-w-0 flex-1 font-medium" style={{ color: '#2D4459' }}>
-                      <span aria-hidden>📄 </span>
-                      {titleLine}
-                    </span>
-                    <span
-                      className="shrink-0 rounded-[12px] px-2 py-0.5 text-[11px]"
-                      style={{ background: '#F4F7F8', color: '#7A8F95' }}
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="min-w-0 font-medium" style={{ color: '#2D4459' }}>
+                        <span aria-hidden>📄 </span>
+                        {titleLine}
+                      </span>
+                      <span
+                        className="shrink-0 rounded-[12px] px-2 py-0.5 text-[11px]"
+                        style={{ background: '#F4F7F8', color: '#7A8F95' }}
+                      >
+                        {row.domain}
+                      </span>
+                      <span className="shrink-0 text-[11px]" style={{ color: '#7A8F95' }}>
+                        {wc.toLocaleString()} words
+                      </span>
+                      <span className="shrink-0 text-[11px]" style={{ color: '#7A8F95' }}>
+                        {rel}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 cursor-pointer"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#F05F57',
+                        fontSize: 11,
+                      }}
+                      onClick={() =>
+                        setPendingDeleteDoc({
+                          id: String(row.id),
+                          title: String(row.title ?? 'Document'),
+                        })
+                      }
                     >
-                      {row.domain}
-                    </span>
-                    <span className="shrink-0 text-[11px]" style={{ color: '#7A8F95' }}>
-                      {wc.toLocaleString()} words
-                    </span>
-                    <span className="shrink-0 text-[11px]" style={{ color: '#7A8F95' }}>
-                      {rel}
-                    </span>
+                      Delete
+                    </button>
                   </li>
                 );
               })}
@@ -4718,7 +4827,12 @@ ${workingText}`;
                         <button
                           type="button"
                           className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
-                          onClick={() => void handleDeleteKnowledgeDocument(doc.id)}
+                          onClick={() =>
+                            setPendingDeleteDoc({
+                              id: doc.id,
+                              title: doc.file_name?.trim() || doc.title || 'Document',
+                            })
+                          }
                         >
                           Delete
                         </button>
@@ -4739,6 +4853,111 @@ ${workingText}`;
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setKnowledgeModalDomain(null)}>
                 Done
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={clearIdentityConfirmOpen} onOpenChange={setClearIdentityConfirmOpen}>
+          <DialogContent className="sm:max-w-md" style={{ borderColor: '#C8E8E5' }}>
+            <DialogHeader>
+              <DialogTitle style={{ color: '#2D4459' }}>Clear identity</DialogTitle>
+              <DialogDescription
+                className="whitespace-pre-line text-[13px] leading-relaxed"
+                style={{ color: '#7A8F95' }}
+              >
+                {`Clear your identity profile?\nYour resume, philosophy, and style will be removed.\nThis cannot be undone.`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setClearIdentityConfirmOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="text-white hover:opacity-90"
+                style={{ background: '#F05F57' }}
+                onClick={() => void performClearIdentity()}
+              >
+                Clear Identity
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={pendingDeleteDoc !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDeleteDoc(null);
+          }}
+        >
+          <DialogContent className="sm:max-w-md" style={{ borderColor: '#C8E8E5' }}>
+            <DialogHeader>
+              <DialogTitle style={{ color: '#2D4459' }}>Delete document?</DialogTitle>
+              <DialogDescription
+                className="whitespace-pre-line text-[13px] leading-relaxed"
+                style={{ color: '#7A8F95' }}
+              >
+                {pendingDeleteDoc
+                  ? `Delete ${pendingDeleteDoc.title}?\nThis will remove it from your knowledge base.`
+                  : ''}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setPendingDeleteDoc(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="text-white hover:opacity-90"
+                style={{ background: '#F05F57' }}
+                onClick={() => {
+                  if (!pendingDeleteDoc) return;
+                  const { id, title } = pendingDeleteDoc;
+                  setPendingDeleteDoc(null);
+                  void performDeleteKnowledgeDocument(id, title);
+                }}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={pendingDeleteDomain !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDeleteDomain(null);
+          }}
+        >
+          <DialogContent className="sm:max-w-md" style={{ borderColor: '#C8E8E5' }}>
+            <DialogHeader>
+              <DialogTitle style={{ color: '#2D4459' }}>Delete all in domain?</DialogTitle>
+              <DialogDescription
+                className="whitespace-pre-line text-[13px] leading-relaxed"
+                style={{ color: '#7A8F95' }}
+              >
+                {pendingDeleteDomain
+                  ? `Delete all documents in ${pendingDeleteDomain.domain}?\n${pendingDeleteDomain.count} document${pendingDeleteDomain.count === 1 ? '' : 's'} will be removed.`
+                  : ''}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setPendingDeleteDomain(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="text-white hover:opacity-90"
+                style={{ background: '#F05F57' }}
+                onClick={() => {
+                  if (!pendingDeleteDomain) return;
+                  const { domain } = pendingDeleteDomain;
+                  setPendingDeleteDomain(null);
+                  void performDeleteDomainDocuments(domain);
+                }}
+              >
+                Delete All
               </Button>
             </DialogFooter>
           </DialogContent>
