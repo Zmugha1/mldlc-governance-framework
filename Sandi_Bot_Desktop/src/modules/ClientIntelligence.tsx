@@ -45,7 +45,6 @@ import {
 } from '@/components/ui/tooltip';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
-import { HealthIndicator } from '../components/HealthIndicator';
 import UATFeedback from '@/components/UATFeedback';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
@@ -83,6 +82,23 @@ import {
 } from '../services/coachingCouncil';
 import { logCorrection } from '../services/correctionService';
 import { processDocument } from '@/services/documentExtractionService';
+
+/**
+ * v1.4: Disable Quick Reflection (App.tsx). It treats `reflection_last_shown`
+ * in localStorage as today's YYYY-MM-DD to decide whether to open the modal;
+ * marking it on load prevents the idle timer and beforeunload hook from firing.
+ */
+(function disableQuickReflectionPromptV14() {
+  try {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    localStorage.setItem('reflection_last_shown', `${y}-${m}-${day}`);
+  } catch {
+    /* ignore */
+  }
+})();
 
 /** Client Intelligence sidebar / header — DISC ring colors (solid + ~20% fill). */
 const CI_DISC_STYLE: Record<'D' | 'I' | 'S' | 'C', { solid: string; muted: string }> = {
@@ -250,6 +266,35 @@ function formatFathomSessionCardDate(iso: string | null | undefined): string {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+function sanitizeSessionNotes(notes: string | null): string {
+  if (!notes) return '';
+  const trimmed = notes.trim();
+  if (!trimmed || trimmed === '{}') return '';
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed) as {
+        objections?: unknown;
+        commitments?: unknown;
+        notes?: unknown;
+      };
+      const parts: string[] = [];
+      if (Array.isArray(parsed.objections) && parsed.objections.length > 0) {
+        parts.push('Objections: ' + parsed.objections.map(String).join(', '));
+      }
+      if (Array.isArray(parsed.commitments) && parsed.commitments.length > 0) {
+        parts.push('Commitments: ' + parsed.commitments.map(String).join(', '));
+      }
+      if (parsed.notes) {
+        parts.push(String(parsed.notes));
+      }
+      return parts.length > 0 ? parts.join('. ') : 'Session logged';
+    } catch {
+      return 'Session logged';
+    }
+  }
+  return trimmed;
 }
 
 function shouldShowPlacementMilestones(client: {
@@ -1524,6 +1569,7 @@ function ClientDetailModal({
   const [fathomNotesExpanded, setFathomNotesExpanded] = useState<Record<number, boolean>>(
     {}
   );
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
   const [fathomUploading, setFathomUploading] = useState(false);
   const [fathomProgress, setFathomProgress] = useState(0);
   const [fathomUploadError, setFathomUploadError] = useState<string | null>(null);
@@ -2338,60 +2384,6 @@ function ClientDetailModal({
     clientReadinessDbFields,
   ]);
 
-  const clientDataCompleteness = useMemo(() => {
-    if (!client?.id) return 0;
-
-    let score = 0;
-
-    if (
-      discScores != null &&
-      (discScores.d > 0 ||
-        discScores.i > 0 ||
-        discScores.s > 0 ||
-        discScores.c > 0)
-    ) {
-      score += 25;
-    }
-
-    if (you2Vision.trim().length > 20) {
-      score += 25;
-    }
-
-    if (
-      fathomSessions.length > 0 &&
-      fathomSessions.some(
-        (s) =>
-          coachingSessionNotesPlain(s.notes).trim().length > 20
-      )
-    ) {
-      score += 25;
-    }
-
-    const tumayContactName =
-      tumayData != null &&
-      String(
-        (tumayData as Record<string, unknown>).contact_name ?? ''
-      ).trim().length > 0;
-    const tumayFinancialRange =
-      (tumayReadinessProfile?.financial_net_worth_range ?? '')
-        .trim().length > 0 ||
-      (you2Details?.financial_net_worth_range ?? '').trim()
-        .length > 0;
-    if (tumayContactName || tumayFinancialRange) {
-      score += 25;
-    }
-
-    return score;
-  }, [
-    client?.id,
-    discScores,
-    you2Vision,
-    fathomSessions,
-    tumayData,
-    tumayReadinessProfile,
-    you2Details,
-  ]);
-
   const latestSessionNotesPlain = useMemo(() => {
     const first = fathomSessions[0];
     if (!first) return '';
@@ -2401,9 +2393,7 @@ function ClientDetailModal({
       const sum = String((parsed as { summary?: unknown }).summary ?? '').trim();
       if (sum) return sum;
     }
-    const raw = n.trim();
-    if (!raw || raw === '{}') return '';
-    return raw;
+    return sanitizeSessionNotes(n);
   }, [fathomSessions]);
 
   const bestNextQuestionsChecklist = useMemo(() => {
@@ -3632,9 +3622,7 @@ not generic statements.${feedbackSection}`;
       const sum = String((parsed as { summary?: unknown }).summary ?? '').trim();
       if (sum) return sum;
     }
-    const raw = (sess.notes ?? '').trim();
-    if (!raw || raw === '{}') return '';
-    return raw;
+    return sanitizeSessionNotes(sess.notes);
   };
 
   const fathomClearBadgeStyle = (score: number) => {
@@ -3956,10 +3944,6 @@ not generic statements.${feedbackSection}`;
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <HealthIndicator
-            page="Client Intelligence"
-            dataCompleteness={clientDataCompleteness}
-          />
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
@@ -6182,6 +6166,29 @@ not generic statements.${feedbackSection}`;
 
           <TabsContent value="fathom" className="h-full min-h-0 mt-0">
             <div className="h-full max-h-[75vh] overflow-y-auto p-6">
+              <div style={{ marginBottom: 16 }}>
+                <p
+                  style={{
+                    color: '#2D4459',
+                    fontSize: 15,
+                    fontWeight: 'bold',
+                    margin: '0 0 4px',
+                  }}
+                >
+                  Coaching Sessions
+                </p>
+                <p
+                  style={{
+                    color: '#7A8F95',
+                    fontSize: 12,
+                    margin: '0 0 12px',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  Upload Fathom transcripts to automatically extract 9-block coaching analysis. Each transcript becomes
+                  one session record.
+                </p>
+              </div>
               <div
                 style={{
                   background: '#F4F7F8',
@@ -6484,10 +6491,6 @@ not generic statements.${feedbackSection}`;
                 ) : null}
               </div>
 
-              {/* SECTION 2 — Session History */}
-              <h3 className="mb-3 font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
-                Session History
-              </h3>
               {fathomSessionCount === 0 ? (
                 <div
                   className="flex flex-col items-center justify-center rounded-xl border py-10 text-center"
@@ -6517,10 +6520,11 @@ not generic statements.${feedbackSection}`;
                       clearScore != null && !Number.isNaN(clearScore)
                         ? fathomClearBadgeStyle(clearScore)
                         : null;
-                    const sessionNumLabel =
-                      s.session_number != null ? `Session ${s.session_number}` : `Session ${idx + 1}`;
+                    const sessionNum = s.session_number != null ? s.session_number : idx + 1;
                     const dur = (s.call_duration ?? '').trim();
-                    const expanded = Boolean(fathomNotesExpanded[s.id]);
+                    const sessionKey = String(s.id);
+                    const notesExpanded = Boolean(fathomNotesExpanded[s.id]);
+                    const blocksExpanded = expandedSessions.has(sessionKey);
                     const showMoreToggle = plainNotes.length > 140;
 
                     return (
@@ -6535,26 +6539,23 @@ not generic statements.${feedbackSection}`;
                           marginBottom: 8,
                         }}
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="font-bold" style={{ color: '#2D4459', fontSize: 13 }}>
-                              {formatFathomSessionCardDate(s.session_date)}
-                            </p>
-                            <div className="mt-1 flex flex-wrap items-center gap-2">
-                              <span
-                                className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                                style={{ background: '#F4F7F8', color: '#2D4459' }}
-                              >
-                                {getStageDisplayName(String(s.stage ?? '').trim())}
+                        <div
+                          className="flex flex-wrap items-start justify-between gap-2"
+                          style={{ alignItems: 'flex-start' }}
+                        >
+                          <p
+                            className="min-w-0 flex-1 font-bold leading-snug"
+                            style={{ color: '#2D4459', fontSize: 13 }}
+                          >
+                            {`Session ${sessionNum} — ${formatFathomSessionCardDate(s.session_date)} — ${getStageDisplayName(String(s.stage ?? '').trim())}`}
+                            {dur ? (
+                              <span className="font-normal" style={{ color: '#7A8F95', fontSize: 11 }}>
+                                {' '}
+                                · {dur}
                               </span>
-                              {dur ? (
-                                <span className="text-[11px]" style={{ color: '#7A8F95' }}>
-                                  {dur}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 flex-col items-end gap-1">
+                            ) : null}
+                          </p>
+                          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                             {clearScore != null && clearStyle ? (
                               <span
                                 className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums"
@@ -6563,56 +6564,43 @@ not generic statements.${feedbackSection}`;
                                 {clearScore.toFixed(1)} / 5.0
                               </span>
                             ) : null}
-                            <span className="text-[11px]" style={{ color: '#7A8F95' }}>
-                              {sessionNumLabel}
-                            </span>
-                            <div
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingSessionId(s.id);
+                                setEditingSessionNotes(s.notes ?? '');
+                                setDeletingSessionId(null);
+                              }}
                               style={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                justifyContent: 'flex-end',
-                                gap: 6,
-                                marginTop: 4,
+                                background: 'none',
+                                border: '1px solid #C8E8E5',
+                                borderRadius: 6,
+                                padding: '3px 10px',
+                                fontSize: 11,
+                                color: '#7A8F95',
+                                cursor: 'pointer',
                               }}
                             >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingSessionId(s.id);
-                                  setEditingSessionNotes(s.notes ?? '');
-                                  setDeletingSessionId(null);
-                                }}
-                                style={{
-                                  background: 'none',
-                                  border: '1px solid #C8E8E5',
-                                  borderRadius: 6,
-                                  padding: '3px 10px',
-                                  fontSize: 11,
-                                  color: '#7A8F95',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setDeletingSessionId(s.id);
-                                  setEditingSessionId(null);
-                                }}
-                                style={{
-                                  background: 'none',
-                                  border: '1px solid #F05F57',
-                                  borderRadius: 6,
-                                  padding: '3px 10px',
-                                  fontSize: 11,
-                                  color: '#F05F57',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </div>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeletingSessionId(s.id);
+                                setEditingSessionId(null);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: '1px solid #F05F57',
+                                borderRadius: 6,
+                                padding: '3px 10px',
+                                fontSize: 11,
+                                color: '#F05F57',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Delete
+                            </button>
                           </div>
                         </div>
 
@@ -6767,7 +6755,7 @@ not generic statements.${feedbackSection}`;
                                 <p
                                   className={cn(
                                     'text-[13px] leading-[1.5]',
-                                    !expanded && showMoreToggle && 'line-clamp-3'
+                                    !notesExpanded && showMoreToggle && 'line-clamp-3'
                                   )}
                                   style={{ color: '#2D4459' }}
                                 >
@@ -6785,15 +6773,45 @@ not generic statements.${feedbackSection}`;
                                       }))
                                     }
                                   >
-                                    {expanded ? 'Show less' : 'Show more'}
+                                    {notesExpanded ? 'Show less' : 'Show more'}
                                   </button>
                                 ) : null}
                               </div>
                             ) : null}
                             {blocksWithContent.length > 0 ? (
-                              <div className="mt-3 space-y-2">
-                                {blocksWithContent.map((def) => renderFathomStructuredSection(s, def))}
-                              </div>
+                              <>
+                                <button
+                                  type="button"
+                                  className="mt-2"
+                                  onClick={() => {
+                                    setExpandedSessions((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(sessionKey)) {
+                                        next.delete(sessionKey);
+                                      } else {
+                                        next.add(sessionKey);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: '1px solid #C8E8E5',
+                                    borderRadius: 6,
+                                    padding: '3px 10px',
+                                    fontSize: 11,
+                                    color: '#3BBFBF',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {blocksExpanded ? 'Hide blocks' : 'Show 9-block analysis'}
+                                </button>
+                                {blocksExpanded ? (
+                                  <div className="mt-2 space-y-2">
+                                    {blocksWithContent.map((def) => renderFathomStructuredSection(s, def))}
+                                  </div>
+                                ) : null}
+                              </>
                             ) : null}
                             {hasNext ? (
                               <div className="mt-3">

@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { HealthIndicator } from '../components/HealthIndicator';
 import { Star, MessageSquare, CheckCircle, Target, Info } from 'lucide-react';
 import { getDb } from '../services/db';
 import UATFeedback from '@/components/UATFeedback';
@@ -470,7 +469,6 @@ export default function BusinessGoals() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <HealthIndicator page="Business Goals" dataCompleteness={businessGoalsDataCompleteness} />
           <p className="text-right text-xs" style={{ color: '#7A8F95', fontSize: 12 }}>
             {headerDateStr}
           </p>

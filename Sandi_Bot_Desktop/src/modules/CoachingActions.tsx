@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { getDb } from '../services/db';
-import { HealthIndicator } from '../components/HealthIndicator';
 import UATFeedback from '@/components/UATFeedback';
 
 function tauriSqlRows<T>(r: T | T[] | null | undefined): T[] {
@@ -550,10 +549,6 @@ export default function CoachingActions() {
             Every outcome.
           </p>
         </div>
-        <HealthIndicator
-          page="Coaching Actions"
-          dataCompleteness={signalsProfileCompletenessPct}
-        />
       </header>
 
       <section>

@@ -75,7 +75,6 @@ import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter
 import { rebuildClientProfile } from '@/services/profileBuilderService';
 import { cn } from '@/lib/utils';
 import FeedbackButton from '../components/FeedbackButton';
-import { HealthIndicator } from '../components/HealthIndicator';
 import { ToolManager, type ToolConnection } from '../services/toolManager';
 import {
   connectGoogle,
@@ -2984,9 +2983,6 @@ ${workingText}`;
               Your coaching intelligence grows here. Everything you add makes Coach Bot smarter.
             </p>
           </div>
-        </div>
-        <div className="shrink-0 pt-0.5">
-          <HealthIndicator page="The Capture" dataCompleteness={knowledgeHealthPct} />
         </div>
       </div>
 

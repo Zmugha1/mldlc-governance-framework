@@ -6,7 +6,6 @@ import {
   type CorrectionStats,
 } from '../services/correctionService';
 import UATFeedback from '@/components/UATFeedback';
-import { HealthIndicator } from '../components/HealthIndicator';
 
 const HEADER = '#2D4459';
 const MUTED = '#7A8F95';
@@ -1326,9 +1325,6 @@ export default function MyPractice() {
   const avgClear =
     finiteDims.length > 0 ? finiteDims.reduce((a, b) => a + b, 0) / finiteDims.length : null;
 
-  const myPracticePipelineCompletenessPct =
-    activeClientTotal <= 0 ? 100 : Math.round((completeCount / activeClientTotal) * 100);
-
   const weeksSince = weeksSinceInstallRounded(refNow, installDate);
   const timeSavedHours = Math.round(weeksSince * weeklyHoursSaved * 10) / 10;
   const timeSavedDollars = Math.round(timeSavedHours * hourlyRate);
@@ -1440,13 +1436,6 @@ export default function MyPractice() {
           border: `1px solid ${BORDER}`,
         }}
       >
-        <div className="mb-4 flex flex-wrap items-start justify-end gap-2">
-          <HealthIndicator
-            page="My Practice"
-            dataCompleteness={myPracticePipelineCompletenessPct}
-          />
-        </div>
-
         {/* COACHING QUALITY SCORE HERO */}
         <div
           style={{
