@@ -637,14 +637,6 @@ function sandiReadinessOverallBarColor(pct: number): string {
 const FRANCHISE_NOTES_PLACEHOLDER =
   'What is the client learning? What are their pros and cons? What questions are they asking?';
 
-function escapeHtmlVision(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 /** {@link https://v2.tauri.app/reference/javascript/api/namespacepath/#downloaddir BaseDirectory.Download} */
 const TAURI_BASE_DIRECTORY_DOWNLOAD = 7;
 
@@ -1567,6 +1559,8 @@ function ClientDetailModal({
   const [coachProfileRow, setCoachProfileRow] = useState<{
     bio: string | null;
     coaching_philosophy: string | null;
+    full_name?: string | null;
+    name?: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -1606,7 +1600,29 @@ function ClientDetailModal({
         }>(
           `SELECT bio, coaching_philosophy FROM coach_profile WHERE id = 'coach' LIMIT 1`
         );
-        if (!cancelled) setCoachProfileRow(rows[0] ?? null);
+        const prefRows = await dbSelect<{
+          coach_name: string | null;
+        }>(
+          `SELECT coach_name FROM user_preferences WHERE id = 'singleton' LIMIT 1`
+        );
+        const nameFromPrefs =
+          prefRows[0]?.coach_name?.trim() || null;
+        if (!cancelled) {
+          if (rows[0]) {
+            setCoachProfileRow({
+              ...rows[0],
+              name: nameFromPrefs,
+            });
+          } else if (nameFromPrefs) {
+            setCoachProfileRow({
+              bio: null,
+              coaching_philosophy: null,
+              name: nameFromPrefs,
+            });
+          } else {
+            setCoachProfileRow(null);
+          }
+        }
       } catch {
         if (!cancelled) setCoachProfileRow(null);
       }
@@ -3282,6 +3298,9 @@ Do NOT mention DISC assessments.
 Do NOT use coaching jargon.
 Do NOT use the word journey.
 Do NOT say I am committed to.
+Do NOT use em dashes (--) or (—)
+anywhere in the text.
+Use commas or periods instead.
 Sound like a real person talking
 about their real life.
 Be specific use their actual goals
@@ -3406,18 +3425,22 @@ not generic statements.${feedbackSection}`;
           );
         }
 
-        slide.addText(
-          'Coach Bot · Dr. Data Decision Intelligence LLC',
-          {
-            x: 0.5,
-            y: 7.1,
-            w: 12,
-            h: 0.3,
-            fontSize: 9,
-            color: '7A8F95',
-            fontFace: 'Calibri',
-          }
-        );
+        const coachProfile = coachProfileRow;
+        const coachName =
+          coachProfile?.full_name?.trim() ||
+          coachProfile?.name?.trim() ||
+          'Your Franchise Coach';
+        const footerText = `${coachName} · Coach Bot`;
+
+        slide.addText(footerText, {
+          x: 0.5,
+          y: 7.1,
+          w: 12,
+          h: 0.3,
+          fontSize: 9,
+          color: '7A8F95',
+          fontFace: 'Calibri',
+        });
 
         const safeName =
           (client?.name || 'client')
@@ -3470,98 +3493,6 @@ not generic statements.${feedbackSection}`;
         );
         setVisionError(
           'Could not download PowerPoint.'
-        );
-      }
-    };
-
-  const handleDownloadVisionPdf =
-    async (): Promise<void> => {
-      if (!client?.id) return;
-      try {
-        const text = visionText.trim();
-        if (!text) return;
-
-        const paragraphs = text
-          .split('\n\n')
-          .filter((p) => p.trim())
-          .map((p) =>
-            `<p>${escapeHtmlVision(p.trim())}</p>`
-          )
-          .join('\n');
-
-        const titleEsc = escapeHtmlVision(
-          client?.name || 'Vision'
-        );
-
-        const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>${titleEsc} Vision Statement</title>
-<style>
-  body {
-    font-family: Calibri, sans-serif;
-    padding: 60px;
-    max-width: 800px;
-    margin: 0 auto;
-    color: #2D4459;
-  }
-  h1 { color: #2D4459; font-size: 28px; }
-  h2 {
-    color: #3BBFBF;
-    font-size: 16px;
-    font-weight: normal;
-    margin-bottom: 40px;
-  }
-  p { font-size: 16px; line-height: 1.9; margin-bottom: 20px; }
-  footer {
-    margin-top: 60px;
-    font-size: 11px;
-    color: #7A8F95;
-    border-top: 1px solid #C8E8E5;
-    padding-top: 12px;
-  }
-</style>
-</head>
-<body>
-<h1>${escapeHtmlVision(client?.name || '')}</h1>
-<h2>Vision Statement</h2>
-${paragraphs}
-<footer>Coach Bot · Dr. Data Decision Intelligence LLC</footer>
-</body>
-</html>`;
-
-        const encoder = new TextEncoder();
-        const htmlBytes = encoder.encode(htmlContent);
-
-        const safeName =
-          (client?.name || 'client')
-            .replace(/[^a-z0-9]/gi, '_');
-        const htmlOutName = `${safeName}_Vision.html`;
-
-        await visionWriteBytesToDownloads(
-          htmlOutName,
-          htmlBytes
-        );
-
-        setVisionError(null);
-        setVisionSaveSuccess(
-          `Saved to Downloads: ${htmlOutName} — open in browser and print to PDF`
-        );
-        setTimeout(
-          () => setVisionSaveSuccess(null),
-          5000
-        );
-
-        await saveVisionToDb(text);
-      } catch (err) {
-        console.error(
-          'PDF save error:',
-          err
-        );
-        setVisionError(
-          'Could not save file. ' +
-            String(err)
         );
       }
     };
@@ -6102,25 +6033,6 @@ ${paragraphs}
                           }}
                         >
                           Download PowerPoint
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void handleDownloadVisionPdf()
-                          }
-                          style={{
-                            background: 'white',
-                            color: '#2D4459',
-                            borderRadius: 8,
-                            padding: '10px 20px',
-                            fontSize: 13,
-                            border:
-                              '1px solid #2D4459',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Download PDF
                         </button>
 
                         <button
