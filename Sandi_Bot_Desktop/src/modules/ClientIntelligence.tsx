@@ -734,97 +734,6 @@ function longestCommonSubsequence(a: string, b: string): number {
   return dp[n][m];
 }
 
-function formatCouncilContextForVisionPrompt(out: CouncilOutput): string {
-  const gaps = [
-    ...out.uncertaintyAudit.missing,
-    ...out.uncertaintyAudit.unverified,
-  ];
-  return [
-    `Chairman insight: ${out.chairmanSynthesis.primaryInsight}`,
-    `Coaching posture: ${out.chairmanSynthesis.coachingPosture}`,
-    `Minority perspective: ${out.chairmanSynthesis.minorityPerspective}`,
-    `Chairman questions (themes only, do not paste as a list in the vision): ${out.chairmanSynthesis.recommendedQuestions.join(' | ')}`,
-    `Readiness (${out.readinessLens.confidence}%): ${out.readinessLens.insight}`,
-    `Alignment (${out.alignmentLens.confidence}%): ${out.alignmentLens.insight}`,
-    `Integrity (${out.integrityLens.confidence}%): ${out.integrityLens.insight}`,
-    `Verified inputs: ${out.uncertaintyAudit.verified.join('; ') || 'none'}`,
-    `Data gaps (address responsibly, no meta-labels in client text): ${gaps.join('; ') || 'none'}`,
-  ].join('\n');
-}
-
-function buildVisionStatementOllamaPrompt(args: {
-  clientName: string;
-  primaryStyleLabel: string;
-  discLetter: 'D' | 'I' | 'S' | 'C' | null;
-  naturalSummary: string;
-  communicationDos: string;
-  oneYearVision: string;
-  dangersText: string;
-  strengthsText: string;
-  opportunitiesText: string;
-  netWorth: string;
-  launchTimeline: string;
-  timeCommitment: string;
-  spouseName: string;
-  spouseRole: string;
-  reasonsForChange: string;
-  priorBusinessExperience: string;
-  selfSufficiencyExcitement: string;
-  areasOfInterest: string;
-  lastSessionNotes: string;
-  councilContext?: string;
-}): string {
-  const coaching =
-    args.discLetter != null
-      ? DISC_STYLE_DESCRIPTIONS[args.discLetter]
-      : 'Use a balanced coaching tone.';
-  return `You are a franchise career coach writing a personalized vision statement for a client.
-Write exactly THREE paragraphs.
-Use warm, aspirational, first-person language. Ground every sentence in the client's actual data. Never be generic.
-
-CLIENT DATA:
-Name: ${args.clientName}
-DISC Style: ${args.primaryStyleLabel || '—'}
-${coaching}
-Natural profile summary: ${args.naturalSummary}
-Communication dos (coaching cues): ${args.communicationDos}
-One Year Vision: ${args.oneYearVision}
-Dangers they face:
-${args.dangersText}
-Strengths they have:
-${args.strengthsText}
-Opportunities ahead:
-${args.opportunitiesText}
-Financial profile:
-Net worth ${args.netWorth}
-Timeline ${args.launchTimeline}
-Commitment ${args.timeCommitment}
-Spouse/partner: ${args.spouseName} (${args.spouseRole})
-Reasons for change:
-${args.reasonsForChange}
-Prior business experience: ${args.priorBusinessExperience}
-Self-sufficiency / excitement: ${args.selfSufficiencyExcitement}
-Areas of interest: ${args.areasOfInterest}
-Last session notes:
-${args.lastSessionNotes}
-${args.councilContext && args.councilContext.trim().length > 0
-    ? `
-
-STZ Coaching Council alignment (internal planning context only; do not quote framework names or this block in the client-facing vision):
-${args.councilContext}`
-    : ''}
-
-Write THREE paragraphs:
-PARAGRAPH 1 — Professional:
-Their career transition, business ownership goals, income and growth aspirations. Ground in their DISC style and specific financial goals.
-PARAGRAPH 2 — Personal:
-Family, lifestyle, values, what success means to them beyond money. Reference their specific personal motivations.
-PARAGRAPH 3 — Desires:
-Specific experiences they want — travel, time freedom, legacy, impact. Make it vivid and personal.
-
-Write in first person as the client. Warm, confident, specific. No generic phrases like "I will achieve success". Every sentence must be grounded in their actual data.`;
-}
-
 function formatLastContactDisplay(raw: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
@@ -2976,155 +2885,59 @@ function ClientDetailModal({
     }
   };
 
-  const runVisionOllamaGeneration = async (): Promise<string> => {
+  const runSafeVisionOllamaGenerate = async (): Promise<string> => {
     if (!client?.id) throw new Error('No client');
-    const discRows = await dbSelect<{
-      natural_d: number | null;
-      natural_i: number | null;
-      natural_s: number | null;
-      natural_c: number | null;
-      primary_style_label: string | null;
-      communication_dos: string | null;
-    }>(
-      `SELECT natural_d, natural_i, natural_s, natural_c, primary_style_label, communication_dos
-       FROM client_disc_profiles WHERE client_id = $1 LIMIT 1`,
-      [client.id]
-    );
-    const dr = discRows[0];
-    const d = Number(dr?.natural_d ?? 0);
-    const i = Number(dr?.natural_i ?? 0);
-    const s = Number(dr?.natural_s ?? 0);
-    const c = Number(dr?.natural_c ?? 0);
-    const letter =
-      dr && d + i + s + c > 0
-        ? deriveStyleLetter(d, i, s, c)
-        : null;
-    const primaryStyle =
-      (dr?.primary_style_label ?? '').trim() || discStyleLabel;
-    const naturalSummary = `Natural scores — D:${d} I:${i} S:${s} C:${c}`;
-    const commDos = formatCommunicationDosForPrompt(dr?.communication_dos ?? null);
+    const you2Text = (you2Vision.trim() || persistedVisionText || '').trim();
+    const discText =
+      discStyleLabel === '—' ? '' : discStyleLabel.trim();
+    const dangersText = (you2Details?.dangers ?? []).join(', ');
+    const sessionText = latestSessionNotesPlain || '';
+    const clientNameText = client.name || '';
 
-    const dangersText =
-      you2Details?.dangers?.length
-        ? you2Details.dangers.map((x) => `• ${x}`).join('\n')
-        : '—';
-    const strengthsText =
-      you2Details?.strengths?.length
-        ? you2Details.strengths.map((x) => `• ${x}`).join('\n')
-        : '—';
-    const opportunitiesText =
-      you2Details?.opportunities?.length
-        ? you2Details.opportunities.map((x) => `• ${x}`).join('\n')
-        : '—';
-
-    const reasonsForChange =
-      tumayData != null
-        ? parseListField(tumayData.reasons_for_change).join('; ') ||
-          (you2Details?.reasons_for_change.length
-            ? you2Details.reasons_for_change.join('; ')
-            : '—')
-        : you2Details?.reasons_for_change.length
-          ? you2Details.reasons_for_change.join('; ')
-          : '—';
-
-    const priorBiz =
-      tumayData != null
-        ? String(tumayData.prior_business_experience ?? '').trim() || '—'
-        : '—';
-    const selfSuff =
-      tumayData != null
-        ? String(tumayData.self_sufficiency_excitement ?? '').trim() || '—'
-        : '—';
-    const areasInt =
-      tumayData != null
-        ? parseListField(tumayData.areas_of_interest).join('; ') ||
-          (you2Details?.areas_of_interest.length
-            ? you2Details.areas_of_interest.join('; ')
-            : '—')
-        : you2Details?.areas_of_interest.length
-          ? you2Details.areas_of_interest.join('; ')
-          : '—';
-
-    const lastNotes =
-      latestSessionNotesPlain.trim() || 'No sessions yet';
-
-    let councilContext = '';
-    try {
-      const spouseRaw =
-        tumayData != null
-          ? String(tumayData.spouse_alignment ?? '').trim()
-          : '';
-      const spouseAlignment =
-        spouseRaw === 'Yes' || spouseRaw === 'No' || spouseRaw === 'Unsure'
-          ? spouseRaw
-          : 'Unknown';
-      const councilInput: CouncilInput = {
-        clientName: client.name,
-        clientId: client.id,
-        discStyle: discStyleLabel === '—' ? '' : discStyleLabel,
-        discScores: { d, i, s, c },
-        currentStage: client.inferred_stage || 'IC',
-        dangers: you2Details?.dangers ?? [],
-        strengths: you2Details?.strengths ?? [],
-        opportunities: you2Details?.opportunities ?? [],
-        oneYearVision:
-          you2Vision.trim() || persistedVisionText || '',
-        lastSessionNotes: latestSessionNotesPlain || '',
-        pinkFlags: activePinkFlagsFiltered,
-        netWorth: clientMergedFinancials.netWorth || '',
-        spouseAlignment,
-        sessionCount: fathomSessionCount,
-        coachIdentity: (coachProfileRow?.bio ?? '').trim(),
-        coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
-      };
-      const councilResult = await runCoachingCouncil(councilInput);
-      councilContext = formatCouncilContextForVisionPrompt(councilResult);
-    } catch (e) {
-      console.warn('vision: coaching council context skipped', e);
+    if (!you2Text && !discText && !dangersText) {
+      throw new Error(
+        'No client data available. ' +
+          'Upload You 2.0 and DISC first.'
+      );
     }
 
-    const prompt = buildVisionStatementOllamaPrompt({
-      clientName: client.name,
-      primaryStyleLabel: primaryStyle,
-      discLetter: letter,
-      naturalSummary,
-      communicationDos: commDos,
-      oneYearVision: you2Vision.trim() || '—',
-      dangersText,
-      strengthsText,
-      opportunitiesText,
-      netWorth:
-        you2Details?.financial_net_worth_range?.trim() ||
-        String(tumayData?.financial_net_worth_range ?? '').trim() ||
-        '—',
-      launchTimeline:
-        you2Details?.launch_timeline?.trim() ||
-        String(tumayData?.launch_timeline ?? '').trim() ||
-        '—',
-      timeCommitment: (() => {
-        const merged =
-          you2Details?.time_commitment?.trim() ||
-          String(tumayData?.time_commitment ?? '').trim() ||
-          '';
-        return merged
-          ? displayTimeCommitmentText(merged)
-          : '—';
-      })(),
-      spouseName: you2Details?.spouse_name?.trim() || '—',
-      spouseRole: you2Details?.spouse_role?.trim() || '—',
-      reasonsForChange,
-      priorBusinessExperience: priorBiz,
-      selfSufficiencyExcitement: selfSuff,
-      areasOfInterest: areasInt,
-      lastSessionNotes: lastNotes,
-      councilContext,
+    const prompt =
+      `You are a franchise career coach.
+Write a personal vision statement
+for ${clientNameText}.
+
+Base it entirely on this information:
+
+DISC Style: ${discText}
+One Year Vision: ${you2Text}
+Key Concerns: ${dangersText}
+Recent Session: ${sessionText}
+
+Write 2-3 paragraphs.
+First person voice as if
+${clientNameText} is speaking.
+Specific to their goals and situation.
+Warm encouraging and forward-looking.
+Do not mention DISC or assessments.
+Do not use coaching jargon.
+Sound like a person not a report.`;
+
+    const raw = await invoke<string>('ollama_generate', {
+      model: 'qwen2.5:7b',
+      prompt,
+      system: '',
     });
 
-    return invoke<string>('ollama_generate', {
-      prompt,
-      system: ' ',
-      model: 'qwen2.5:7b',
-    });
+    const generated = raw.trim();
+
+    if (!generated || generated.length < 20) {
+      throw new Error(
+        'Ollama returned empty response. ' +
+          'Is Ollama running?'
+      );
+    }
+
+    return generated;
   };
 
   const handleGenerateBestNextQuestions = async () => {
@@ -3187,51 +3000,65 @@ function ClientDetailModal({
 
   const handleGenerateVision = async () => {
     if (!client?.id) return;
-    setVisionGenError(null);
-    setVisionApproveMsg(null);
-    setVisionGenerating(true);
     try {
-      const result = (await runVisionOllamaGeneration()).trim();
-      if (!result) throw new Error('empty');
+      setVisionGenerating(true);
+      setVisionGenError(null);
+      setVisionApproveMsg(null);
+
+      const generated = await runSafeVisionOllamaGenerate();
+
       await dbExecute(
         `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [result, client.id]
+        [generated, client.id]
       );
-      setVisionGeneratedBaseline(result);
-      setVisionEditText(result);
+      setVisionGeneratedBaseline(generated);
+      setVisionEditText(generated);
       setVisionApproveFeedback(null);
       setVisionDraftMode(true);
       onVisionUpdated?.();
-    } catch {
-      setVisionGenError('Generation failed. Is Ollama running?');
-    } finally {
       setVisionGenerating(false);
+    } catch (error) {
+      console.error('Vision generation failed:', error);
+      setVisionGenerating(false);
+      setVisionGenError(
+        String(error).includes('Ollama')
+          ? 'Could not generate. ' +
+              'Make sure Ollama is running.'
+          : String(error)
+      );
     }
   };
 
   const handleRegenerateVision = async () => {
     if (!client?.id) return;
-    setVisionGenError(null);
-    setVisionApproveMsg(null);
-    setVisionEditText('');
-    setVisionGeneratedBaseline(null);
-    setVisionGenerating(true);
     try {
-      const result = (await runVisionOllamaGeneration()).trim();
-      if (!result) throw new Error('empty');
-      setVisionGeneratedBaseline(result);
-      setVisionEditText(result);
+      setVisionGenerating(true);
+      setVisionGenError(null);
+      setVisionApproveMsg(null);
+      setVisionEditText('');
+      setVisionGeneratedBaseline(null);
+
+      const generated = await runSafeVisionOllamaGenerate();
+
+      setVisionGeneratedBaseline(generated);
+      setVisionEditText(generated);
       await dbExecute(
         `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [result, client.id]
+        [generated, client.id]
       );
       setVisionApproveFeedback(null);
       setVisionDraftMode(true);
       onVisionUpdated?.();
-    } catch {
-      setVisionGenError('Generation failed. Is Ollama running?');
-    } finally {
       setVisionGenerating(false);
+    } catch (error) {
+      console.error('Vision generation failed:', error);
+      setVisionGenerating(false);
+      setVisionGenError(
+        String(error).includes('Ollama')
+          ? 'Could not generate. ' +
+              'Make sure Ollama is running.'
+          : String(error)
+      );
     }
   };
 
@@ -5955,9 +5782,8 @@ function ClientDetailModal({
                     Generate Vision Statement
                   </h3>
                   <p style={{ color: '#7A8F95', fontSize: 13, lineHeight: 1.55 }}>
-                    Coach Bot runs the STZ Coaching Council for alignment, then drafts a
-                    three-paragraph vision in the client&apos;s voice from DISC, You 2.0,
-                    sessions, and coach identity.
+                    Coach Bot drafts a vision in the client&apos;s voice from DISC, You 2.0,
+                    key concerns, and recent session notes.
                   </p>
                   <div className="text-center">
                     <p
@@ -6168,7 +5994,36 @@ function ClientDetailModal({
               )}
 
               {visionGenError ? (
-                <p className="text-sm text-red-600">{visionGenError}</p>
+                <div
+                  style={{
+                    padding: 16,
+                    background: '#FFF0F0',
+                    borderRadius: 8,
+                    border: '1px solid #F05F57',
+                    color: '#F05F57',
+                    fontSize: 13,
+                    marginTop: 12,
+                  }}
+                >
+                  {visionGenError}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisionGenError(null);
+                    }}
+                    style={{
+                      marginTop: 8,
+                      display: 'block',
+                      color: '#7A8F95',
+                      fontSize: 12,
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Try again
+                  </button>
+                </div>
               ) : null}
 
               <Card>
