@@ -1370,10 +1370,6 @@ export default function MyPractice() {
     { id: 'intelligence', label: 'Intelligence' },
   ];
 
-  void coachingQuality;
-  void qualityLoading;
-  void correctionStats;
-
   if (loading) {
     return (
       <div className="p-6 text-sm" style={{ color: MUTED }}>
@@ -1406,7 +1402,7 @@ export default function MyPractice() {
         </p>
       </header>
 
-      {/* ZONE 1 — PERFORMANCE SCORE (placeholder) */}
+      {/* ZONE 1 — COACHING QUALITY SCORE */}
       <section
         className="overflow-hidden shadow-lg"
         style={{
@@ -1422,16 +1418,543 @@ export default function MyPractice() {
             dataCompleteness={myPracticePipelineCompletenessPct}
           />
         </div>
-        <div style={{ padding: 16 }}>
-          <p
+
+        {/* COACHING QUALITY SCORE HERO */}
+        <div
+          style={{
+            background: '#2D4459',
+            borderRadius: 12,
+            padding: '24px 28px',
+            marginBottom: 16,
+          }}
+        >
+          {/* HEADER ROW */}
+          <div
             style={{
-              color: '#7A8F95',
-              fontSize: 13,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              marginBottom: 16,
             }}
           >
-            Coaching Quality Score — rebuilding
-          </p>
+            <div>
+              <p
+                style={{
+                  color: '#C8E8E5',
+                  fontSize: 11,
+                  margin: '0 0 4px',
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                }}
+              >
+                Coaching Quality Score
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 12,
+                }}
+              >
+                <span
+                  style={{
+                    color: 'white',
+                    fontSize: 48,
+                    fontWeight: 'bold',
+                    lineHeight: 1,
+                  }}
+                >
+                  {qualityLoading
+                    ? '--'
+                    : (coachingQuality?.overall ?? 0)}
+                </span>
+                <span
+                  style={{
+                    color: '#3BBFBF',
+                    fontSize: 18,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {qualityLoading
+                    ? ''
+                    : (coachingQuality?.grade ?? '')}
+                </span>
+              </div>
+              <p
+                style={{
+                  color: '#C8E8E5',
+                  fontSize: 13,
+                  margin: '4px 0 0',
+                  fontStyle: 'italic',
+                }}
+              >
+                {qualityLoading
+                  ? 'Calculating...'
+                  : (coachingQuality?.gradeLabel ?? '')}
+              </p>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <p
+                style={{
+                  color: '#7A8F95',
+                  fontSize: 11,
+                  margin: '0 0 4px',
+                }}
+              >
+                Based on
+              </p>
+              <p
+                style={{
+                  color: 'white',
+                  fontSize: 13,
+                  fontWeight: 'bold',
+                  margin: 0,
+                }}
+              >
+                {coachingQuality?.clearScore.sessionCount ?? 0} sessions
+              </p>
+              <p
+                style={{
+                  color: '#7A8F95',
+                  fontSize: 11,
+                  margin: '2px 0 0',
+                }}
+              >
+                {coachingQuality?.clearScore.clientCount ?? 0} clients
+              </p>
+            </div>
+          </div>
+
+          {/* DATA QUALITY CAVEAT */}
+          {coachingQuality?.clearScore.caveat ? (
+            <div
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                borderRadius: 8,
+                padding: '10px 14px',
+                marginBottom: 16,
+              }}
+            >
+              <p
+                style={{
+                  color: '#C8E8E5',
+                  fontSize: 12,
+                  margin: 0,
+                  fontStyle: 'italic',
+                }}
+              >
+                {'\u26A0\uFE0F '}
+                {coachingQuality.clearScore.caveat}
+              </p>
+            </div>
+          ) : null}
+
+          {/* PRIMARY INSIGHT */}
+          {coachingQuality?.primaryInsight ? (
+            <p
+              style={{
+                color: '#C8E8E5',
+                fontSize: 13,
+                margin: '0 0 16px',
+                lineHeight: 1.5,
+              }}
+            >
+              {coachingQuality.primaryInsight}
+            </p>
+          ) : null}
+
+          {/* CLEAR DIMENSIONS */}
+          {coachingQuality &&
+          coachingQuality.clearScore.dimensions.length > 0 ? (
+            <div>
+              <p
+                style={{
+                  color: '#7A8F95',
+                  fontSize: 11,
+                  margin: '0 0 10px',
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                }}
+              >
+                CLEAR Framework Breakdown
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                {coachingQuality.clearScore.dimensions.map((dim) => (
+                  <div
+                    key={dim.dimension}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: '#3BBFBF',
+                        fontSize: 13,
+                        fontWeight: 'bold',
+                        width: 20,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {dim.dimension}
+                    </span>
+                    <span
+                      style={{
+                        color: '#C8E8E5',
+                        fontSize: 12,
+                        width: 60,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {dim.label}
+                    </span>
+                    <div
+                      style={{
+                        flex: 1,
+                        height: 8,
+                        background: 'rgba(255,255,255,0.1)',
+                        borderRadius: 4,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${dim.percentage}%`,
+                          background:
+                            dim.percentage >= 70
+                              ? '#3BBFBF'
+                              : dim.percentage >= 40
+                                ? '#F59E0B'
+                                : '#F05F57',
+                          borderRadius: 4,
+                          transition: 'width 0.6s ease',
+                        }}
+                      />
+                    </div>
+                    <span
+                      style={{
+                        color: 'white',
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        width: 36,
+                        textAlign: 'right',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {dim.percentage}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* IMPROVEMENT AREA */}
+          {coachingQuality?.improvementArea ? (
+            <div
+              style={{
+                marginTop: 16,
+                background: 'rgba(248,163,87,0.15)',
+                borderLeft: '3px solid #F59E0B',
+                borderRadius: 6,
+                padding: '10px 14px',
+              }}
+            >
+              <p
+                style={{
+                  color: '#F59E0B',
+                  fontSize: 12,
+                  margin: 0,
+                  lineHeight: 1.5,
+                }}
+              >
+                {coachingQuality.improvementArea}
+              </p>
+            </div>
+          ) : null}
         </div>
+
+        {/* THREE SOURCES ROW */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          {/* SOURCE 1 — CLEAR */}
+          <div
+            style={{
+              background: 'white',
+              border: '1px solid #C8E8E5',
+              borderRadius: 10,
+              padding: '16px',
+              borderTop: '4px solid #3BBFBF',
+            }}
+          >
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 10,
+                margin: '0 0 4px',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+              }}
+            >
+              Session Quality
+            </p>
+            <p
+              style={{
+                color: '#2D4459',
+                fontSize: 24,
+                fontWeight: 'bold',
+                margin: '0 0 2px',
+              }}
+            >
+              {coachingQuality?.clearScore.overall ?? 0}%
+            </p>
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 11,
+                margin: 0,
+              }}
+            >
+              CLEAR framework
+            </p>
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 11,
+                margin: '2px 0 0',
+              }}
+            >
+              {coachingQuality?.clearScore.sessionCount ?? 0} sessions analyzed
+            </p>
+          </div>
+
+          {/* SOURCE 2 — PIPELINE */}
+          <div
+            style={{
+              background: 'white',
+              border: '1px solid #C8E8E5',
+              borderRadius: 10,
+              padding: '16px',
+              borderTop: '4px solid #F05F57',
+            }}
+          >
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 10,
+                margin: '0 0 4px',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+              }}
+            >
+              Pipeline Effectiveness
+            </p>
+            <p
+              style={{
+                color: '#2D4459',
+                fontSize: 24,
+                fontWeight: 'bold',
+                margin: '0 0 2px',
+              }}
+            >
+              {coachingQuality?.pipelineScore.overall ?? 0}%
+            </p>
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 11,
+                margin: 0,
+              }}
+            >
+              Stage advancement
+            </p>
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 11,
+                margin: '2px 0 0',
+              }}
+            >
+              {coachingQuality?.pipelineScore.placementRate ?? 0}% placement rate
+            </p>
+          </div>
+
+          {/* SOURCE 3 — COUNCIL */}
+          <div
+            style={{
+              background: 'white',
+              border: '1px solid #C8E8E5',
+              borderRadius: 10,
+              padding: '16px',
+              borderTop: '4px solid #2D4459',
+            }}
+          >
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 10,
+                margin: '0 0 4px',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+              }}
+            >
+              Coaching Preparation
+            </p>
+            <p
+              style={{
+                color: '#2D4459',
+                fontSize: 24,
+                fontWeight: 'bold',
+                margin: '0 0 2px',
+              }}
+            >
+              {coachingQuality?.councilScore.approvalRate ?? 0}%
+            </p>
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 11,
+                margin: 0,
+              }}
+            >
+              Question approval
+            </p>
+            <p
+              style={{
+                color: '#7A8F95',
+                fontSize: 11,
+                margin: '2px 0 0',
+              }}
+            >
+              {coachingQuality?.councilScore.totalRated ?? 0} questions rated
+            </p>
+          </div>
+        </div>
+
+        {/* PIPELINE BREAKDOWN */}
+        {coachingQuality ? (
+          <div
+            style={{
+              background: 'white',
+              border: '1px solid #C8E8E5',
+              borderRadius: 10,
+              padding: '16px 20px',
+              marginBottom: 16,
+            }}
+          >
+            <p
+              style={{
+                color: '#2D4459',
+                fontSize: 13,
+                fontWeight: 'bold',
+                margin: '0 0 12px',
+              }}
+            >
+              Stage Advancement Rates
+            </p>
+            {[
+              {
+                label: 'IC to C1',
+                value: coachingQuality.pipelineScore.icToC1Rate,
+              },
+              {
+                label: 'C1 to C2',
+                value: coachingQuality.pipelineScore.c1ToC2Rate,
+              },
+              {
+                label: 'C2 to C3',
+                value: coachingQuality.pipelineScore.c2ToC3Rate,
+              },
+              {
+                label: 'C3 to C4',
+                value: coachingQuality.pipelineScore.c3ToC4Rate,
+              },
+            ].map((row) => (
+              <div
+                key={row.label}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <span
+                  style={{
+                    color: '#7A8F95',
+                    fontSize: 12,
+                    width: 60,
+                    flexShrink: 0,
+                  }}
+                >
+                  {row.label}
+                </span>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 8,
+                    background: '#F4F7F8',
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${row.value}%`,
+                      background:
+                        row.value >= 70
+                          ? '#3BBFBF'
+                          : row.value >= 50
+                            ? '#F59E0B'
+                            : '#F05F57',
+                      borderRadius: 4,
+                    }}
+                  />
+                </div>
+                <span
+                  style={{
+                    color: '#2D4459',
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    width: 36,
+                    textAlign: 'right',
+                    flexShrink: 0,
+                  }}
+                >
+                  {row.value > 0 ? `${row.value}%` : '--'}
+                </span>
+              </div>
+            ))}
+            {coachingQuality.pipelineScore.overall === 0 ? (
+              <p
+                style={{
+                  color: '#7A8F95',
+                  fontSize: 12,
+                  fontStyle: 'italic',
+                  margin: 0,
+                }}
+              >
+                Stage movement data will appear as you advance clients through the pipeline
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       {/* ZONE 2 — TABS */}
