@@ -1,1150 +1,309 @@
-import {
-  ArrowRight,
-  Cpu,
-  HardDrive,
-  Layers,
-  Monitor,
-  Rocket,
-  Settings,
-  User,
-  UserPlus,
-} from 'lucide-react';
+import type { CSSProperties } from 'react';
 
-const CREAM = '#FEFAF6';
+const PAGE_BG = '#FEFAF6';
 const HEADER = '#2D4459';
 const MUTED = '#7A8F95';
 const BORDER = '#C8E8E5';
-const CORAL_SOFT = '#F05F57';
 const TEAL = '#3BBFBF';
-const UAT_BG = '#FFF8F0';
-const CARD_BG = '#F4F7F8';
-const NAVY_CARD = '#2D4459';
 
-const cardStyle: React.CSSProperties = {
+type LabSpec = {
+  n: number;
+  title: string;
+  minutes: string;
+  whatYouWillDo: string;
+  steps: string[];
+  success: string;
+};
+
+const LABS: LabSpec[] = [
+  {
+    n: 1,
+    title: 'Connect Gmail and Calendar',
+    minutes: '~10 min',
+    whatYouWillDo:
+      'Authorize Coach Bot to read your inbox and calendar so Morning Brief and client cards can surface real signals.',
+    steps: [
+      'Open The Capture (admin) or the tool connection area from the sidebar.',
+      'Click Connect for Gmail, complete the Google sign-in window, and approve the requested scopes.',
+      'Click Connect for Google Calendar the same way.',
+      'Return to Morning Brief and confirm you see today’s calls (or a clear “not connected” state is gone).',
+      'Optional: send yourself a test email and confirm Coach Bot can read recent mail after refresh.',
+    ],
+    success:
+      'Gmail and Calendar show as connected. Morning Brief can load today’s schedule without errors.',
+  },
+  {
+    n: 2,
+    title: 'Upload a Fathom Session',
+    minutes: '~8 min',
+    whatYouWillDo:
+      'Add one coaching session from a Fathom transcript using paste and extraction (no file upload on the client card).',
+    steps: [
+      'Open Client Intelligence and pick any active client.',
+      'Open the Fathom tab on that client’s card.',
+      'In Fathom, copy the full transcript text from Fathom (copyable text, not a screenshot).',
+      'Paste into the “Add Fathom Session” box and click Extract Session.',
+      'Wait for the progress steps to finish. If something fails, confirm Ollama is running locally.',
+      'Expand the new session with “Show 9-block analysis” and skim the blocks for sanity.',
+    ],
+    success:
+      'A new row appears in session history and the nine blocks populate from your pasted transcript.',
+  },
+  {
+    n: 3,
+    title: 'Move a Client Stage',
+    minutes: '~5 min',
+    whatYouWillDo:
+      'Practice the real workflow: move one client’s pipeline stage and see badges and lists update.',
+    steps: [
+      'Open Client Intelligence and choose a client whose stage you are comfortable changing for practice.',
+      'Find the stage control (pipeline / inferred stage) and move them one step forward or backward as appropriate.',
+      'Save or confirm so the database records the movement.',
+      'Return to Morning Brief or Clients at a Glance and confirm the stage label matches what you set.',
+    ],
+    success:
+      'Stage saved in the database and reflected consistently on the client card and list views.',
+  },
+  {
+    n: 4,
+    title: 'Generate Best Next Questions',
+    minutes: '~12 min',
+    whatYouWillDo:
+      'Run the Coaching Council for one upcoming call and capture Best Next Questions for that client.',
+    steps: [
+      'From the client card, open the Best Next Questions / council area for a client with a call soon.',
+      'Run the council (Readiness, Alignment, Integrity lenses) and wait for each lens to finish.',
+      'Read the chairman synthesis and the suggested questions.',
+      'Star or note the two or three questions you will actually ask on the call.',
+    ],
+    success:
+      'You have a short list of council-backed questions ready for one real client conversation.',
+  },
+  {
+    n: 5,
+    title: 'Generate Vision Statement',
+    minutes: '~15 min',
+    whatYouWillDo:
+      'Produce a client-ready vision narrative, rate it with the rubric, and export when quality is good enough.',
+    steps: [
+      'Open the client’s Vision tab in Client Intelligence.',
+      'Generate a draft vision statement from the client’s stored context.',
+      'Use the rubric (Accuracy, Completeness, Tone, Usefulness) and note any weak dimension.',
+      'If average is below your bar, use regenerate-with-feedback; if it is strong, download the PPT export.',
+      'Remember: PPT color fields use six-digit hex without the # symbol for PptxGenJS.',
+    ],
+    success:
+      'A draft you would not be embarrassed to share, or a clear list of edits you still want before sharing.',
+  },
+  {
+    n: 6,
+    title: 'Review My Practice Score',
+    minutes: '~8 min',
+    whatYouWillDo:
+      'Understand what the score is measuring so thin data does not feel like a personal “F.”',
+    steps: [
+      'Open My Practice from the sidebar.',
+      'Identify the three sources: session quality (CLEAR from Fathom), pipeline movement, council prep.',
+      'If a slice is zero, treat it as “no signal yet,” not failure, until you have logged data there.',
+      'Pick one dimension you can improve this week (for example, one more Fathom session logged).',
+    ],
+    success:
+      'You can explain in one sentence what the score is telling you and what you will do next week.',
+  },
+  {
+    n: 7,
+    title: 'Check System Health',
+    minutes: '~5 min',
+    whatYouWillDo:
+      'Use the dedicated System Health page as the home for aggregate health instead of hunting badges on every screen.',
+    steps: [
+      'Open System Health from the sidebar.',
+      'Scan overall status, data completeness, and any warnings.',
+      'If you export training or UAT artifacts, confirm the paths suggested on that page still make sense.',
+    ],
+    success:
+      'You know whether the app considers itself healthy and where to look if something drifts.',
+  },
+  {
+    n: 8,
+    title: 'Submit Feedback',
+    minutes: '~5 min',
+    whatYouWillDo:
+      'Send at least one structured note from inside the app so the lab has a feedback trail.',
+    steps: [
+      'From Morning Brief (or any page you just used), click the feedback control for that page.',
+      'Describe one friction point and one thing that worked.',
+      'Submit. If you are blocked, capture the same text in email to Zubia as backup.',
+    ],
+    success:
+      'At least one feedback item logged this week with enough detail that engineering can reproduce it.',
+  },
+];
+
+const cardShell: CSSProperties = {
   background: 'white',
   borderRadius: 12,
-  padding: '24px 28px',
-  marginBottom: 16,
   border: `1px solid ${BORDER}`,
+  borderLeft: `4px solid ${TEAL}`,
+  padding: '20px 24px',
+  marginBottom: 12,
 };
 
-const uatBoxStyle: React.CSSProperties = {
-  background: UAT_BG,
-  borderLeft: `4px solid ${CORAL_SOFT}`,
-  borderRadius: 8,
-  padding: '16px 20px',
-  marginTop: 20,
-};
-
-function PageSection({
-  icon,
-  title,
-  children,
-}: {
-  icon: string;
-  title: string;
-  children: React.ReactNode;
-}) {
+function LabCard({ lab }: { lab: LabSpec }) {
   return (
-    <section style={cardStyle}>
-      <div className="mb-4 flex items-center gap-2">
-        <span className="text-xl" aria-hidden>
-          {icon}
+    <article style={cardShell}>
+      <div className="mb-3 flex flex-wrap items-baseline gap-2">
+        <span
+          style={{
+            background: TEAL,
+            color: 'white',
+            borderRadius: 20,
+            padding: '2px 10px',
+            fontSize: 11,
+            fontWeight: 'bold',
+          }}
+        >
+          Lab {lab.n}
         </span>
-        <h2 className="text-[18px] font-bold" style={{ color: HEADER }}>
-          {title}
+        <h2 className="font-bold" style={{ color: HEADER, fontSize: 16 }}>
+          {lab.title}
         </h2>
+        <span style={{ color: MUTED, fontSize: 11 }}>{lab.minutes}</span>
       </div>
-      {children}
-    </section>
-  );
-}
-
-function UatBlock({ questions }: { questions: string[] }) {
-  return (
-    <div style={uatBoxStyle}>
-      <h3
-        className="mb-3 text-[13px] font-bold uppercase tracking-wide"
-        style={{ color: CORAL_SOFT }}
-      >
-        📋 UAT Feedback Questions
-      </h3>
+      <p style={{ color: MUTED, fontSize: 13, fontStyle: 'italic', marginBottom: 12 }}>
+        <span style={{ fontStyle: 'normal', fontWeight: 'bold', color: MUTED }}>What you will do: </span>
+        {lab.whatYouWillDo}
+      </p>
       <ol
-        className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed"
-        style={{ color: HEADER }}
+        className="list-decimal space-y-1 pl-5"
+        style={{
+          color: HEADER,
+          fontSize: 13,
+          lineHeight: 1.8,
+        }}
       >
-        {questions.map((q, i) => (
-          <li key={i}>{q}</li>
+        {lab.steps.map((s, i) => (
+          <li key={i}>{s}</li>
         ))}
       </ol>
-    </div>
-  );
-}
-
-function StepSeparator() {
-  return (
-    <div
-      className="flex shrink-0 items-center justify-center px-1 py-2 md:py-0"
-      aria-hidden
-    >
-      <span className="text-2xl font-light md:hidden" style={{ color: '#C8E8E5' }}>
-        ↓
-      </span>
-      <ArrowRight className="hidden h-6 w-6 md:block" style={{ color: '#C8E8E5' }} strokeWidth={2} />
-    </div>
-  );
-}
-
-function GettingStartedStep({
-  n,
-  badgeBg,
-  title,
-  body,
-}: {
-  n: number;
-  badgeBg: string;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div className="min-w-0 flex-1">
-      <div className="flex flex-col items-center text-center md:items-start md:text-left">
-        <div
-          className="mb-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-white"
-          style={{ background: badgeBg, fontSize: 16 }}
-        >
-          {n}
-        </div>
-        <p className="mb-2 font-bold text-white" style={{ fontSize: 15 }}>
-          {title}
-        </p>
-        <p className="whitespace-pre-line leading-snug" style={{ color: '#C8E8E5', fontSize: 13 }}>
-          {body}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-const reqInnerCard: React.CSSProperties = {
-  background: CARD_BG,
-  borderRadius: 10,
-  padding: 16,
-};
-
-const codeMono: React.CSSProperties = {
-  fontFamily: 'Courier New, Courier, monospace',
-  fontSize: 11,
-  color: HEADER,
-};
-
-function SystemRequirementsSection() {
-  return (
-    <section
-      style={{
-        background: 'white',
-        border: `1px solid ${BORDER}`,
-        borderLeft: `4px solid ${CORAL_SOFT}`,
-        borderRadius: 12,
-        padding: '24px 28px',
-        marginBottom: 16,
-      }}
-    >
-      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-        <Monitor className="shrink-0" style={{ color: CORAL_SOFT, width: 20, height: 20 }} aria-hidden />
-        <div>
-          <h2 className="font-bold" style={{ color: HEADER, fontSize: 18 }}>
-            System Requirements
-          </h2>
-          <p className="mt-1 leading-snug" style={{ color: MUTED, fontSize: 13 }}>
-            Check these before installing Coach Bot on a new machine.
-          </p>
-        </div>
-      </div>
-
-      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Card 1 — Storage */}
-        <div style={reqInnerCard}>
-          <div className="mb-3 flex items-center gap-2">
-            <HardDrive className="shrink-0" style={{ color: TEAL, width: 20, height: 20 }} aria-hidden />
-            <h3 className="font-bold" style={{ color: HEADER, fontSize: 14 }}>
-              Storage
-            </h3>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between gap-2">
-              <span style={{ color: MUTED, fontSize: 12 }}>Ollama AI models</span>
-              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
-                ~4.8 GB
-              </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span style={{ color: MUTED, fontSize: 12 }}>Coach Bot app</span>
-              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
-                ~30 MB
-              </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span style={{ color: MUTED, fontSize: 12 }}>Client database</span>
-              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
-                ~100 MB
-              </span>
-            </div>
-            <div
-              className="my-2 border-t"
-              style={{ borderColor: BORDER }}
-              aria-hidden
-            />
-            <div className="flex justify-between gap-2">
-              <span style={{ color: MUTED, fontSize: 12 }}>Total needed</span>
-              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
-                ~6 GB
-              </span>
-            </div>
-          </div>
-          <div className="mt-3 flex justify-between gap-2">
-            <span style={{ color: MUTED, fontSize: 12 }}>Minimum free space</span>
-            <span className="font-bold" style={{ color: CORAL_SOFT, fontSize: 12 }}>
-              8 GB
-            </span>
-          </div>
-          <div
-            className="mt-3"
-            style={{
-              background: UAT_BG,
-              borderRadius: 6,
-              padding: '8px 12px',
-            }}
-          >
-            <pre className="m-0 whitespace-pre-wrap break-all" style={codeMono}>
-              (Get-PSDrive C).Free / 1GB
-            </pre>
-            <p className="mt-1 leading-snug" style={{ color: MUTED, fontSize: 10 }}>
-              Run in PowerShell.
-              <br />
-              Result must be above 8.
-            </p>
-          </div>
-        </div>
-
-        {/* Card 2 — Memory */}
-        <div style={reqInnerCard}>
-          <div className="mb-3 flex items-center gap-2">
-            <Cpu className="shrink-0" style={{ color: CORAL_SOFT, width: 20, height: 20 }} aria-hidden />
-            <h3 className="font-bold" style={{ color: HEADER, fontSize: 14 }}>
-              Memory (RAM)
-            </h3>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between gap-2">
-              <span style={{ color: MUTED, fontSize: 12 }}>AI model (qwen2.5:7b)</span>
-              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
-                ~6 GB
-              </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span style={{ color: MUTED, fontSize: 12 }}>Windows OS</span>
-              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
-                ~3 GB
-              </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span style={{ color: MUTED, fontSize: 12 }}>Coach Bot app</span>
-              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
-                ~200 MB
-              </span>
-            </div>
-            <div
-              className="my-2 border-t"
-              style={{ borderColor: BORDER }}
-              aria-hidden
-            />
-            <div className="flex justify-between gap-2">
-              <span style={{ color: MUTED, fontSize: 12 }}>Total needed</span>
-              <span className="font-bold" style={{ color: HEADER, fontSize: 12 }}>
-                ~8 GB
-              </span>
-            </div>
-          </div>
-          <div className="mt-4 space-y-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
-              <span
-                className="inline-block w-fit font-bold"
-                style={{
-                  background: UAT_BG,
-                  color: CORAL_SOFT,
-                  borderRadius: 12,
-                  padding: '2px 8px',
-                  fontSize: 11,
-                }}
-              >
-                Minimum
-              </span>
-              <div className="min-w-0 flex-1">
-                <span className="font-semibold" style={{ color: HEADER, fontSize: 13 }}>
-                  8 GB RAM
-                </span>
-                <p className="italic" style={{ color: MUTED, fontSize: 11 }}>
-                  Works — responses take 20-40 seconds
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
-              <span
-                className="inline-block w-fit font-bold"
-                style={{
-                  background: '#F0FAFA',
-                  color: TEAL,
-                  borderRadius: 12,
-                  padding: '2px 8px',
-                  fontSize: 11,
-                }}
-              >
-                Recommended
-              </span>
-              <div className="min-w-0 flex-1">
-                <span className="font-semibold" style={{ color: HEADER, fontSize: 13 }}>
-                  16 GB RAM
-                </span>
-                <p className="italic" style={{ color: MUTED, fontSize: 11 }}>
-                  Comfortable — responses take 5-15 seconds
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
-              <span
-                className="inline-block w-fit font-bold"
-                style={{
-                  background: '#F0FAFA',
-                  color: TEAL,
-                  borderRadius: 12,
-                  padding: '2px 8px',
-                  fontSize: 11,
-                }}
-              >
-                Ideal
-              </span>
-              <div className="min-w-0 flex-1">
-                <span className="font-semibold" style={{ color: HEADER, fontSize: 13 }}>
-                  32 GB RAM
-                </span>
-                <p className="italic" style={{ color: MUTED, fontSize: 11 }}>
-                  Fast — responses take 2-5 seconds
-                </p>
-              </div>
-            </div>
-          </div>
-          <div
-            className="mt-3"
-            style={{
-              background: UAT_BG,
-              borderRadius: 6,
-              padding: '8px 12px',
-            }}
-          >
-            <pre className="m-0 whitespace-pre-wrap break-all" style={codeMono}>
-              {`(Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property capacity -Sum).sum /1gb`}
-            </pre>
-            <p className="mt-1 leading-snug" style={{ color: MUTED, fontSize: 10 }}>
-              Run in PowerShell.
-              <br />
-              Result must be above 8.
-            </p>
-          </div>
-        </div>
-
-        {/* Card 3 — System */}
-        <div style={reqInnerCard}>
-          <div className="mb-3 flex items-center gap-2">
-            <Settings className="shrink-0" style={{ color: TEAL, width: 20, height: 20 }} aria-hidden />
-            <h3 className="font-bold" style={{ color: HEADER, fontSize: 14 }}>
-              System
-            </h3>
-          </div>
-          <div>
-            <p className="font-semibold" style={{ color: MUTED, fontSize: 12 }}>
-              Windows
-            </p>
-            <p style={{ color: HEADER, fontSize: 13 }}>Windows 10 or 11</p>
-            <p style={{ color: MUTED, fontSize: 11 }}>Both versions supported</p>
-          </div>
-          <p className="mb-2 mt-3 font-bold" style={{ color: HEADER, fontSize: 13 }}>
-            GPU (optional)
-          </p>
-          <div className="space-y-3">
-            <div>
-              <span
-                className="inline-block font-bold"
-                style={{
-                  background: '#F0FAFA',
-                  color: TEAL,
-                  borderRadius: 12,
-                  padding: '2px 8px',
-                  fontSize: 11,
-                }}
-              >
-                With GPU
-              </span>
-              <p className="mt-1" style={{ color: HEADER, fontSize: 12 }}>
-                2-5 second responses
-              </p>
-              <p style={{ color: MUTED, fontSize: 10 }}>6+ GB VRAM needed</p>
-            </div>
-            <div>
-              <span
-                className="inline-block font-bold"
-                style={{
-                  background: CARD_BG,
-                  color: MUTED,
-                  borderRadius: 12,
-                  padding: '2px 8px',
-                  fontSize: 11,
-                }}
-              >
-                CPU only
-              </span>
-              <p className="mt-1" style={{ color: HEADER, fontSize: 12 }}>
-                15-45 second responses
-              </p>
-              <p style={{ color: MUTED, fontSize: 10 }}>Still works — just slower</p>
-            </div>
-          </div>
-          <p
-            className="mt-3 leading-snug"
-            style={{ color: TEAL, fontSize: 12, fontWeight: 700 }}
-          >
-            🔒 No internet required after setup. Coach Bot runs entirely on your machine.
-          </p>
-        </div>
-      </div>
-
-      {/* Quick Check */}
       <div
         style={{
-          background: NAVY_CARD,
-          borderRadius: 10,
-          padding: '16px 20px',
-          marginBottom: 16,
+          marginTop: 14,
+          background: '#F0FAFA',
+          borderLeft: `3px solid ${TEAL}`,
+          borderRadius: 6,
+          padding: '10px 14px',
         }}
       >
-        <h3 className="font-bold text-white" style={{ fontSize: 14 }}>
-          Quick Check — Run This First
-        </h3>
-        <p className="mt-1 leading-snug" style={{ color: BORDER, fontSize: 12 }}>
-          Open PowerShell and paste these two commands:
+        <p className="mb-1 font-bold" style={{ color: TEAL, fontSize: 11 }}>
+          Success
         </p>
-        <pre
-          className="mt-3 whitespace-pre-wrap break-all text-white"
-          style={{
-            background: 'rgba(0,0,0,0.3)',
-            borderRadius: 6,
-            padding: '10px 14px',
-            fontFamily: 'Courier New, Courier, monospace',
-            fontSize: 12,
-            margin: 0,
-          }}
-        >
-          {`# Check available RAM (need 8+)
-(Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property capacity -Sum).sum /1gb`}
-        </pre>
-        <pre
-          className="mt-3 whitespace-pre-wrap break-all text-white"
-          style={{
-            background: 'rgba(0,0,0,0.3)',
-            borderRadius: 6,
-            padding: '10px 14px',
-            fontFamily: 'Courier New, Courier, monospace',
-            fontSize: 12,
-            margin: 0,
-          }}
-        >
-          {`# Check free disk space (need 8+)
-(Get-PSDrive C).Free / 1GB`}
-        </pre>
-        <div className="mt-4 space-y-2">
-          <p style={{ color: TEAL, fontSize: 13 }}>
-            <span aria-hidden>✅ </span>
-            Both results above 8 — You are ready to install
-          </p>
-          <p style={{ color: CORAL_SOFT, fontSize: 13 }}>
-            <span aria-hidden>❌ </span>
-            Either result below 8 — Free up disk space or upgrade RAM before installing
-          </p>
-        </div>
-        <p className="mt-3 italic leading-snug" style={{ color: BORDER, fontSize: 11 }}>
-          Not sure? Send these results to Zubia before installing.
-        </p>
+        <p style={{ color: HEADER, fontSize: 12 }}>{lab.success}</p>
       </div>
-
-      {/* Response speed table */}
-      <h3 className="mb-2 font-bold" style={{ color: HEADER, fontSize: 14, marginTop: 16 }}>
-        What Affects Response Speed
-      </h3>
-      <div className="overflow-hidden rounded-lg" style={{ border: `1px solid ${BORDER}` }}>
-        <table className="w-full border-collapse text-[13px]" style={{ color: HEADER }}>
-          <thead>
-            <tr style={{ background: '#F4F7F8' }}>
-              <th className="border-b px-[14px] py-2.5 text-left font-bold" style={{ borderColor: BORDER }}>
-                Situation
-              </th>
-              <th className="border-b px-[14px] py-2.5 text-left font-bold" style={{ borderColor: BORDER }}>
-                Speed
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ['16 GB RAM + NVIDIA GPU', '⚡ 2-5 seconds'],
-              ['16 GB RAM, no GPU', '🔄 5-15 seconds'],
-              ['8 GB RAM, no GPU', '⏳ 20-40 seconds'],
-              ['Less than 8 GB RAM', '❌ Not recommended'],
-            ].map(([situation, speed], i) => (
-              <tr key={situation} style={{ background: i % 2 === 0 ? '#F4F7F8' : 'white' }}>
-                <td className="border-b px-[14px] py-2.5" style={{ borderColor: BORDER }}>
-                  {situation}
-                </td>
-                <td className="border-b px-[14px] py-2.5" style={{ borderColor: BORDER }}>
-                  {speed}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* UAT */}
-      <div
-        style={{
-          background: UAT_BG,
-          borderLeft: `4px solid ${CORAL_SOFT}`,
-          borderRadius: 8,
-          padding: '12px 16px',
-          marginTop: 12,
-        }}
-      >
-        <p className="leading-relaxed" style={{ color: HEADER, fontSize: 13 }}>
-          📋 UAT Questions — System Check:
-        </p>
-        <ol className="mt-2 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed" style={{ color: HEADER }}>
-          <li>Did you run the PowerShell check before installing?</li>
-          <li>How much RAM does your machine have? (run the command above)</li>
-          <li>Are responses coming back in a reasonable time?</li>
-          <li>Did you notice any slowness when generating questions or vision statements?</li>
-        </ol>
-      </div>
-    </section>
+    </article>
   );
 }
 
 export default function HowToUse() {
   return (
-    <div className="min-h-full w-full py-8" style={{ background: CREAM }}>
-      <div className="mx-auto px-4" style={{ maxWidth: 800 }}>
-        <header className="mb-6 text-center">
+    <div className="min-h-full" style={{ background: PAGE_BG, fontFamily: 'inherit' }}>
+      <div className="mx-auto px-6 py-8" style={{ maxWidth: 800 }}>
+        <header className="mb-8 text-center">
           <h1 className="font-bold" style={{ color: HEADER, fontSize: 24 }}>
-            How to Use Coach Bot
+            Coach Bot — Getting Started
           </h1>
-          <p className="mx-auto mt-3 max-w-xl leading-relaxed" style={{ color: MUTED, fontSize: 14 }}>
-            Your daily coaching command center. Here is what each page does and how to get the most out of
-            it.
+          <p className="mt-2" style={{ color: MUTED, fontSize: 13 }}>
+            Eight labs. Learning by doing. Each step teaches Coach Bot your voice.
+          </p>
+          <p className="mt-2" style={{ color: MUTED, fontSize: 11 }}>
+            v2.0 · April 2026
           </p>
         </header>
 
-        {/* SECTION 0 — GETTING STARTED */}
-        <section
-          style={{
-            background: '#2D4459',
-            borderRadius: 12,
-            padding: 28,
-            marginBottom: 20,
-            color: 'white',
-          }}
-        >
-          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:gap-4">
-            <Rocket className="shrink-0" style={{ color: TEAL, width: 28, height: 28 }} aria-hidden />
-            <div>
-              <h2 className="font-bold text-white" style={{ fontSize: 22 }}>
-                Getting Started
-              </h2>
-              <p className="mt-1" style={{ color: '#C8E8E5', fontSize: 14 }}>
-                New to Coach Bot? Follow these steps in order.
-              </p>
-            </div>
-          </div>
+        {LABS.map((lab) => (
+          <LabCard key={lab.n} lab={lab} />
+        ))}
 
-          <div className="flex flex-col items-stretch gap-0 md:flex-row md:flex-wrap md:justify-center xl:flex-nowrap xl:justify-between xl:gap-1">
-            <GettingStartedStep
-              n={1}
-              badgeBg={TEAL}
-              title="Add Your Identity"
-              body={`Go to The Capture → My Identity. Upload your resume and describe your coaching philosophy. This teaches Coach Bot to speak in your voice.`}
-            />
-            <StepSeparator />
-            <GettingStartedStep
-              n={2}
-              badgeBg={CORAL_SOFT}
-              title="Upload Your Knowledge"
-              body={`Go to The Capture → My Knowledge. Upload your CLEAR framework docs, TES guides, and coaching resources. Fill as many domains as you can.`}
-            />
-            <StepSeparator />
-            <GettingStartedStep
-              n={3}
-              badgeBg={TEAL}
-              title="Add Your Clients"
-              body={`Go to Client Intelligence and click + Add New Client. Enter their basic info. Then go to The Capture → My Clients to upload their DISC, You 2.0, TUMAY, and Fathom documents.`}
-            />
-            <StepSeparator />
-            <GettingStartedStep
-              n={4}
-              badgeBg={CORAL_SOFT}
-              title="Start Coaching"
-              body={`Open Morning Brief every day. Before each call open the client card and click Best Next Questions. After each call upload their Fathom transcript in The Capture.`}
-            />
-          </div>
-
-          <div
-            className="mt-8 border-t pt-5 text-center italic"
-            style={{ borderColor: TEAL, color: '#C8E8E5', fontSize: 12 }}
-          >
-            Complete all four steps for the best Coach Bot experience.
-          </div>
-        </section>
-
-        <SystemRequirementsSection />
-
-        {/* SECTION 1 — HOW TO ADD A CLIENT */}
-        <section
-          style={{
-            ...cardStyle,
-            borderLeft: `4px solid ${TEAL}`,
-          }}
-        >
-          <div className="mb-6 flex items-center gap-2">
-            <UserPlus className="shrink-0" style={{ color: TEAL, width: 22, height: 22 }} aria-hidden />
-            <h2 className="font-bold" style={{ color: HEADER, fontSize: 18 }}>
-              How to Add a New Client
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-10">
-            <div>
-              <h3 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 14 }}>
-                Step 1 — Create Their Record
-              </h3>
-              <div className="whitespace-pre-line leading-[1.8]" style={{ color: HEADER, fontSize: 13 }}>
-                {`1. Go to Client Intelligence in the left sidebar
-2. Click + Add New Client
-3. Enter their:
-   • Full name
-   • Email and phone
-   • Current profession
-   • Starting stage (usually IC)
-   • How you found them
-   • Any initial notes
-4. Click Create Client →
-5. Their card appears in the client list`}
-              </div>
-            </div>
-            <div>
-              <h3 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 14 }}>
-                Step 2 — Upload Their Documents
-              </h3>
-              <div className="whitespace-pre-line leading-[1.8]" style={{ color: HEADER, fontSize: 13 }}>
-                {`1. Go to The Capture in the left sidebar
-2. Find their card in the client grid at the top
-3. Click their card to expand the upload panel
-4. Upload their documents:
-   📊 DISC PDF from TES
-   📋 You 2.0 PDF from TES
-   📝 TUMAY questionnaire
-   🎙️ Fathom transcripts after each call
-5. Each document extracts automatically
-6. Their client card populates immediately`}
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="mt-6 rounded-md py-2.5 pl-3.5 pr-3.5"
-            style={{
-              background: UAT_BG,
-              borderLeft: `3px solid ${CORAL_SOFT}`,
-              color: HEADER,
-              fontSize: 12,
-            }}
-          >
-            💡 Tip: You can upload documents one at a time as you receive them from TES. The client card gets
-            richer with every upload.
-          </div>
-        </section>
-
-        {/* SECTION 2 — HOW TO ADD YOUR IDENTITY */}
-        <section
-          style={{
-            ...cardStyle,
-            borderLeft: `4px solid ${CORAL_SOFT}`,
-          }}
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <User className="shrink-0" style={{ color: CORAL_SOFT, width: 22, height: 22 }} aria-hidden />
-            <h2 className="font-bold" style={{ color: HEADER, fontSize: 18 }}>
-              How to Add Your Identity
-            </h2>
-          </div>
-          <p className="mb-4 text-[13px] leading-relaxed" style={{ color: MUTED }}>
-            Your identity teaches Coach Bot to speak in your voice — not like a generic AI assistant.
-          </p>
-          <div className="whitespace-pre-line leading-[1.8]" style={{ color: HEADER, fontSize: 13 }}>
-            {`1. Go to The Capture in the left sidebar
-2. Find the My Identity section
-3. Click Upload Resume → Select your resume PDF → Coach Bot extracts your bio, experience, and coaching credentials
-4. Add your Coaching Philosophy → Type how you coach → Your approach with seekers → What matters most to you as a franchise coach
-5. Click Save Philosophy
-6. Your identity is now active — every response Coach Bot generates will reflect your coaching voice`}
-          </div>
-          <div
-            className="mt-3 rounded-lg px-4 py-3 text-[13px] leading-relaxed"
-            style={{ background: '#F0FAFA', color: HEADER }}
-          >
-            ✓ After adding your identity Coach Bot will generate vision statements and coaching questions that
-            sound like you — using your language, your values, and your coaching philosophy.
-          </div>
-        </section>
-
-        {/* SECTION 3 — THE CAPTURE */}
-        <section
-          style={{
-            ...cardStyle,
-            borderLeft: `4px solid ${HEADER}`,
-          }}
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <Layers className="shrink-0" style={{ color: HEADER, width: 22, height: 22 }} aria-hidden />
-            <h2 className="font-bold" style={{ color: HEADER, fontSize: 18 }}>
-              The Capture
-            </h2>
-          </div>
-          <p className="mb-6 text-[13px] leading-relaxed" style={{ color: MUTED }}>
-            Your coaching intelligence hub. Everything Sandi adds here makes Coach Bot smarter.
-          </p>
-
-          <div className="space-y-5 text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            <div>
-              <p className="mb-1 font-bold" style={{ color: HEADER }}>
-                My Clients
-              </p>
-              <p>
-                The client grid shows all your active clients with document status dots. Click any client card
-                to upload their documents. The pipeline progress bar shows how complete your client data is.
-              </p>
-            </div>
-            <div>
-              <p className="mb-1 font-bold" style={{ color: HEADER }}>
-                My Identity
-              </p>
-              <p>
-                Upload your resume and coaching philosophy here. This is how Coach Bot learns your voice.
-              </p>
-            </div>
-            <div>
-              <p className="mb-1 font-bold" style={{ color: HEADER }}>
-                My Knowledge
-              </p>
-              <p>
-                Upload coaching frameworks, TES guides, and resources here. The domain grid shows which areas
-                are well covered and which need more documents.
-              </p>
-            </div>
-          </div>
-
-          <div
-            className="mt-6 rounded-lg px-4 py-3"
-            style={{
-              background: UAT_BG,
-              borderLeft: `4px solid ${CORAL_SOFT}`,
-            }}
-          >
-            <p className="mb-2 font-bold" style={{ color: HEADER, fontSize: 13 }}>
-              📋 UAT Feedback Questions:
-            </p>
-            <ol className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed" style={{ color: HEADER }}>
-              <li>Does The Capture feel easy to navigate?</li>
-              <li>Did you find where to upload client documents?</li>
-              <li>Did you upload your resume in My Identity?</li>
-              <li>Did you add documents to any knowledge domains?</li>
-              <li>Does the client grid show accurate status for your clients?</li>
-            </ol>
-          </div>
-        </section>
-
-        {/* SECTION 4 — MORNING BRIEF */}
-        <PageSection icon="☀️" title="Morning Brief">
-          <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            Your daily coaching command center. Open this every morning to see what needs your attention today.
-          </p>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            Key elements
-          </h3>
-          <ul
-            className="list-disc space-y-3 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>
-              Greeting card — shows today&apos;s date and your placement pulse. 3 of 11 means 3 placements
-              made out of your 11 placement goal.
-            </li>
-            <li>
-              Today&apos;s Focus pills — at a glance view of gone quiet clients, pink flags, weekly input
-              needed, and clients at risk.
-            </li>
-            <li>
-              Needs Attention — clients who need your response today. Click Open Client to go directly to
-              their card.
-            </li>
-            <li>
-              This Week&apos;s Inputs — log your Seekers Scheduled and Seekers Spoken To numbers each week.
-              Target: 15 scheduled, 10 spoken.
-            </li>
-            <li>
-              KPI grid — total clients, VALIDATE count, GATHER count, PAUSE count, placement tracker, and time
-              saved.
-            </li>
-            <li>
-              Clients at a Glance — your full pipeline in one table. Filter by stage or status. Click any
-              client to open their card.
-            </li>
-          </ul>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            How to use it daily
-          </h3>
-          <ol
-            className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>Check Today&apos;s Focus pills — these are your priorities</li>
-            <li>Open each Needs Attention client and take action</li>
-            <li>Log your weekly seeker numbers</li>
-            <li>Review Clients at a Glance for anyone you may have missed</li>
-          </ol>
-          <UatBlock
-            questions={[
-              'Does the greeting feel welcoming when you open the app?',
-              'Can you tell at a glance what needs your attention today?',
-              'Is the gone quiet list showing the right clients?',
-              'Did you log your weekly seeker numbers?',
-              'Would you open this page every morning?',
-            ]}
-          />
-        </PageSection>
-
-        {/* SECTION 5 — BUSINESS GOALS */}
-        <PageSection icon="🎯" title="Business Goals">
-          <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            Your $300,000 business plan tracked in real time. Everything on this page connects directly to your
-            annual targets.
-          </p>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            Key elements
-          </h3>
-          <ul
-            className="list-disc space-y-3 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>
-              C3 North Star — your most important weekly metric. 2.5 C3 presentations per week puts you on track
-              for 11 placements and $300,000. This number resets every Monday.
-            </li>
-            <li>
-              Revenue Story — $84,000 made, $300,000 target, projected year end based on your current pace.
-            </li>
-            <li>
-              Where to Focus — your business plan gaps and what to do about them. Each row shows your current
-              rate, the target, and a one-click action to improve it.
-            </li>
-            <li>
-              Intelligence cards — decisions logged, pink flags resolved, and clients ready to place.
-            </li>
-          </ul>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            How to use it weekly
-          </h3>
-          <ol
-            className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>Check C3 North Star every Monday — have you presented to 2-3 clients this week?</li>
-            <li>Review Where to Focus — which conversion rate needs your attention most?</li>
-            <li>Click action pills to go directly to the right clients</li>
-          </ol>
-          <UatBlock
-            questions={[
-              'Does the C3 North Star make sense as your most important weekly metric?',
-              'Is the $300,000 projection motivating or stressful?',
-              'Do the Where to Focus rows help you know what to do?',
-              'Did you click any action pills? Did they take you to the right place?',
-              'Is anything missing from your business plan view?',
-            ]}
-          />
-        </PageSection>
-
-        {/* SECTION 6 — CLIENT INTELLIGENCE */}
-        <PageSection icon="👤" title="Client Intelligence">
-          <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            Everything about every client. Use this before every call to prepare and after every call to
-            capture what you learned.
-          </p>
-          <div
-            className="mt-4 rounded-lg border px-3 py-2.5 text-[13px] leading-relaxed"
-            style={{ borderColor: BORDER, background: '#F0FAFA', color: HEADER }}
-          >
-            Use <strong>+ Add New Client</strong> to create a client. Then go to <strong>The Capture</strong>{' '}
-            to upload their documents.
-          </div>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            Key elements — tabs explained
-          </h3>
-          <ul
-            className="list-disc space-y-3 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>
-              Overview — stage, persona, readiness score, pink flags, and contact info. Move clients forward or
-              back using the stage movement buttons.
-            </li>
-            <li>
-              DISC — behavioral style scores, key traits, and coaching tips specific to this client&apos;s
-              communication style.
-            </li>
-            <li>
-              You 2.0 — their one year vision, declared dangers, strengths, and opportunities. This is what
-              drives their decisions.
-            </li>
-            <li>
-              TUMAY — Tell Us More About You. Financial profile, industries of interest, spouse information,
-              and reasons for change.
-            </li>
-            <li>
-              Vision — generate a draft vision statement for this client. Review and edit it, then approve it.
-              Download as PowerPoint for your presentation or PDF for the client to keep.
-            </li>
-            <li>
-              Fathom — session history and 9-block coaching analysis. Upload Fathom transcripts in The Capture
-              to populate this tab with real session data.
-            </li>
-            <li>
-              Reminders — set follow up reminders for this client. Use for re-engagement after going quiet or
-              after a POC.
-            </li>
-            <li>
-              Best Next Questions — generate coaching questions grounded in this client&apos;s DISC profile,
-              You 2.0 pain points, current stage, and last session. Questions follow the CLEAR framework. Click
-              Generate Questions before every call.
-            </li>
-          </ul>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            Filters explained
-          </h3>
-          <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            Use the filter pills at the top of the client list to quickly find:
-          </p>
-          <ul
-            className="mt-2 list-disc space-y-2 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>VALIDATE — C4 and C5 clients exploring specific businesses</li>
-            <li>GATHER — IC through C3 clients still discovering</li>
-            <li>PAUSE — clients on hold</li>
-            <li>Gone Quiet — clients who have not been contacted recently</li>
-          </ul>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            How to use it before a call
-          </h3>
-          <ol
-            className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>Open the client card</li>
-            <li>Check Overview — stage and readiness score</li>
-            <li>Read You 2.0 — refresh your memory on their vision and pain points</li>
-            <li>Go to Best Next Questions — click Generate Questions</li>
-            <li>Use the questions on your call</li>
-          </ol>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            How to use it after a call
-          </h3>
-          <ol
-            className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>Go to Fathom — add a session note with what happened</li>
-            <li>Log an Aha Moment if you captured an insight</li>
-            <li>Update Last Contacted date</li>
-            <li>Mark any pink flags resolved if addressed</li>
-          </ol>
-          <UatBlock
-            questions={[
-              'Can you find a client quickly using search or filters?',
-              'Does the client card feel complete before a call?',
-              'Did you try Best Next Questions? Were the questions useful or too generic?',
-              'Did you generate a vision statement? Did it feel accurate for this client?',
-              'Did you add a session note after a call?',
-              'Is anything missing from the client card?',
-            ]}
-          />
-        </PageSection>
-
-        {/* SECTION 7 — COACHING ACTIONS */}
-        <PageSection icon="⚡" title="Coaching Actions">
-          <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            Every signal that needs your response in one place. Coach Bot monitors your pipeline and flags
-            clients who need attention.
-          </p>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            Key elements
-          </h3>
-          <ul
-            className="list-disc space-y-3 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>
-              Signals Needing Response — clients with active gone quiet or pink flag signals. For each client
-              select your response from the dropdown — this logs your decision and clears the signal.
-            </li>
-            <li>
-              Signal types:
-              <ul className="mt-2 list-disc space-y-2 pl-5">
-                <li>
-                  Gone quiet — client has not been contacted within their stage threshold
-                  <br />
-                  IC: 14 days
-                  <br />
-                  C1: 21 days
-                  <br />
-                  C2/C3: 14 days
-                  <br />
-                  C4/C5: 60 days
-                </li>
-                <li>
-                  Pink flags — specific concerns flagged by Coach Bot such as spouse alignment unsure or net
-                  worth below threshold
-                </li>
-                <li>At risk — C3/C4 client with no recent session activity</li>
-              </ul>
-            </li>
-            <li>
-              Golden Rules — what made each converted client say yes. These appear as you capture coaching notes
-              over time.
-            </li>
-            <li>
-              Decision History — every response you log to a signal. Your track record of keeping clients
-              engaged.
-            </li>
-          </ul>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            How to use it
-          </h3>
-          <ol
-            className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>Open Coaching Actions daily</li>
-            <li>For each signal select your response from the dropdown</li>
-            <li>If you called — select Called left voicemail</li>
-            <li>If you scheduled — select Scheduled session</li>
-            <li>Your response is logged and the signal clears</li>
-          </ol>
-          <UatBlock
-            questions={[
-              'Are the signals showing the right clients?',
-              'Is any client showing as at risk when they should not be?',
-              'Did you log a response to any signal?',
-              'Are the DISC re-engagement tips helpful?',
-              'Is anything confusing about how signals work?',
-            ]}
-          />
-        </PageSection>
-
-        {/* SECTION 8 — MY PRACTICE */}
-        <PageSection icon="📊" title="My Practice">
-          <p className="text-[13px] leading-relaxed" style={{ color: HEADER }}>
-            Your coaching performance tracked and scored. This is the crown jewel — it tells you how you are
-            performing as a coach and where to improve.
-          </p>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            Key elements
-          </h3>
-          <ul
-            className="list-disc space-y-3 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>
-              Performance Score — 0 to 100. Starts low and grows every day you use Coach Bot. Your score reflects
-              six dimensions of coaching quality.
-            </li>
-            <li>
-              Score breakdown:
-              <ul className="mt-2 list-disc space-y-2 pl-5">
-                <li>Placement pace — placements made vs annual target</li>
-                <li>C3 North Star — weekly C3 presentation rate</li>
-                <li>Response rate — how quickly you respond to signals</li>
-                <li>Data complete — how complete your client profiles are</li>
-                <li>CLEAR quality — coaching session quality score</li>
-                <li>Aha moments — insights captured from sessions</li>
-              </ul>
-            </li>
-            <li>Revenue tab — $84K made, $300K target, projected year end at current pace.</li>
-            <li>Pipeline tab — stage movement rates and conversion funnel.</li>
-            <li>Coaching tab — aha moments, golden rules, DISC distribution across your client base.</li>
-            <li>Adoption tab — how actively you are using Coach Bot.</li>
-            <li>Intelligence tab — profile completeness for each client.</li>
-          </ul>
-          <h3 className="mb-2 mt-5 text-sm font-semibold" style={{ color: HEADER }}>
-            How to use it
-          </h3>
-          <ol
-            className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
-          >
-            <li>Check your score weekly — watch it grow as you coach</li>
-            <li>Look at which dimension is lowest — that is where to focus</li>
-            <li>
-              Capture aha moments from client sessions — they improve your score and build your coaching library
-            </li>
-            <li>Review DISC distribution — are you coaching the right mix of clients?</li>
-          </ol>
-          <UatBlock
-            questions={[
-              'Does the performance score feel motivating or confusing?',
-              'Do you understand what each dimension means?',
-              'Did you capture an aha moment from any client session?',
-              'Does the Year 2 preview excite you about what Coach Bot will become?',
-              'Does this page make you want to use Coach Bot more?',
-            ]}
-          />
-        </PageSection>
-
-        {/* SECTION 9 — GENERAL UAT */}
-        <section style={{ ...cardStyle, marginBottom: 24 }}>
-          <h2 className="mb-4 font-bold" style={{ color: HEADER, fontSize: 16 }}>
-            Overall Feedback
+        <section style={{ ...cardShell, marginTop: 8 }}>
+          <h2 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 16 }}>
+            What Happens Next
           </h2>
-          <ol
-            className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed"
-            style={{ color: HEADER }}
+          <ul
+            className="list-disc space-y-2 pl-5"
+            style={{ color: HEADER, fontSize: 13, lineHeight: 1.75 }}
           >
-            <li>What is the one thing you love most about Coach Bot?</li>
-            <li>What is the one thing that confuses you most?</li>
-            <li>What is missing that you expected to see?</li>
-            <li>Would you open Coach Bot every morning?</li>
-            <li>On a scale of 1-10 how valuable is Coach Bot to your practice right now?</li>
-          </ol>
-          <p className="mt-4 italic leading-relaxed" style={{ color: MUTED, fontSize: 12 }}>
-            Your feedback directly shapes the next version of Coach Bot. Use the feedback button on each page to
-            share what you notice as you use it.
-          </p>
+            <li>
+              Keep Morning Brief as your daily entry point: calls, Gmail highlights tied to client names, and
+              anything that needs attention.
+            </li>
+            <li>
+              After each real client touch, log Fathom or notes so CLEAR and My Practice have signal, not empty
+              slices.
+            </li>
+            <li>
+              Corrections and feedback you submit become training fuel; brief, specific notes beat long essays.
+            </li>
+            <li>
+              When something breaks, capture the page name and one screenshot before you restart, so support can
+              reproduce it.
+            </li>
+            <li>
+              Revisit this guide after major releases; version and date in the header will bump when labs change.
+            </li>
+          </ul>
         </section>
 
-        <footer className="pb-8 text-center text-[11px]" style={{ color: MUTED }}>
+        <section style={cardShell}>
+          <h2 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 16 }}>
+            What to Email Zubia This Week
+          </h2>
+          <p className="mb-3" style={{ color: MUTED, fontSize: 13 }}>
+            Send one bundle per week while you are in lab mode. Use a single email thread if possible.
+          </p>
+          <ul
+            className="list-disc space-y-2 pl-5"
+            style={{ color: HEADER, fontSize: 13, lineHeight: 1.75 }}
+          >
+            <li>UAT export or written answers to the feedback prompts from Lab 8.</li>
+            <li>One screen recording or annotated screenshot of anything confusing (optional but high value).</li>
+            <li>Your machine summary: Windows version, RAM, Ollama running yes/no, and Coach Bot build or git hash.</li>
+            <li>List of clients you used for Labs 2–5 (first name only is fine) so we can correlate logs.</li>
+            <li>Any blockers that stopped you from finishing a lab, in priority order.</li>
+          </ul>
+        </section>
+
+        <section style={cardShell}>
+          <h2 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 16 }}>
+            Troubleshooting
+          </h2>
+          <ul
+            className="list-disc space-y-2 pl-5"
+            style={{ color: HEADER, fontSize: 13, lineHeight: 1.75 }}
+          >
+            <li>
+              <strong>Fathom extract fails:</strong> confirm Ollama is running on this machine and try a shorter
+              transcript paste first.
+            </li>
+            <li>
+              <strong>No Gmail in Morning Brief:</strong> reconnect Google, then use Refresh on Morning Brief; inbox
+              preview only appears when Google is connected.
+            </li>
+            <li>
+              <strong>Vision or client card white screen:</strong> note the last action, restart the app, and if it
+              persists capture the console error text for Zubia.
+            </li>
+            <li>
+              <strong>Calendar empty but Google connected:</strong> check that events exist for today and that this
+              Google account owns the calendar you expect.
+            </li>
+            <li>
+              <strong>PPT export issues:</strong> remember brand colors must be six-digit hex without # for PptxGenJS;
+              if download fails, try again after a full quit and relaunch.
+            </li>
+          </ul>
+        </section>
+
+        <footer className="pt-4 text-center" style={{ color: MUTED, fontSize: 11 }}>
           Coach Bot v2.0 · Built for Sandi Stahl · April 2026
         </footer>
       </div>
