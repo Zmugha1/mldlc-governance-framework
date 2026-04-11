@@ -125,3 +125,47 @@ Blockers:
   Prompt Manager not built
   Installer not built yet
   Monday delivery target
+
+## Session April 11 2026
+
+Commits this session:
+  80b2b23 vision safe generation handler
+  d63d95b remove duplicate vision handler
+  0dc60a0 vision null safety C5 clients
+  d5d4737 approve handler try catch
+  a801ad5 vision local state fix
+  f619e84 PPT color no hash prefix
+  c8422eb remove PDF no em dash PPT footer
+  6479ec6 em dash post-processing
+  cabd69a remove old vision code
+  9e46e93 new vision handlers
+  5ee7a7f new vision JSX rubric loop
+  05a9218 Tauri file save downloads
+  602d1d7 remove old My Practice scoring
+  fcf7138 CLEAR scoring engine
+  163e7b0 My Practice new JSX
+  4b7ee18 adaptive weighting
+  3c486e9 client intelligence health fix
+  f19f646 remove health badges cleanup
+  d295656 Fathom upload edit delete
+  c9dae34 Fathom tauriDialogOpen fix
+  cdc0b48 Fathom paste only
+
+ADRs added: 12
+Incidents resolved: 8
+Runbooks added: 4
+Domain model entries: 5
+
+Next session must start with:
+  Gmail filter client names only
+  Monday lab guide step by step
+  How to Use complete rewrite
+  UAT questions update
+  Installer build
+
+Blockers:
+  How to Use not updated yet
+  UAT questions not updated
+  Gmail filter not built
+  Installer not built
+  Monday delivery target

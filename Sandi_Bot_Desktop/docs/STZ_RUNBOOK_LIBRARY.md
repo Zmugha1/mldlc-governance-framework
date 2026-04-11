@@ -289,3 +289,79 @@ Steps:
 Expected output: import resolves cleanly
 Watch out for: uuid needs both
   uuid and @types/uuid
+
+## RUN-016
+Task: Vision Statement rebuild protocol
+Trigger: large change to Vision tab in
+  ClientIntelligence.tsx
+Steps:
+  1. Prompt A: clean out old code
+     test app loads placeholder shows
+  2. Prompt B: add new handlers only
+     no JSX test TypeScript clean
+  3. Prompt C: add new JSX only
+     wire handlers test full flow
+  4. Never bundle all three in one prompt
+  5. Never touch other features
+     in same prompts
+Expected output: each phase green
+  before next prompt
+Watch out for: skipping smoke test
+  between phases invites white screen
+
+## RUN-017
+Task: Fathom session upload
+  from client card
+Trigger: Sandi wants to add
+  a session from client card
+Steps:
+  1. Go to client Fathom tab
+  2. Copy full text from Fathom
+  3. Paste into textarea
+  4. Click Extract Session
+  5. Progress bar shows
+  6. Session appears in history
+  7. Click Show 9-block analysis
+  8. Verify blocks populated
+Expected output: session with 9 blocks
+Watch out for: empty blocks mean
+  Fathom transcript was too short
+  or Ollama timed out
+
+## RUN-018
+Task: My Practice score diagnosis
+Trigger: score seems wrong
+Steps:
+  1. Check sessionCount in score
+     If 0 — no Fathom sessions
+     upload transcripts first
+  2. Check pipeline.overall
+     If 0 — no stage movements logged
+     this is expected for new system
+  3. Check councilScore.totalRated
+     If 0 — no questions rated yet
+     rate questions in Best Next Questions
+  4. Overall score uses adaptive
+     weighting — excludes zero sources
+Expected output: score reflects only
+  data that actually exists
+Watch out for: score low because
+  data is thin not because
+  coaching is poor
+
+## RUN-019
+Task: Three question test
+  for any UI element
+Trigger: deciding whether to
+  keep or remove a UI element
+Steps:
+  1. Does it help Sandi do
+     one of her 12 jobs?
+  2. Is it the simplest way
+     to show it?
+  3. Would she understand it
+     without the How to Use guide?
+Expected output: all three yes to keep
+Watch out for: passing only one
+  or two is not enough
+  all three must pass

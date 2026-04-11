@@ -347,3 +347,106 @@ Prevention rule: never depend on
   optional state being populated
   in generation handlers
 Layer: Product
+
+## INC-025
+Date: 2026-04-11
+What broke: Vision tab reset to Overview
+  multiple times
+Root cause: duplicate generate
+  handlers conflicting
+Fix applied: find and remove duplicate
+  handler leaving only one
+Prevention rule: search for duplicate
+  setState calls before committing
+  any handler
+Layer: Product
+
+## INC-026
+Date: 2026-04-11
+What broke: Vision tab crash for C5 clients
+Root cause: persistedVisionText
+  derived from client object
+  not null safe for converted clients
+Fix applied: String(value || '').trim()
+  on all client data derivations
+Prevention rule: always null safe
+  client data before rendering
+Layer: Tech
+
+## INC-027
+Date: 2026-04-11
+What broke: Fathom upload fs.write_file
+  permission denied
+Root cause: tried to save temp
+  file using plugin-fs
+  which requires explicit permissions
+Fix applied: use tauriDialogOpen then
+  invoke('extract_text_from_any_file')
+  then extractFathomSession directly
+  (later simplified to paste-only)
+Prevention rule: never save temp files
+  use extract_text_from_any_file
+  pattern from The Capture
+Layer: Tech
+
+## INC-028
+Date: 2026-04-11
+What broke: Fathom PDF binary garbage
+Root cause: PDF was not a real
+  Fathom transcript
+  It was a conversation notes file
+  in image or binary PDF format
+Fix applied: use paste text instead
+Prevention rule: Fathom transcripts
+  are always text not image PDFs
+Layer: Domain
+
+## INC-029
+Date: 2026-04-11
+What broke: My Practice score showed
+  27 F Getting Started
+Root cause: pipeline and council
+  both zero because system is new
+  not because coach is poor
+Fix applied: adaptive weighting excludes
+  empty sources from calculation
+Prevention rule: always check for
+  empty data sources before
+  including in weighted average
+Layer: Data
+
+## INC-030
+Date: 2026-04-11
+What broke: PPT download silent failure
+Root cause: pptx.writeFile
+  does not work in Tauri WebView
+Fix applied: pptx.write() to get buffer
+  then save via Tauri file system
+Prevention rule: never use browser
+  file save APIs in Tauri
+  always use Tauri native patterns
+Layer: Tech
+
+## INC-031
+Date: 2026-04-11
+What broke: Em dashes in generated text
+Root cause: LLM ignores stylistic
+  rules in prompts
+Fix applied: post-process after generation
+  strip all em dash variants
+Prevention rule: never rely on LLM
+  prompt rules for style enforcement
+  always post-process
+Layer: Content
+
+## INC-032
+Date: 2026-04-11
+What broke: HealthIndicator clutter and
+  misleading signal on workflow pages
+Root cause: per-page completeness not
+  actionable in context of primary tasks
+Fix applied: remove HealthIndicator from
+  five module pages keep System Health
+Prevention rule: three-question test before
+  reintroducing any page-level health chrome
+Layer: UX

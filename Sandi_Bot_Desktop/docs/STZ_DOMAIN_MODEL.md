@@ -338,3 +338,79 @@ Rules:
 Source: getTrainingReadiness correctionService
   System Health dashboard 2026-04-10
 Layer: L3
+
+DOMAIN-021
+Entity: Fathom transcript format
+Rules:
+  Fathom delivers transcripts as
+  copyable text not image PDFs
+  Always paste or use TXT file
+  Never assume PDF is extractable
+  Conversation notes files are NOT
+  Fathom transcripts
+Source: Client Intelligence Fathom tab
+  session capture 2026-04-11
+Layer: L1
+
+DOMAIN-022
+Entity: CLEAR scoring from
+  9-block Fathom data
+Rules:
+  C = block_opening + block_emotional
+  L = block_life_context +
+      block_disc_signals
+  E = block_vision + block_objections
+  A = block_commitments +
+      block_next_call
+    (next call intent maps to session
+    next_actions field where used)
+  R = block_reflection +
+      block_coach_assessment
+  Score each block 0-3 by length
+  Average across all sessions
+  This is the real coaching score
+Source: My Practice CLEAR engine
+  session capture 2026-04-11
+Layer: L2
+
+DOMAIN-023
+Entity: Vision Statement rubric
+Rules:
+  Four dimensions Sandi grades:
+  Accuracy — sounds like client
+  Completeness — captures goals
+  Tone — client voice
+  Usefulness — presentation ready
+  Average below 3 triggers
+    Regenerate with Feedback
+  Average 3+ triggers download
+Source: Vision Statement tab rubric loop
+  session capture 2026-04-11
+Layer: L2
+
+DOMAIN-024
+Entity: My Practice three sources
+Rules:
+  Source 1 Session quality 60%
+    CLEAR framework from Fathom
+  Source 2 Pipeline 25%
+    Stage advancement rates
+  Source 3 Council prep 15%
+    Question approval rate
+  Adaptive weighting excludes
+    zero sources automatically
+Source: My Practice score redesign
+  session capture 2026-04-11
+Layer: L2
+
+DOMAIN-025
+Entity: Coaching Council timing reminder
+Rules:
+  Authoritative rules live under
+  DOMAIN-019 Coaching Council timing
+  Reinforcement for Sandi messaging:
+  run council before call starts
+  never mid-call
+Source: Session capture consolidation
+  2026-04-11
+Layer: L1

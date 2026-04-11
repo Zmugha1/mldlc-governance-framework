@@ -615,3 +615,54 @@ end of a long session.
 uuid package requires both:
   npm install uuid
   npm install --save-dev @types/uuid
+
+---
+
+## Rules added April 11 2026
+
+Never trust LLM output to follow stylistic rules in prompts. Always
+post-process AI-generated text to enforce style rules.
+
+Em dash rule applies to ALL AI-generated content, not just UI text. Strip
+after generation:
+
+```text
+.replace(/\u2014/g, ',')
+.replace(/\u2013/g, ',')
+.replace(/--/g, ',')
+```
+
+Vision Statement always rebuilt
+in three prompts:
+  A clean B handlers C JSX
+Never bundle for large files.
+
+Fathom transcripts are paste only.
+Never build file upload for Fathom.
+extractFathomSession takes rawText
+not a file path.
+
+My Practice score uses adaptive
+weighting. Never show F grade
+because data sources are empty.
+Exclude empty sources from average.
+
+Health badges removed from all pages.
+Never add HealthIndicator to
+individual pages. System Health
+page only.
+
+Quick Reflection is disabled.
+Do not re-enable until v1.5.
+
+PPT colors never use hash prefix.
+Always 6 digit hex without hash.
+PptxGenJS rule permanent.
+
+Em dashes always post-processed.
+Never trust LLM prompt style rules.
+Strip after every generation.
+
+Three question test is mandatory
+for every UI element decision.
+All three must pass to keep.

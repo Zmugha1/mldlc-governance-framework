@@ -460,3 +460,204 @@ Consequence: exportQLoRAReport and Capture
   Feedback tab remain the two export surfaces
 Never do: Add a third training export path
   without ADR update
+
+## ADR-033
+Date: 2026-04-11
+Decision: Vision Statement three-prompt
+  rebuild approach
+  Clean out first then add handlers
+  then add JSX
+  Never bundle all three in one prompt
+  for a 7000 line file
+Layer: Process
+Context: Large ClientIntelligence surface
+  area; bundled edits cause regressions
+Consequence: Ship A clean B handlers C JSX
+  as separate prompts with tests between
+Never do: Single mega-prompt for Vision
+  tab rebuild on ClientIntelligence.tsx
+
+## ADR-034
+Date: 2026-04-11
+Decision: Fathom upload is paste only
+  No file upload button
+  Paste textarea always visible
+  tauriDialogOpen pattern exists
+  but Fathom transcripts are text
+  paste is faster and more reliable
+Layer: Product
+Context: fs.write_file temp staging failed
+  permissions; Sandi workflow is copy-paste
+Consequence: Client card Fathom tab uses
+  paste + extractFathomSession only
+Never do: Restore browser file input or
+  plugin-fs temp file for Fathom on card
+
+## ADR-035
+Date: 2026-04-11
+Decision: Fathom transcripts are TXT
+  not PDF
+  Fathom delivers transcripts as
+  copyable text not image PDFs
+  Never assume PDF format for Fathom
+  Always use paste or TXT upload
+Layer: Domain
+Context: PDF may be notes scans or binary
+  garbage not extractable transcript text
+Consequence: Treat Fathom source as text
+  first; Capture may still use paths for
+  other doc types per existing flows
+Never do: Assume any PDF attached to a
+  client is a valid Fathom transcript
+
+## ADR-036
+Date: 2026-04-11
+Decision: My Practice scoring is
+  domain native CLEAR based
+  Three sources:
+    Session quality from 9-block
+    Pipeline effectiveness from
+      stage log
+    Council preparation from
+      question ratings
+  Never business metrics as
+  primary coaching quality signal
+Layer: Data
+Context: Coaching quality must reflect
+  coaching behavior not revenue alone
+Consequence: Score composition documented
+  in domain model and runbooks
+Never do: Replace CLEAR-derived session
+  signal with placement revenue as primary
+
+## ADR-037
+Date: 2026-04-11
+Decision: Adaptive weighting for
+  sparse data
+  If pipeline or council have
+  no data exclude from overall
+  Never show F grade because
+  system is new not because
+  coach is poor
+Layer: Data
+Context: New installs have zero stage
+  history and zero rated questions
+Consequence: Overall score excludes
+  zero-weight sources from denominator
+Never do: Average in zeroed components
+  that have no observations yet
+
+## ADR-038
+Date: 2026-04-11
+Decision: Health badges removed
+  from all pages
+  System Health has its own page
+  Fails three question test
+  on all five pages
+  Never add health badges to
+  individual pages again
+Layer: UX
+Context: Per-page HealthIndicator duplicated
+  signal and cluttered primary workflows
+Consequence: System Health module is the
+  only home for aggregate health scores
+Never do: Re-add HealthIndicator to
+  Morning Brief Goals CI Actions Practice
+  Capture without new ADR
+
+## ADR-039
+Date: 2026-04-11
+Decision: Quick Reflection disabled
+  until v1.5
+  Fires after inactivity
+  Not wired to anything meaningful
+  Annoying before value is proven
+  Re-enable when properly wired
+  to training pipeline
+Layer: Product
+Context: Module-load localStorage gate
+  used to suppress modal until re-enable
+Consequence: Reflection UX frozen until
+  training pipeline integration designed
+Never do: Re-enable idle modal without
+  ADR and product sign-off
+
+## ADR-040
+Date: 2026-04-11
+Decision: extractFathomSession signature
+  Takes rawText not filePath
+  clientId rawText fileName filePath
+  Never try to save temp file
+  Always extract text first then
+  pass to extractFathomSession
+Layer: Tech
+Context: extract_text_from_any_file on
+  disk path when needed; paste passes ''
+  for filePath with synthetic fileName
+Consequence: Callers supply trimmed text
+  and audit fileName for recordExtraction
+Never do: Write client-side temp bytes
+  via plugin-fs for Fathom card flow
+
+## ADR-041
+Date: 2026-04-11
+Decision: Em dash post-processing rule
+  Never trust LLM to follow
+  stylistic prompt rules
+  Always post-process generated text
+  Strip em dashes after generation
+  .replace(/\u2014/g, ',')
+  .replace(/\u2013/g, ',')
+  .replace(/--/g, ',')
+Layer: Content
+Context: Models ignore style clauses
+Consequence: sanitizeVisionEmDashes or
+  equivalent runs on model output
+Never do: Rely on prompt-only em dash ban
+
+## ADR-042
+Date: 2026-04-11
+Decision: Vision Statement rubric loop
+  Generate rate regenerate download
+  Four dimensions Accuracy
+  Completeness Tone Usefulness
+  Rubric feeds back into next
+  generation prompt as feedback
+  context when avg score below 3
+Layer: Product
+Context: Sandi judges output quality
+  before export
+Consequence: Sub-3 average triggers
+  regenerate-with-feedback path
+Never do: One-shot generate without
+  rubric capture for Vision v1 quality
+
+## ADR-043
+Date: 2026-04-11
+Decision: PPT colors no hash prefix
+  PptxGenJS requires 6 digit hex
+  without hash symbol
+  Never pass #2D4459 to PptxGenJS
+  Always pass 2D4459
+Layer: Tech
+Context: PptxGenJS color parser rejects
+  CSS-style hash strings
+Consequence: Vision PPT export maps brand
+  colors to six-digit unhashed values
+Never do: Pass #RRGGBB into PptxGenJS
+  shape or slide color fields
+
+## ADR-044
+Date: 2026-04-11
+Decision: PDF download replaced with HTML
+  window.open blocked in Tauri
+  Use HTML file save instead
+  Or remove PDF option entirely
+  Vision Statement uses PPT only
+Layer: Tech
+Context: WebView blocks naive window.open
+  download UX
+Consequence: Prefer Tauri native save or
+  HTML artifact over broken PDF path
+Never do: Promise in-app PDF download
+  without verified Tauri save path
