@@ -2309,29 +2309,59 @@ function ClientDetailModal({
     clientReadinessDbFields,
   ]);
 
-  const clientIntelDataCompleteness = useMemo(() => {
-    let pts = 0;
+  const clientDataCompleteness = useMemo(() => {
+    if (!client?.id) return 0;
+
+    let score = 0;
+
     if (
       discScores != null &&
-      discScores.d + discScores.i + discScores.s + discScores.c > 0
+      (discScores.d > 0 ||
+        discScores.i > 0 ||
+        discScores.s > 0 ||
+        discScores.c > 0)
     ) {
-      pts += 25;
+      score += 25;
     }
-    const hasYou2 =
-      you2Vision.trim().length > 10 ||
-      (you2Details != null &&
-        ((you2Details.launch_timeline ?? '').trim().length > 0 ||
-          (you2Details.spouse_role ?? '').trim().length > 0 ||
-          (you2Details.dangers?.length ?? 0) > 0 ||
-          (you2Details.strengths?.length ?? 0) > 0));
-    if (hasYou2) pts += 25;
-    if (fathomSessionCount >= 1) pts += 25;
-    const hasTumay =
-      tumayReadinessProfile != null ||
-      (tumayData != null && Object.keys(tumayData).length > 0);
-    if (hasTumay) pts += 25;
-    return pts;
-  }, [discScores, you2Vision, you2Details, fathomSessionCount, tumayReadinessProfile, tumayData]);
+
+    if (you2Vision.trim().length > 20) {
+      score += 25;
+    }
+
+    if (
+      fathomSessions.length > 0 &&
+      fathomSessions.some(
+        (s) =>
+          coachingSessionNotesPlain(s.notes).trim().length > 20
+      )
+    ) {
+      score += 25;
+    }
+
+    const tumayContactName =
+      tumayData != null &&
+      String(
+        (tumayData as Record<string, unknown>).contact_name ?? ''
+      ).trim().length > 0;
+    const tumayFinancialRange =
+      (tumayReadinessProfile?.financial_net_worth_range ?? '')
+        .trim().length > 0 ||
+      (you2Details?.financial_net_worth_range ?? '').trim()
+        .length > 0;
+    if (tumayContactName || tumayFinancialRange) {
+      score += 25;
+    }
+
+    return score;
+  }, [
+    client?.id,
+    discScores,
+    you2Vision,
+    fathomSessions,
+    tumayData,
+    tumayReadinessProfile,
+    you2Details,
+  ]);
 
   const latestSessionNotesPlain = useMemo(() => {
     const first = fathomSessions[0];
@@ -3899,7 +3929,7 @@ not generic statements.${feedbackSection}`;
         <div className="flex shrink-0 flex-col items-end gap-2">
           <HealthIndicator
             page="Client Intelligence"
-            dataCompleteness={clientIntelDataCompleteness}
+            dataCompleteness={clientDataCompleteness}
           />
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
