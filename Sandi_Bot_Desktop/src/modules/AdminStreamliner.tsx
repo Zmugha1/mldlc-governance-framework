@@ -1067,6 +1067,9 @@ export default function AdminStreamliner() {
     tumay: { phase: 'idle' },
     fathom: { phase: 'idle' },
   });
+  const [captureSessionPasteOpen, setCaptureSessionPasteOpen] = useState(false);
+  const [captureSessionPasteText, setCaptureSessionPasteText] = useState('');
+  const [captureSessionExtracting, setCaptureSessionExtracting] = useState(false);
   const [domainStats, setDomainStats] = useState<
     Record<string, { doc_count: number; total_words: number }>
   >({});
@@ -1780,6 +1783,9 @@ export default function AdminStreamliner() {
       tumay: { phase: 'idle' },
       fathom: { phase: 'idle' },
     });
+    setCaptureSessionPasteOpen(false);
+    setCaptureSessionPasteText('');
+    setCaptureSessionExtracting(false);
   }, [selectedCaptureClientId]);
 
   useEffect(() => {
@@ -3353,23 +3359,124 @@ ${workingText}`;
                     Latest: {selectedCaptureRow.latest_session_date}
                   </p>
                 ) : null}
-                <button
-                  type="button"
-                  className="mt-2 w-full font-medium"
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid #3BBFBF',
-                    color: '#3BBFBF',
-                    borderRadius: 6,
-                    padding: '4px 12px',
-                    fontSize: 11,
-                  }}
-                  onClick={() => openCapturePicker('fathom')}
-                >
-                  Upload Session PDF
-                </button>
+                {!captureSessionPasteOpen ? (
+                  <button
+                    type="button"
+                    style={{
+                      marginTop: 8,
+                      width: '100%',
+                      background: 'transparent',
+                      border: '1px solid #3BBFBF',
+                      color: '#3BBFBF',
+                      borderRadius: 6,
+                      padding: '4px 12px',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setCaptureSessionPasteOpen(true)}
+                  >
+                    Add Fathom Session
+                  </button>
+                ) : (
+                  <div style={{ marginTop: 8 }}>
+                    <textarea
+                      value={captureSessionPasteText}
+                      onChange={(e) => setCaptureSessionPasteText(e.target.value)}
+                      placeholder="Paste Fathom transcript here..."
+                      style={{
+                        width: '100%',
+                        minHeight: 80,
+                        border: '1px solid #3BBFBF',
+                        borderRadius: 6,
+                        padding: '6px 8px',
+                        fontSize: 11,
+                        color: '#2D4459',
+                        resize: 'vertical',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 6,
+                        marginTop: 6,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        disabled={
+                          captureSessionExtracting || !captureSessionPasteText.trim()
+                        }
+                        onClick={async () => {
+                          const clientId = selectedCaptureClientId;
+                          if (!clientId) return;
+                          try {
+                            setCaptureSessionExtracting(true);
+                            const { extractFathomSession } = await import(
+                              '../services/documentExtractionService'
+                            );
+                            const result = await extractFathomSession(
+                              clientId,
+                              captureSessionPasteText.trim(),
+                              'fathom_transcript.txt',
+                              ''
+                            );
+                            if (result.success) {
+                              toast.success('Session extracted');
+                              setCaptureSessionPasteText('');
+                              setCaptureSessionPasteOpen(false);
+                              await refreshCaptureClients();
+                            } else {
+                              toast.error(result.error || 'Extraction failed');
+                            }
+                          } catch {
+                            toast.error(
+                              'Could not extract. Make sure Ollama is running.'
+                            );
+                          } finally {
+                            setCaptureSessionExtracting(false);
+                          }
+                        }}
+                        style={{
+                          background:
+                            captureSessionExtracting || !captureSessionPasteText.trim()
+                              ? '#C8E8E5'
+                              : '#3BBFBF',
+                          color: 'white',
+                          borderRadius: 6,
+                          padding: '4px 12px',
+                          fontSize: 11,
+                          fontWeight: 'bold',
+                          border: 'none',
+                          cursor: captureSessionExtracting ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {captureSessionExtracting ? 'Extracting...' : 'Extract'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCaptureSessionPasteOpen(false);
+                          setCaptureSessionPasteText('');
+                        }}
+                        style={{
+                          background: 'white',
+                          color: '#7A8F95',
+                          borderRadius: 6,
+                          padding: '4px 10px',
+                          fontSize: 11,
+                          border: '1px solid #C8E8E5',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <p className="mt-1 text-[10px]" style={{ color: '#7A8F95' }}>
-                  Supports multiple files
+                  Paste or upload TXT transcript
                 </p>
                 {captureUpload.fathom.phase !== 'idle' ? (
                   <p className="mt-2 text-[11px]" style={{ color: '#2D4459' }}>
