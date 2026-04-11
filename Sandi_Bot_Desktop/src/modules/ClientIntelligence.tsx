@@ -645,6 +645,28 @@ function escapeHtmlVision(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** {@link https://v2.tauri.app/reference/javascript/api/namespacepath/#downloaddir BaseDirectory.Download} */
+const TAURI_BASE_DIRECTORY_DOWNLOAD = 7;
+
+/**
+ * Writes bytes into the user's Downloads folder via the Tauri fs plugin
+ * (same IPC as @tauri-apps/plugin-fs writeFile), without requiring the
+ * optional frontend npm package.
+ */
+async function visionWriteBytesToDownloads(
+  relativeFileName: string,
+  bytes: Uint8Array
+): Promise<void> {
+  await invoke('plugin:fs|write_file', bytes, {
+    headers: {
+      path: encodeURIComponent(relativeFileName),
+      options: JSON.stringify({
+        baseDir: TAURI_BASE_DIRECTORY_DOWNLOAD,
+      }),
+    },
+  });
+}
+
 function formatCommunicationDosForPrompt(raw: string | null | undefined): string {
   const t = (raw ?? '').trim();
   if (!t) return '—';
@@ -1515,6 +1537,8 @@ function ClientDetailModal({
   const [visionText, setVisionText] = useState('');
   const [visionGenerating, setVisionGenerating] = useState(false);
   const [visionError, setVisionError] = useState<string | null>(null);
+  const [visionSaveSuccess, setVisionSaveSuccess] =
+    useState<string | null>(null);
   const [visionRubric, setVisionRubric] = useState<VisionRubricValue | null>(
     null
   );
@@ -3398,11 +3422,45 @@ not generic statements.${feedbackSection}`;
         const safeName =
           (client?.name || 'client')
             .replace(/[^a-z0-9]/gi, '_');
+        const outName = `${safeName}_Vision.pptx`;
 
-        await pptx.writeFile({
-          fileName:
-            `${safeName}_Vision.pptx`,
-        });
+        try {
+          const pptxData = (await pptx.write({
+            outputType: 'arraybuffer',
+          })) as ArrayBuffer;
+          const uint8Array = new Uint8Array(pptxData);
+          try {
+            await visionWriteBytesToDownloads(
+              outName,
+              uint8Array
+            );
+          } catch (fsErr) {
+            console.warn(
+              'Vision PPT: Tauri fs save failed, using writeFile',
+              fsErr
+            );
+            await pptx.writeFile({
+              fileName: outName,
+            });
+          }
+        } catch (writeErr) {
+          console.warn(
+            'Vision PPT: pptx.write failed, using writeFile',
+            writeErr
+          );
+          await pptx.writeFile({
+            fileName: outName,
+          });
+        }
+
+        setVisionError(null);
+        setVisionSaveSuccess(
+          `Saved to Downloads: ${outName}`
+        );
+        setTimeout(
+          () => setVisionSaveSuccess(null),
+          4000
+        );
 
         await saveVisionToDb(text);
       } catch (err) {
@@ -3423,92 +3481,87 @@ not generic statements.${feedbackSection}`;
         const text = visionText.trim();
         if (!text) return;
 
-        const printWindow =
-          window.open('', '_blank');
-        if (!printWindow) {
-          setVisionError(
-            'Could not open print window. ' +
-              'Check browser popup settings.'
-          );
-          return;
-        }
-
         const paragraphs = text
           .split('\n\n')
           .filter((p) => p.trim())
           .map((p) =>
             `<p>${escapeHtmlVision(p.trim())}</p>`
           )
-          .join('');
+          .join('\n');
 
-        const titleName = escapeHtmlVision(
+        const titleEsc = escapeHtmlVision(
           client?.name || 'Vision'
         );
 
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>
-                ${titleName}
-                Vision Statement
-              </title>
-              <style>
-                body {
-                  font-family: Calibri,
-                    sans-serif;
-                  padding: 60px;
-                  max-width: 800px;
-                  margin: 0 auto;
-                  color: #2D4459;
-                }
-                h1 {
-                  color: #2D4459;
-                  font-size: 28px;
-                  margin-bottom: 4px;
-                }
-                h2 {
-                  color: #3BBFBF;
-                  font-size: 16px;
-                  font-weight: normal;
-                  margin-bottom: 40px;
-                }
-                p {
-                  font-size: 16px;
-                  line-height: 1.9;
-                  margin-bottom: 20px;
-                }
-                footer {
-                  margin-top: 60px;
-                  font-size: 11px;
-                  color: #7A8F95;
-                  border-top:
-                    1px solid #C8E8E5;
-                  padding-top: 12px;
-                }
-              </style>
-            </head>
-            <body>
-              <h1>
-                ${escapeHtmlVision(client?.name || '')}
-              </h1>
-              <h2>Vision Statement</h2>
-              ${paragraphs}
-              <footer>
-                Coach Bot &middot;
-                Dr. Data Decision
-                Intelligence LLC
-              </footer>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.print();
+        const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${titleEsc} Vision Statement</title>
+<style>
+  body {
+    font-family: Calibri, sans-serif;
+    padding: 60px;
+    max-width: 800px;
+    margin: 0 auto;
+    color: #2D4459;
+  }
+  h1 { color: #2D4459; font-size: 28px; }
+  h2 {
+    color: #3BBFBF;
+    font-size: 16px;
+    font-weight: normal;
+    margin-bottom: 40px;
+  }
+  p { font-size: 16px; line-height: 1.9; margin-bottom: 20px; }
+  footer {
+    margin-top: 60px;
+    font-size: 11px;
+    color: #7A8F95;
+    border-top: 1px solid #C8E8E5;
+    padding-top: 12px;
+  }
+</style>
+</head>
+<body>
+<h1>${escapeHtmlVision(client?.name || '')}</h1>
+<h2>Vision Statement</h2>
+${paragraphs}
+<footer>Coach Bot · Dr. Data Decision Intelligence LLC</footer>
+</body>
+</html>`;
+
+        const encoder = new TextEncoder();
+        const htmlBytes = encoder.encode(htmlContent);
+
+        const safeName =
+          (client?.name || 'client')
+            .replace(/[^a-z0-9]/gi, '_');
+        const htmlOutName = `${safeName}_Vision.html`;
+
+        await visionWriteBytesToDownloads(
+          htmlOutName,
+          htmlBytes
+        );
+
+        setVisionError(null);
+        setVisionSaveSuccess(
+          `Saved to Downloads: ${htmlOutName} — open in browser and print to PDF`
+        );
+        setTimeout(
+          () => setVisionSaveSuccess(null),
+          5000
+        );
 
         await saveVisionToDb(text);
       } catch (err) {
         console.error(
-          'PDF download error:',
+          'PDF save error:',
           err
+        );
+        setVisionError(
+          'Could not save file. ' +
+            String(err)
         );
       }
     };
@@ -6007,15 +6060,31 @@ not generic statements.${feedbackSection}`;
                         or always after generate */}
                     {visionRubricSubmitted &&
                     visionRubric != null ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: 8,
-                          marginTop: 12,
-                          flexWrap: 'wrap',
-                          alignItems: 'center',
-                        }}
-                      >
+                      <>
+                        {visionSaveSuccess ? (
+                          <div
+                            style={{
+                              padding: '10px 14px',
+                              background: '#F0FAFA',
+                              borderLeft: '4px solid #3BBFBF',
+                              borderRadius: 8,
+                              color: '#2D4459',
+                              fontSize: 12,
+                              marginBottom: 10,
+                            }}
+                          >
+                            ✓ {visionSaveSuccess}
+                          </div>
+                        ) : null}
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: 8,
+                            marginTop: 12,
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                          }}
+                        >
                         <button
                           type="button"
                           onClick={() =>
@@ -6063,6 +6132,7 @@ not generic statements.${feedbackSection}`;
                               false
                             );
                             setVisionError(null);
+                            setVisionSaveSuccess(null);
                           }}
                           style={{
                             background: 'white',
@@ -6078,6 +6148,7 @@ not generic statements.${feedbackSection}`;
                           Start Over
                         </button>
                       </div>
+                      </>
                     ) : null}
 
                     {/* TERRITORY CHECK */}
