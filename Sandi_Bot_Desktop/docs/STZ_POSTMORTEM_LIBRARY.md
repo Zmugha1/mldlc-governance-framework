@@ -450,3 +450,45 @@ Fix applied: remove HealthIndicator from
 Prevention rule: three-question test before
   reintroducing any page-level health chrome
 Layer: UX
+
+## INC-033
+Date: 2026-04-11
+What broke: Calendar showing all events
+  not just client events
+Root cause: filter applied to
+  Gmail but not Calendar
+Fix applied: same filterEventsByClients
+  function applied to calendar
+  before Morning Brief render
+Prevention rule: always apply same
+  filter to both Gmail and Calendar
+Layer: Product
+
+## INC-034
+Date: 2026-04-11
+What broke: Next call showing raw []
+Root cause: next_actions stored
+  as JSON array string
+  rendered directly without parsing
+Fix applied: formatNextActions helper
+  handles null empty and JSON array
+Prevention rule: never render raw
+  JSON fields directly in JSX
+Layer: UX
+
+## INC-035
+Date: 2026-04-11
+What broke: Confusion between adding
+  a new manual session vs annotating
+  an existing session with Sandi notes
+Root cause: two different flows both
+  touch coaching_sessions.notes
+  without clear UX separation
+Fix applied: Sandi's Notes section
+  uses UPDATE on existing session id
+  My Notes tab still INSERTs a new
+  session row by design for new visits
+Prevention rule: check UX label and
+  SQL operation before assuming append
+  vs new row
+Layer: Product

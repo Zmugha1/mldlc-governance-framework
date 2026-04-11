@@ -666,3 +666,28 @@ Strip after every generation.
 Three question test is mandatory
 for every UI element decision.
 All three must pass to keep.
+
+## Rules added April 11 2026 (continued)
+
+Fathom tab is unified single section.
+Never two separate upload and manual
+sections. One Add Session with two
+mode tabs.
+
+Session date always updates
+last_contact_date on client.
+These must stay in sync.
+Gone quiet depends on this.
+
+Never render raw JSON arrays in JSX.
+Always use formatNextActions or
+equivalent helper.
+
+Sandi's Notes append to existing
+session under Coach Assessment.
+Never create new session for notes.
+
+Calendar and Gmail always use
+same strict full-name filter.
+Apply filter changes to both
+at the same time.

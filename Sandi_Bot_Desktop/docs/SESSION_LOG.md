@@ -169,3 +169,29 @@ Blockers:
   Gmail filter not built
   Installer not built
   Monday delivery target
+
+## Session April 11 2026 continued
+
+Additional commits this session:
+  cbf36cd Gmail client name filter
+  1feffd6 Gmail strict full name
+  19fae06 How to Use Monday lab guide
+  e896de1 Unified Fathom tab
+  87f8ef4 Capture Fathom paste flow
+  c93fd19 Next call notes calendar filter
+  905f5c0 How to Use updated all features
+
+ADRs added: 6 more
+Incidents resolved: 3 more
+Runbooks added: 3 more
+
+Next session must start with:
+  Build installer v0.4.0
+  This is the hard blocker
+  Nothing ships without it
+  Then upload to Google Drive
+  Then send Sandi email
+
+Blockers:
+  Installer not built yet
+  Monday delivery target

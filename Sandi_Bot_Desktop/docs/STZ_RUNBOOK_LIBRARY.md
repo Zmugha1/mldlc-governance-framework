@@ -365,3 +365,59 @@ Expected output: all three yes to keep
 Watch out for: passing only one
   or two is not enough
   all three must pass
+
+## RUN-020
+Task: Add Fathom session from
+  client card
+Trigger: Sandi has a Fathom
+  transcript to upload
+Steps:
+  1. Open client card Fathom tab
+  2. Set stage and session date
+  3. Click Fathom Transcript tab
+  4. Copy transcript from Fathom
+  5. Paste into textarea
+  6. Click Extract Session
+  7. Wait 60-90 seconds
+  8. Session appears in history
+  9. Last contacted date updates
+Expected output: session with 9 blocks
+Watch out for: empty blocks mean
+  transcript was a summary not
+  full transcript
+
+## RUN-021
+Task: Add Fathom session from
+  The Capture
+Trigger: bulk uploading sessions
+  for multiple clients
+Steps:
+  1. Go to The Capture
+  2. Select client from grid
+  3. Click Add Fathom Session
+  4. Paste transcript text
+  5. Click Extract
+  6. Client grid refreshes
+Expected output: Fathom indicator
+  updates on client card
+Watch out for: must select
+  client first before paste
+  area appears
+
+## RUN-022
+Task: Add Sandi's notes to session
+Trigger: Sandi wants to add her
+  own observations to a session
+Steps:
+  1. Open client Fathom tab
+  2. Find the session
+  3. Click Show 9-block analysis
+  4. Scroll to Sandi's Notes
+     below Coach Assessment
+  5. Click Add Notes
+  6. Type notes
+  7. Click Save Notes
+Expected output: notes appear under
+  Coach Assessment
+Watch out for: this updates
+  existing session not creates new

@@ -414,3 +414,51 @@ Rules:
 Source: Session capture consolidation
   2026-04-11
 Layer: L1
+
+DOMAIN-026
+Entity: Session date equals last contact
+Rules:
+  Every session save automatically
+  updates last_contact_date on client
+  This drives gone quiet detection
+  Never let these get out of sync
+Source: Client Intelligence Fathom
+  extract and manual session flows
+  session capture 2026-04-11
+Layer: L2
+
+DOMAIN-027
+Entity: Fathom summary vs full
+  transcript extraction quality
+Rules:
+  Full transcript: all 9 blocks
+  populated with rich content
+  Fathom summary: some blocks
+  empty or thin
+  Always encourage full transcript
+  copy not summary
+Source: Fathom extraction UX and
+  CLEAR scoring inputs
+  session capture 2026-04-11
+Layer: L1
+
+DOMAIN-028
+Entity: Monday lab session plan
+Rules:
+  Eight labs confirmed:
+    Lab 1 Connect Gmail Calendar
+    Lab 2 Upload Fathom sessions
+    Lab 3 Move client stages
+    Lab 4 Best Next Questions
+    Lab 5 Vision Statement
+    Lab 6 My Practice score
+    Lab 7 System Health
+    Lab 8 Submit feedback
+  Sandi emails documents after:
+    Resume philosophy bio certs
+    CLEAR framework guides scripts
+    Remaining Fathom transcripts
+Source: HowToUse.tsx lab sequence
+  and delivery checklist
+  session capture 2026-04-11
+Layer: L1

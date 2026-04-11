@@ -661,3 +661,101 @@ Consequence: Prefer Tauri native save or
   HTML artifact over broken PDF path
 Never do: Promise in-app PDF download
   without verified Tauri save path
+
+## ADR-045
+Date: 2026-04-11
+Decision: Fathom tab is unified
+  single Add Session section
+  Two modes: Fathom Transcript
+  and My Notes
+  Stage date duration metadata
+  Last contact date auto-updates
+  on every session save
+  Never two separate sections
+Layer: Product
+Context: Client Intelligence Fathom tab
+  had duplicate upload vs manual flows
+Consequence: One card with mode tabs
+  and shared metadata row
+Never do: Split Fathom paste and
+  manual session into two stacked
+  sections again
+
+## ADR-046
+Date: 2026-04-11
+Decision: Sandi's Notes live under
+  Coach Assessment block
+  Not a separate session
+  Appended to existing session
+  Saved to notes column
+  Never creates new session record
+Layer: Product
+Context: Coach wants inline notes
+  per extracted session row
+Consequence: UPDATE coaching_sessions.notes
+  for plain text when not JSON payload
+Never do: INSERT a second session row
+  for Sandi-only annotations
+
+## ADR-047
+Date: 2026-04-11
+Decision: Next actions empty array
+  displays as Not captured
+  Never show raw [] to user
+  Always format with
+  formatNextActions helper
+Layer: UX
+Context: next_actions stored as
+  JSON stringified arrays
+Consequence: UI maps empty or [] to
+  human-readable placeholder
+Never do: Render next_actions with
+  trim() only in session cards
+
+## ADR-048
+Date: 2026-04-11
+Decision: Calendar events filtered
+  by full client name match
+  Same strict filter as Gmail
+  Non-client events hidden
+  If no matches show empty state
+  Never show non-coaching events
+Layer: Product
+Context: Morning Brief parity between
+  email and calendar surfacing
+Consequence: filterEventsByClients
+  mirrors Gmail name rules
+Never do: Show full calendar in
+  Morning Brief while Gmail stays strict
+
+## ADR-049
+Date: 2026-04-11
+Decision: Gmail strict full name filter
+  Minimum 5 character name length
+  Full name must appear in sender
+  or subject
+  Never partial word matching
+  Empty is better than wrong
+Layer: Product
+Context: False positives from
+  short name tokens
+Consequence: filterEmailsByClients
+  requires full trimmed lowercase
+  needle in sender or subject only
+Never do: Match on body or snippet
+  for Morning Brief Gmail list
+
+## ADR-050
+Date: 2026-04-11
+Decision: The Capture Fathom upload
+  uses paste flow same as client card
+  No file picker for Fathom
+  Paste textarea always
+  extractFathomSession called directly
+Layer: Product
+Context: AdminStreamliner Capture
+  panel should match Client Intelligence
+Consequence: Inline paste UI replaces
+  openCapturePicker for Fathom only
+Never do: File-picker-first Fathom
+  path in The Capture grid
