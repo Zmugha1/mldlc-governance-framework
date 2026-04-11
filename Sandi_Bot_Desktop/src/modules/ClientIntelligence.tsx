@@ -1256,21 +1256,6 @@ function ClientDetailModal({
   const [franchiseFormRank, setFranchiseFormRank] = useState<1 | 2 | 3>(1);
   const [franchiseFormZorDate, setFranchiseFormZorDate] = useState('');
   const [franchiseFormNotes, setFranchiseFormNotes] = useState('');
-  const [visionGenerating, setVisionGenerating] = useState(false);
-  const [localVisionText, setLocalVisionText] = useState<string | null>(null);
-  const [localVisionApproved, setLocalVisionApproved] = useState(false);
-  const [visionGenError, setVisionGenError] = useState<string | null>(null);
-  const [visionDraftMode, setVisionDraftMode] = useState(false);
-  const [visionEditText, setVisionEditText] = useState('');
-  const [visionApproveMsg, setVisionApproveMsg] = useState<string | null>(null);
-  /** Raw model output from the latest Generate/Regenerate (for edit-distance on approve). */
-  const [visionGeneratedBaseline, setVisionGeneratedBaseline] = useState<
-    string | null
-  >(null);
-  /** After Approve, short-lived feedback for edit magnitude (LCS-based). */
-  const [visionApproveFeedback, setVisionApproveFeedback] = useState<{
-    editDistance: number;
-  } | null>(null);
   const [stageMoveDialog, setStageMoveDialog] = useState<{
     target: PipelineStage;
     direction: 'forward' | 'back';
@@ -1295,23 +1280,6 @@ function ClientDetailModal({
     bio: string | null;
     coaching_philosophy: string | null;
   } | null>(null);
-
-  useEffect(() => {
-    if (!client?.id) return;
-    setVisionGenerating(false);
-    setLocalVisionText(null);
-    setLocalVisionApproved(false);
-    setVisionGenError(null);
-    setVisionApproveMsg(null);
-    setVisionDraftMode(false);
-    setVisionGeneratedBaseline(null);
-    setVisionApproveFeedback(null);
-  }, [client?.id]);
-
-  useEffect(() => {
-    if (!client?.id) return;
-    setVisionEditText((client.visionStatement.paragraph ?? '').trim());
-  }, [client?.id, client.visionStatement.paragraph]);
 
   useEffect(() => {
     setCouncilOutput(null);
@@ -1370,12 +1338,6 @@ function ClientDetailModal({
     const t = window.setTimeout(() => setSessionLogAddedAck(false), 4000);
     return () => clearTimeout(t);
   }, [sessionLogAddedAck]);
-
-  useEffect(() => {
-    if (!visionApproveMsg) return;
-    const t = window.setTimeout(() => setVisionApproveMsg(null), 5000);
-    return () => clearTimeout(t);
-  }, [visionApproveMsg]);
 
   useEffect(() => {
     setAhaModalOpen(false);
@@ -1914,13 +1876,10 @@ function ClientDetailModal({
   }, [you2Details, tumayReadinessProfile, tumayData]);
 
   const persistedVisionText = String(
-    localVisionText ??
-      client?.vision_statement ??
-      client?.visionStatement ??
+    client?.vision_statement ||
+      client?.visionStatement ||
       ''
   ).trim();
-  const visionIsApproved =
-    localVisionApproved || client?.vision_approved === 1;
 
   const sandiReadinessDimensions = useMemo(() => {
     const code = resolvedPipelineCode;
@@ -2937,10 +2896,6 @@ function ClientDetailModal({
   const handleGenerateVision = async () => {
     if (!client?.id) return;
     try {
-      setVisionGenerating(true);
-      setVisionGenError(null);
-      setVisionApproveMsg(null);
-
       const you2Text = you2Vision || '';
       const discText =
         discStyleLabel === '—' ? '' : discStyleLabel;
@@ -3003,85 +2958,15 @@ Sound like a person not a report.`;
         `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
         [generated, client.id]
       );
-      setVisionGeneratedBaseline(generated);
-      setVisionEditText(generated);
-      setVisionApproveFeedback(null);
-      setVisionDraftMode(true);
       onVisionUpdated?.();
-      setVisionGenerating(false);
     } catch (error) {
       console.error('Vision generation failed:', error);
-      setVisionGenerating(false);
-      setVisionGenError(
-        String(error).includes('Ollama')
-          ? 'Could not generate. ' +
-              'Make sure Ollama is running.'
-          : String(error)
-      );
-    }
-  };
-
-  const handleApproveVision = async () => {
-    try {
-      const approvedText = visionEditText.trim();
-
-      if (!approvedText) {
-        setVisionGenError(
-          'Add vision text before approving.'
-        );
-        return;
-      }
-
-      if (!client?.id) {
-        return;
-      }
-
-      const db = await getDb();
-
-      await db.execute(
-        `UPDATE clients
-         SET vision_statement = $1,
-             vision_approved = 1,
-             vision_approved_date =
-               datetime('now'),
-             updated_at = datetime('now')
-         WHERE id = $2`,
-        [approvedText, client.id]
-      );
-
-      await logCorrection({
-        clientId: client.id,
-        fieldName: 'vision_statement',
-        originalValue:
-          persistedVisionText || '',
-        correctedValue: approvedText,
-        correctionType: 'vision_edit',
-        page: 'client_intelligence',
-      });
-
-      setLocalVisionText(approvedText);
-      setLocalVisionApproved(true);
-      setVisionDraftMode(false);
-      setVisionApproveFeedback({ editDistance: 0 });
-
-      if (onVisionUpdated) {
-        onVisionUpdated();
-      }
-    } catch (error) {
-      console.error(
-        'Vision approve failed:',
-        error
-      );
-      setVisionGenError(
-        'Could not save vision statement. ' +
-          'Please try again.'
-      );
     }
   };
 
   const handleDownloadVisionPptx = async () => {
     if (!client?.id) return;
-    const body = (persistedVisionText || visionEditText).trim();
+    const body = persistedVisionText.trim();
     if (!body) return;
     const pptx = new PptxGenJS();
     pptx.layout = 'LAYOUT_16x9';
@@ -3250,7 +3135,7 @@ Sound like a person not a report.`;
 
   const handlePrintVisionPdf = () => {
     if (!client?.id) return;
-    const body = (persistedVisionText || visionEditText).trim();
+    const body = persistedVisionText.trim();
     if (!body) return;
     const dateLine =
       formatVisionApprovedDateLabel(client.vision_approved_date) ||
@@ -3271,6 +3156,8 @@ Sound like a person not a report.`;
     w.focus();
     w.print();
   };
+
+  void [handleGenerateVision, handleDownloadVisionPptx, handlePrintVisionPdf];
 
   const handleMarkPinkFlagResolved = async (flagName: string) => {
     if (!client) return;
@@ -5572,522 +5459,15 @@ Sound like a person not a report.`;
           </TabsContent>
 
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
-            <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-6">
+            <div style={{ padding: 16 }}>
               <p
                 style={{
                   color: '#7A8F95',
                   fontSize: 13,
-                  marginBottom: 16,
                 }}
               >
-                Generate a draft vision statement for this client. Review and edit it,
-                then approve it. Download as PowerPoint for your presentation or PDF for the
-                client to keep.
+                Vision Statement — rebuilding
               </p>
-
-              {visionIsApproved && !visionDraftMode ? (
-                <div
-                  className="relative space-y-4"
-                  style={{
-                    background: '#F4F7F8',
-                    border: '1px solid #C8E8E5',
-                    borderLeft: '4px solid #3BBFBF',
-                    borderRadius: 12,
-                    padding: '24px 28px',
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p
-                        className="font-semibold uppercase tracking-wide"
-                        style={{
-                          color: '#7A8F95',
-                          fontSize: 10,
-                          letterSpacing: 1,
-                        }}
-                      >
-                        APPROVED VISION STATEMENT
-                      </p>
-                      {formatVisionApprovedDateLabel(client.vision_approved_date) ? (
-                        <p style={{ color: '#7A8F95', fontSize: 11, marginTop: 4 }}>
-                          Approved{' '}
-                          {formatVisionApprovedDateLabel(client.vision_approved_date)}
-                        </p>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      className="shrink-0 text-sm font-semibold underline-offset-2 hover:underline"
-                      style={{ color: '#3BBFBF' }}
-                      onClick={() => {
-                        try {
-                          setVisionApproveFeedback(null);
-                          setVisionApproveMsg(null);
-                          setVisionDraftMode(true);
-                        } catch (error) {
-                          console.error(
-                            'Vision tab edit failed:',
-                            error
-                          );
-                          setVisionGenError(
-                            'Could not open editor. ' +
-                              'Please try again.'
-                          );
-                        }
-                      }}
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <div
-                    className="whitespace-pre-wrap"
-                    style={{
-                      color: '#2D4459',
-                      fontSize: 14,
-                      lineHeight: 1.8,
-                    }}
-                  >
-                    {String(persistedVisionText || '')}
-                  </div>
-                  {visionApproveMsg ? (
-                    <p className="m-0" style={{ color: '#3BBFBF', fontSize: 13 }}>
-                      {visionApproveMsg}
-                    </p>
-                  ) : null}
-                  {visionApproveFeedback ? (
-                    <div
-                      style={{
-                        background: '#F0FAFA',
-                        borderLeft: '4px solid #3BBFBF',
-                        borderRadius: 8,
-                        padding: '12px 16px',
-                      }}
-                    >
-                      <p
-                        className="m-0 font-bold"
-                        style={{ color: '#2D4459', fontSize: 13 }}
-                      >
-                        Vision approved
-                      </p>
-                      <p
-                        className="m-0 mt-2"
-                        style={{ color: '#7A8F95', fontSize: 12 }}
-                      >
-                        {visionApproveFeedback.editDistance === 0
-                          ? 'Approved without changes, Coach Bot understood this client well'
-                          : visionApproveFeedback.editDistance < 30
-                            ? 'Minor edits, good foundation'
-                            : 'Significant edits, Coach Bot is learning your voice'}
-                      </p>
-                      <button
-                        type="button"
-                        className="mt-2 border-0 bg-transparent p-0 underline-offset-2 hover:underline"
-                        style={{ color: '#7A8F95', fontSize: 11 }}
-                        onClick={() => {
-                          try {
-                            setVisionApproveFeedback(null);
-                            setVisionApproveMsg(null);
-                            setVisionDraftMode(true);
-                          } catch (error) {
-                            console.error(
-                              'Vision tab edit failed:',
-                              error
-                            );
-                            setVisionGenError(
-                              'Could not open editor. ' +
-                                'Please try again.'
-                            );
-                          }
-                        }}
-                      >
-                        Edit Again
-                      </button>
-                    </div>
-                  ) : null}
-                  <div className="flex flex-wrap gap-3 pt-2">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-2 font-bold transition-opacity hover:opacity-90"
-                      style={{
-                        background: '#2D4459',
-                        color: 'white',
-                        borderRadius: 8,
-                        padding: '10px 20px',
-                        fontSize: 13,
-                        border: 'none',
-                      }}
-                      onClick={() => void handleDownloadVisionPptx()}
-                    >
-                      <FileDown className="h-4 w-4" aria-hidden />
-                      Download PowerPoint
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-2 font-bold transition-opacity hover:opacity-90"
-                      style={{
-                        background: 'white',
-                        color: '#2D4459',
-                        border: '1px solid #2D4459',
-                        borderRadius: 8,
-                        padding: '10px 20px',
-                        fontSize: 13,
-                      }}
-                      onClick={handlePrintVisionPdf}
-                    >
-                      <FileText className="h-4 w-4" aria-hidden />
-                      Download PDF
-                    </button>
-                  </div>
-                </div>
-              ) : !visionIsApproved &&
-                !persistedVisionText &&
-                !visionDraftMode ? (
-                <div
-                  className="space-y-4"
-                  style={{
-                    background: 'white',
-                    border: '1px solid #C8E8E5',
-                    borderLeft: '4px solid #3BBFBF',
-                    borderRadius: 12,
-                    padding: '24px 28px',
-                  }}
-                >
-                  <h3
-                    className="font-bold"
-                    style={{ color: '#2D4459', fontSize: 16 }}
-                  >
-                    Generate Vision Statement
-                  </h3>
-                  <p style={{ color: '#7A8F95', fontSize: 13, lineHeight: 1.55 }}>
-                    Coach Bot drafts a vision in the client&apos;s voice from DISC, You 2.0,
-                    key concerns, and recent session notes.
-                  </p>
-                  <div className="text-center">
-                    <p
-                      className="m-0"
-                      style={{ color: '#7A8F95', fontSize: 11 }}
-                    >
-                      Vision powered by:
-                    </p>
-                    <div
-                      className="mt-2 flex flex-wrap items-center justify-center gap-4"
-                      style={{ fontSize: 12, color: '#2D4459' }}
-                    >
-                      <span>
-                        DISC{' '}
-                        <span
-                          style={{
-                            color:
-                              discScores != null &&
-                              discScores.d +
-                                discScores.i +
-                                discScores.s +
-                                discScores.c >
-                                0
-                                ? '#3BBFBF'
-                                : '#C8C8C8',
-                          }}
-                        >
-                          {discScores != null &&
-                          discScores.d +
-                            discScores.i +
-                            discScores.s +
-                            discScores.c >
-                            0
-                            ? '●'
-                            : '○'}
-                        </span>
-                      </span>
-                      <span>
-                        You 2.0{' '}
-                        <span
-                          style={{
-                            color:
-                              (you2Details?.dangers?.length ?? 0) > 0 ||
-                              (you2Details?.strengths?.length ?? 0) > 0 ||
-                              (you2Details?.opportunities?.length ?? 0) > 0
-                                ? '#3BBFBF'
-                                : '#C8C8C8',
-                          }}
-                        >
-                          {(you2Details?.dangers?.length ?? 0) > 0 ||
-                          (you2Details?.strengths?.length ?? 0) > 0 ||
-                          (you2Details?.opportunities?.length ?? 0) > 0
-                            ? '●'
-                            : '○'}
-                        </span>
-                      </span>
-                      <span>
-                        Sessions{' '}
-                        <span
-                          style={{
-                            color:
-                              fathomSessionCount > 0 ||
-                              latestSessionNotesPlain.trim().length > 20
-                                ? '#3BBFBF'
-                                : '#C8C8C8',
-                          }}
-                        >
-                          {fathomSessionCount > 0 ||
-                          latestSessionNotesPlain.trim().length > 20
-                            ? '●'
-                            : '○'}
-                        </span>
-                      </span>
-                      <span>
-                        Identity{' '}
-                        <span
-                          style={{
-                            color:
-                              !!(coachProfileRow?.bio?.trim() ||
-                                coachProfileRow?.coaching_philosophy?.trim())
-                                ? '#3BBFBF'
-                                : '#C8C8C8',
-                          }}
-                        >
-                          {!!(
-                            coachProfileRow?.bio?.trim() ||
-                            coachProfileRow?.coaching_philosophy?.trim()
-                          )
-                            ? '●'
-                            : '○'}
-                        </span>
-                      </span>
-                    </div>
-                    <p
-                      className="m-0 mt-1 italic"
-                      style={{ color: '#7A8F95', fontSize: 10 }}
-                    >
-                      More complete data produces a more personal vision statement
-                    </p>
-                  </div>
-                  {visionGenerating ? (
-                    <p
-                      className="flex items-center gap-2 italic"
-                      style={{ color: '#7A8F95', fontSize: 13 }}
-                    >
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                      Coach Bot is writing {client.name}&apos;s vision statement...
-                    </p>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="w-full font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
-                    style={{
-                      background: '#3BBFBF',
-                      color: 'white',
-                      borderRadius: 8,
-                      padding: '10px 24px',
-                      fontSize: 14,
-                      border: 'none',
-                    }}
-                    disabled={visionGenerating || !client.id}
-                    onClick={async () => {
-                      try {
-                        setVisionGenError(null);
-                        await handleGenerateVision();
-                      } catch (error) {
-                        console.error(
-                          'Generate vision failed:',
-                          error
-                        );
-                        setVisionGenError(
-                          'Could not generate. ' +
-                            'Please try again.'
-                        );
-                      }
-                    }}
-                  >
-                    Generate Vision Statement
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p
-                    className="m-0 italic"
-                    style={{ color: '#7A8F95', fontSize: 12 }}
-                  >
-                    Review and edit this vision statement. When it sounds right click
-                    Approve.
-                  </p>
-                  <Textarea
-                    rows={8}
-                    className="w-full resize-y border-0 font-sans outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
-                    style={{
-                      background: 'white',
-                      border: '2px solid #3BBFBF',
-                      borderRadius: 10,
-                      padding: 16,
-                      fontSize: 14,
-                      color: '#2D4459',
-                      lineHeight: 1.8,
-                      minHeight: 120,
-                      width: '100%',
-                    }}
-                    value={visionEditText}
-                    onChange={(e) => setVisionEditText(e.target.value)}
-                  />
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      className="font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-                      style={{
-                        background: 'white',
-                        border: '1px solid #C8E8E5',
-                        color: '#7A8F95',
-                        borderRadius: 8,
-                        padding: '10px 16px',
-                        fontSize: 12,
-                      }}
-                      disabled={visionGenerating}
-                      onClick={async () => {
-                        try {
-                          setVisionDraftMode(false);
-                          setVisionEditText('');
-                          setVisionGeneratedBaseline(null);
-                          setVisionGenError(null);
-                          await handleGenerateVision();
-                        } catch (error) {
-                          console.error(
-                            'Regenerate failed:',
-                            error
-                          );
-                          setVisionGenError(
-                            'Could not regenerate. ' +
-                              'Please try again.'
-                          );
-                        }
-                      }}
-                    >
-                      Regenerate
-                    </button>
-                    <button
-                      type="button"
-                      className="font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
-                      style={{
-                        background: '#3BBFBF',
-                        color: 'white',
-                        borderRadius: 8,
-                        padding: '10px 20px',
-                        fontSize: 13,
-                        border: 'none',
-                      }}
-                      disabled={visionGenerating}
-                      onClick={async () => {
-                        try {
-                          await handleApproveVision();
-                        } catch (error) {
-                          console.error(
-                            'Approve button error:',
-                            error
-                          );
-                        }
-                      }}
-                    >
-                      Approve Vision Statement
-                    </button>
-                  </div>
-                  {fathomSessionCount === 0 ? (
-                    <p className="m-0" style={{ color: '#F59E0B', fontSize: 12 }}>
-                      ⚠️ No session history, vision based on You 2.0 only. Upload Fathom
-                      transcripts for a richer vision statement.
-                    </p>
-                  ) : null}
-                  {you2Vision.trim().length === 0 ? (
-                    <p className="m-0" style={{ color: '#F05F57', fontSize: 12 }}>
-                      ⚠️ No You 2.0 vision found. Upload You 2.0 document first.
-                    </p>
-                  ) : null}
-                  {visionGenerating ? (
-                    <p
-                      className="flex items-center gap-2 italic"
-                      style={{ color: '#7A8F95', fontSize: 13 }}
-                    >
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                      Coach Bot is writing {client.name}&apos;s vision statement...
-                    </p>
-                  ) : null}
-                </div>
-              )}
-
-              {visionGenError ? (
-                <div
-                  style={{
-                    padding: 16,
-                    background: '#FFF0F0',
-                    borderRadius: 8,
-                    border: '1px solid #F05F57',
-                    color: '#F05F57',
-                    fontSize: 13,
-                    marginTop: 12,
-                  }}
-                >
-                  {visionGenError}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVisionGenError(null);
-                    }}
-                    style={{
-                      marginTop: 8,
-                      display: 'block',
-                      color: '#7A8F95',
-                      fontSize: 12,
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Try again
-                  </button>
-                </div>
-              ) : null}
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold text-slate-900">
-                    Territory Check
-                  </CardTitle>
-                  <p
-                    className="mt-1 italic"
-                    style={{ color: '#7A8F95', fontSize: 11 }}
-                  >
-                    Optional — paste territory check results to include in the PowerPoint
-                    download.
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <Label htmlFor="territory-check-results">
-                      Territory Check Results
-                    </Label>
-                    <Textarea
-                      id="territory-check-results"
-                      rows={6}
-                      className="mt-1 w-full min-h-0 resize-y"
-                      placeholder={TERRITORY_CHECK_TEXTAREA_PLACEHOLDER}
-                      value={territoryCheckDraft}
-                      onChange={(e) => {
-                        setTerritoryCheckDraft(e.target.value);
-                        setTerritoryCheckSavedMsg(false);
-                      }}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    className="bg-teal-600 hover:bg-teal-700 text-white"
-                    onClick={handleSaveTerritoryCheck}
-                  >
-                    Save Territory Notes
-                  </Button>
-                  {territoryCheckSavedMsg ? (
-                    <p className="text-sm font-medium text-green-600">
-                      Territory notes saved. These will be included when you
-                      generate the vision statement.
-                    </p>
-                  ) : null}
-                </CardContent>
-              </Card>
             </div>
           </TabsContent>
 
