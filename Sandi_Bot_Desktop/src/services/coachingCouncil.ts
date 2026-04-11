@@ -472,13 +472,17 @@ function buildUncertaintyAudit(input: CouncilInput): UncertaintyAudit {
 }
 
 export async function runCoachingCouncil(
-  input: CouncilInput
+  input: CouncilInput,
+  onLensComplete?: (lensName: string, output: LensOutput) => void
 ): Promise<CouncilOutput> {
-  const [readiness, alignment, integrity] = await Promise.all([
-    runReadinessLens(input),
-    runAlignmentLens(input),
-    runIntegrityLens(input),
-  ]);
+  const readiness = await runReadinessLens(input);
+  onLensComplete?.('readiness', readiness);
+
+  const alignment = await runAlignmentLens(input);
+  onLensComplete?.('alignment', alignment);
+
+  const integrity = await runIntegrityLens(input);
+  onLensComplete?.('integrity', integrity);
 
   const synthesis = await runChairmanSynthesis(
     input,

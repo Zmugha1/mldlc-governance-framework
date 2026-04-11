@@ -1392,6 +1392,7 @@ function ClientDetailModal({
     null
   );
   const [councilLoading, setCouncilLoading] = useState(false);
+  const [completedLenses, setCompletedLenses] = useState<string[]>([]);
   const [councilError, setCouncilError] = useState<string | null>(null);
   const [activeLens, setActiveLens] = useState<
     'chairman' | 'readiness' | 'alignment' | 'integrity'
@@ -3130,6 +3131,7 @@ function ClientDetailModal({
   const handleGenerateBestNextQuestions = async () => {
     if (!client?.id) return;
     setCouncilLoading(true);
+    setCompletedLenses([]);
     setCouncilError(null);
     setActiveLens('chairman');
     setRatedQuestions({});
@@ -3167,13 +3169,18 @@ function ClientDetailModal({
         coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
       };
 
-      const output = await runCoachingCouncil(input);
+      const output = await runCoachingCouncil(input, (lensName) => {
+        setCompletedLenses((prev) =>
+          prev.includes(lensName) ? prev : [...prev, lensName]
+        );
+      });
       setCouncilOutput(output);
     } catch (e) {
       console.error(e);
       setCouncilError(
         'Could not generate questions. Is Ollama running?'
       );
+      setCompletedLenses([]);
     } finally {
       setCouncilLoading(false);
     }
@@ -3181,6 +3188,7 @@ function ClientDetailModal({
 
   const handleRegenerateCouncil = async () => {
     setCouncilOutput(null);
+    setCompletedLenses([]);
     setRatedQuestions({});
     await handleGenerateBestNextQuestions();
   };
@@ -6901,6 +6909,12 @@ Use reminders for:
                 };
 
                 if (councilLoading) {
+                  const lensProgress: { id: string; label: string }[] = [
+                    { id: 'readiness', label: 'Readiness Lens' },
+                    { id: 'alignment', label: 'Alignment Lens' },
+                    { id: 'integrity', label: 'Integrity Lens' },
+                  ];
+                  const allLensesDone = completedLenses.length >= 3;
                   return (
                     <div
                       className="mx-auto w-full max-w-lg"
@@ -6918,24 +6932,41 @@ Use reminders for:
                         STZ Coaching Council deliberating...
                       </p>
                       <div className="mt-6 space-y-3">
-                        <div className="flex items-center gap-2 text-white">
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                          <span style={{ fontSize: 13 }}>Readiness Lens analyzing...</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-white">
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                          <span style={{ fontSize: 13 }}>Alignment Lens analyzing...</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-white">
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                          <span style={{ fontSize: 13 }}>Integrity Lens analyzing...</span>
-                        </div>
+                        {lensProgress.map(({ id, label }) => {
+                          const done = completedLenses.includes(id);
+                          return (
+                            <div key={id} className="flex items-center gap-2 text-white">
+                              {done ? (
+                                <span style={{ color: '#3BBFBF', fontSize: 14 }} aria-hidden>
+                                  ✅
+                                </span>
+                              ) : (
+                                <span
+                                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center animate-spin"
+                                  style={{ fontSize: 14, color: '#C8E8E5' }}
+                                  aria-hidden
+                                >
+                                  ⟳
+                                </span>
+                              )}
+                              <span style={{ fontSize: 13 }}>
+                                {done ? `${label} complete` : `${label} analyzing...`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {allLensesDone ? (
+                          <div className="flex items-center gap-2 pt-1 text-white">
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                            <span style={{ fontSize: 13 }}>Chairman synthesizing...</span>
+                          </div>
+                        ) : null}
                       </div>
                       <p
                         className="m-0 mt-4 italic"
                         style={{ color: '#C8E8E5', fontSize: 12 }}
                       >
-                        Three coaching frameworks deliberating independently
+                        Three coaching frameworks run in sequence so you see steady progress
                       </p>
                     </div>
                   );
