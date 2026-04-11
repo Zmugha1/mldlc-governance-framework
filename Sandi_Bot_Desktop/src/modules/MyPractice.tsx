@@ -859,11 +859,39 @@ export default function MyPractice() {
           trend: councilTrendFromStats(correctionStats),
         };
 
-        const overall = Math.round(
-          clear.overall * 0.5 +
-            pipeline.overall * 0.3 +
-            councilScore.approvalRate * 0.2
-        );
+        const sources: { score: number; weight: number }[] = [];
+        if (clear.overall > 0) {
+          sources.push({ score: clear.overall, weight: 0.6 });
+        }
+        if (pipeline.overall > 0) {
+          sources.push({
+            score: pipeline.overall,
+            weight: 0.25,
+          });
+        }
+        if (
+          councilScore.approvalRate > 0 &&
+          councilScore.totalRated >= 5
+        ) {
+          sources.push({
+            score: councilScore.approvalRate,
+            weight: 0.15,
+          });
+        }
+
+        const overall =
+          sources.length > 0
+            ? Math.round(
+                sources.reduce(
+                  (sum, s) => sum + s.score * s.weight,
+                  0
+                ) /
+                  sources.reduce(
+                    (sum, s) => sum + s.weight,
+                    0
+                  )
+              )
+            : 0;
 
         const lowestDimension =
           clear.dimensions.length > 0
@@ -874,24 +902,24 @@ export default function MyPractice() {
             : null;
 
         const grade =
-          overall >= 85
+          overall >= 80
             ? 'A'
-            : overall >= 70
+            : overall >= 65
               ? 'B'
-              : overall >= 55
+              : overall >= 50
                 ? 'C'
-                : overall >= 40
+                : overall >= 35
                   ? 'D'
                   : 'F';
 
         const gradeLabel =
-          overall >= 85
+          overall >= 80
             ? 'Expert Coach'
-            : overall >= 70
+            : overall >= 65
               ? 'Proficient Coach'
-              : overall >= 55
+              : overall >= 50
                 ? 'Developing Coach'
-                : overall >= 40
+                : overall >= 35
                   ? 'Early Stage'
                   : 'Getting Started';
 
@@ -1492,6 +1520,34 @@ export default function MyPractice() {
                   ? 'Calculating...'
                   : (coachingQuality?.gradeLabel ?? '')}
               </p>
+              {!qualityLoading &&
+              (coachingQuality?.pipelineScore.overall ?? 0) ===
+                0 ? (
+                <p
+                  style={{
+                    color: '#7A8F95',
+                    fontSize: 11,
+                    margin: '8px 0 0',
+                  }}
+                >
+                  Pipeline score will appear as you advance
+                  clients
+                </p>
+              ) : null}
+              {!qualityLoading &&
+              (coachingQuality?.councilScore.totalRated ??
+                0) < 5 ? (
+                <p
+                  style={{
+                    color: '#7A8F95',
+                    fontSize: 11,
+                    margin: '6px 0 0',
+                  }}
+                >
+                  Rate coaching questions to add preparation
+                  score
+                </p>
+              ) : null}
             </div>
 
             <div style={{ textAlign: 'right' }}>
