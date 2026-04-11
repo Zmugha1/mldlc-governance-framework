@@ -3034,13 +3034,6 @@ Sound like a person not a report.`;
     }
   };
 
-  const handleRegenerateVision = async () => {
-    if (!client?.id) return;
-    setVisionEditText('');
-    setVisionGeneratedBaseline(null);
-    await handleGenerateVision();
-  };
-
   const handleApproveVision = async () => {
     if (!client?.id) return;
     setVisionGenError(null);
@@ -5644,9 +5637,20 @@ Sound like a person not a report.`;
                       className="shrink-0 text-sm font-semibold underline-offset-2 hover:underline"
                       style={{ color: '#3BBFBF' }}
                       onClick={() => {
-                        setVisionApproveFeedback(null);
-                        setVisionApproveMsg(null);
-                        setVisionDraftMode(true);
+                        try {
+                          setVisionApproveFeedback(null);
+                          setVisionApproveMsg(null);
+                          setVisionDraftMode(true);
+                        } catch (error) {
+                          console.error(
+                            'Vision tab edit failed:',
+                            error
+                          );
+                          setVisionGenError(
+                            'Could not open editor. ' +
+                              'Please try again.'
+                          );
+                        }
                       }}
                     >
                       Edit
@@ -5697,9 +5701,20 @@ Sound like a person not a report.`;
                         className="mt-2 border-0 bg-transparent p-0 underline-offset-2 hover:underline"
                         style={{ color: '#7A8F95', fontSize: 11 }}
                         onClick={() => {
-                          setVisionApproveFeedback(null);
-                          setVisionApproveMsg(null);
-                          setVisionDraftMode(true);
+                          try {
+                            setVisionApproveFeedback(null);
+                            setVisionApproveMsg(null);
+                            setVisionDraftMode(true);
+                          } catch (error) {
+                            console.error(
+                              'Vision tab edit failed:',
+                              error
+                            );
+                            setVisionGenError(
+                              'Could not open editor. ' +
+                                'Please try again.'
+                            );
+                          }
                         }}
                       >
                         Edit Again
@@ -5884,7 +5899,21 @@ Sound like a person not a report.`;
                       border: 'none',
                     }}
                     disabled={visionGenerating || !client.id}
-                    onClick={() => void handleGenerateVision()}
+                    onClick={async () => {
+                      try {
+                        setVisionGenError(null);
+                        await handleGenerateVision();
+                      } catch (error) {
+                        console.error(
+                          'Generate vision failed:',
+                          error
+                        );
+                        setVisionGenError(
+                          'Could not generate. ' +
+                            'Please try again.'
+                        );
+                      }
+                    }}
                   >
                     Generate Vision Statement
                   </button>
@@ -5928,7 +5957,24 @@ Sound like a person not a report.`;
                         fontSize: 12,
                       }}
                       disabled={visionGenerating}
-                      onClick={() => void handleRegenerateVision()}
+                      onClick={async () => {
+                        try {
+                          setVisionDraftMode(false);
+                          setVisionEditText('');
+                          setVisionGeneratedBaseline(null);
+                          setVisionGenError(null);
+                          await handleGenerateVision();
+                        } catch (error) {
+                          console.error(
+                            'Regenerate failed:',
+                            error
+                          );
+                          setVisionGenError(
+                            'Could not regenerate. ' +
+                              'Please try again.'
+                          );
+                        }
+                      }}
                     >
                       Regenerate
                     </button>
