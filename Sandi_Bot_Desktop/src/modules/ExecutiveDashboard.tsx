@@ -6,6 +6,7 @@ import {
   useCallback,
   useRef,
 } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { RefreshCw, Loader2, AlertTriangle, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -37,8 +38,12 @@ import {
   registerCalendarTool,
   type TodaysCall,
 } from '../services/calendarTool';
-import { registerGmailTool } from '../services/gmailTool';
-import { isGoogleConnected } from '../services/googleAuthService';
+import {
+  parseEmailMessage,
+  registerGmailTool,
+  type EmailMessage,
+} from '../services/gmailTool';
+import { getValidToken, isGoogleConnected } from '../services/googleAuthService';
 
 const recommendationStyleMap: Record<
   'VALIDATE' | 'GATHER' | 'PAUSE',
@@ -54,6 +59,24 @@ const REC_ORDER: Record<'VALIDATE' | 'GATHER' | 'PAUSE', number> = {
   GATHER: 1,
   PAUSE: 2,
 };
+
+function filterEmailsByClients(messages: EmailMessage[], names: string[]): EmailMessage[] {
+  if (!names || names.length === 0) return messages;
+  return messages.filter((msg) => {
+    const sender = String(msg.from || msg.fromEmail || '').toLowerCase();
+    const subject = String(msg.subject || '').toLowerCase();
+    const body = String(msg.snippet || msg.body || '').toLowerCase();
+    return names.some((name) => {
+      const parts = name.split(/\s+/).filter((p) => p.length > 2);
+      if (parts.length === 0) {
+        return sender.includes(name) || subject.includes(name) || body.includes(name);
+      }
+      return parts.some(
+        (part) => sender.includes(part) || subject.includes(part) || body.includes(part)
+      );
+    });
+  });
+}
 
 const DISC_LETTER_COLORS: Record<'D' | 'I' | 'S' | 'C', string> = {
   D: '#EF4444',
@@ -682,6 +705,8 @@ export default function ExecutiveDashboard() {
     installDateWasNull: true,
   }));
   const [calendarConnected, setCalendarConnected] = useState(false);
+  const [gmailBriefMessages, setGmailBriefMessages] = useState<EmailMessage[]>([]);
+  const [gmailBriefLoading, setGmailBriefLoading] = useState(false);
   const [todaysCalls, setTodaysCalls] = useState<TodaysCall[]>([]);
   const [callsLoading, setCallsLoading] = useState(false);
   const [postCallClient, setPostCallClient] = useState<TodaysCall | null>(null);
@@ -726,6 +751,61 @@ export default function ExecutiveDashboard() {
       setCallsLoading(false);
     }
   }, [calendarConnected]);
+
+  const loadMorningBriefGmail = useCallback(async () => {
+    if (!calendarConnected) return;
+    setGmailBriefLoading(true);
+    try {
+      const token = await getValidToken('gmail');
+      if (!token) {
+        setGmailBriefMessages([]);
+        return;
+      }
+      const listResp = await invoke<Record<string, unknown>>('gmail_get_messages', {
+        accessToken: token,
+        query: 'in:inbox',
+        maxResults: 20,
+      });
+      if (listResp && typeof listResp === 'object' && 'error' in listResp) {
+        setGmailBriefMessages([]);
+        return;
+      }
+      const rawList = listResp.messages;
+      if (!Array.isArray(rawList) || rawList.length === 0) {
+        setGmailBriefMessages([]);
+        return;
+      }
+      const items: EmailMessage[] = [];
+      for (const ref of rawList.slice(0, 20)) {
+        if (!ref || typeof ref !== 'object') continue;
+        const id = String((ref as Record<string, unknown>).id ?? '');
+        if (!id) continue;
+        try {
+          const full = await invoke<Record<string, unknown>>('gmail_get_message', {
+            accessToken: token,
+            messageId: id,
+          });
+          if (full && typeof full === 'object' && 'error' in full) continue;
+          items.push(parseEmailMessage(full));
+        } catch {
+          /* skip one broken message */
+        }
+      }
+      setGmailBriefMessages(items.filter((m) => m.id));
+    } catch {
+      setGmailBriefMessages([]);
+    } finally {
+      setGmailBriefLoading(false);
+    }
+  }, [calendarConnected]);
+
+  useEffect(() => {
+    if (!calendarConnected) {
+      setGmailBriefMessages([]);
+      return;
+    }
+    void loadMorningBriefGmail();
+  }, [calendarConnected, loadMorningBriefGmail]);
 
   useEffect(() => {
     if (!calendarConnected) return;
@@ -1427,6 +1507,26 @@ export default function ExecutiveDashboard() {
     ytd: 'Placements this year vs annual target',
   };
 
+  const clientNamesForGmailFilter = useMemo(() => {
+    return clients
+      .filter((c) => (c.outcome_bucket ?? '').toLowerCase() !== 'inactive')
+      .map((c) => String(c.name ?? '').toLowerCase().trim())
+      .filter((n) => n.length > 0);
+  }, [clients]);
+
+  const gmailBriefFiltered = useMemo(
+    () => filterEmailsByClients(gmailBriefMessages, clientNamesForGmailFilter),
+    [gmailBriefMessages, clientNamesForGmailFilter]
+  );
+
+  const gmailBriefDisplay = useMemo(() => {
+    const filtered = gmailBriefFiltered;
+    const raw = gmailBriefMessages;
+    if (filtered.length > 0) return { rows: filtered, mode: 'filtered' as const };
+    if (raw.length > 0) return { rows: raw, mode: 'fallback' as const };
+    return { rows: [] as EmailMessage[], mode: 'empty' as const };
+  }, [gmailBriefFiltered, gmailBriefMessages]);
+
   if (loading) {
     return (
       <div className="p-6 space-y-4">
@@ -1487,6 +1587,7 @@ export default function ExecutiveDashboard() {
           type="button"
           onClick={() => {
             void loadDashboardData(true);
+            void loadMorningBriefGmail();
           }}
           disabled={refreshing}
           className="inline-flex items-center gap-2 rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60 bg-white hover:bg-[#F4F7F8]"
@@ -1697,6 +1798,83 @@ export default function ExecutiveDashboard() {
                   : `+ ${todaysCalls.length - 3} more today`}
               </button>
             ) : null}
+          </div>
+        ) : null}
+        {calendarConnected ? (
+          <div
+            style={{
+              margin: '12px 0',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              paddingTop: 12,
+            }}
+          >
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p
+                  className="uppercase"
+                  style={{
+                    fontSize: 11,
+                    color: '#C8E8E5',
+                    letterSpacing: '0.5px',
+                    margin: 0,
+                  }}
+                >
+                  Recent Gmail
+                </p>
+                {gmailBriefDisplay.mode === 'filtered' ? (
+                  <span style={{ fontSize: 11, color: '#7A8F95' }}>
+                    {gmailBriefFiltered.length} client emails
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded p-0.5 transition-opacity hover:opacity-80"
+                  style={{ color: '#C8E8E5', cursor: 'pointer' }}
+                  aria-label="Refresh inbox preview"
+                  onClick={() => void loadMorningBriefGmail()}
+                >
+                  <RefreshCw className="h-3 w-3" aria-hidden />
+                </button>
+              </div>
+            </div>
+            {gmailBriefDisplay.mode === 'fallback' ? (
+              <p style={{ fontSize: 11, color: '#C8E8E5', marginBottom: 8, lineHeight: 1.4 }}>
+                No client emails found. Showing emails from your connected Gmail account.
+              </p>
+            ) : null}
+            {gmailBriefLoading ? (
+              <div className="flex items-center gap-2" style={{ margin: '4px 0' }}>
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin" style={{ color: '#C8E8E5' }} aria-hidden />
+                <span style={{ fontSize: 12, color: '#C8E8E5' }}>Loading inbox…</span>
+              </div>
+            ) : gmailBriefDisplay.rows.length === 0 ? (
+              <p style={{ fontSize: 12, color: '#C8E8E5' }}>No recent inbox messages.</p>
+            ) : (
+              <div className="space-y-1">
+                {gmailBriefDisplay.rows.slice(0, 8).map((msg) => (
+                  <div
+                    key={msg.id}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                    }}
+                  >
+                    <div className="font-bold text-white" style={{ fontSize: 12 }}>
+                      {msg.subject || '(No subject)'}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#C8E8E5', marginTop: 2 }}>
+                      {msg.from || msg.fromEmail || '—'}
+                    </div>
+                    {msg.snippet ? (
+                      <div className="line-clamp-2" style={{ fontSize: 10, color: '#7A8F95', marginTop: 4 }}>
+                        {msg.snippet}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : null}
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '16px 0' }} />
