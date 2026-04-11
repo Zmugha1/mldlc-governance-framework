@@ -8,7 +8,6 @@ import {
   type ChangeEvent,
 } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import PptxGenJS from 'pptxgenjs';
 import {
   Briefcase,
   Mail,
@@ -636,46 +635,12 @@ function sandiReadinessOverallBarColor(pct: number): string {
 const FRANCHISE_NOTES_PLACEHOLDER =
   'What is the client learning? What are their pros and cons? What questions are they asking?';
 
-function formatVisionApprovedDateLabel(raw: string | null | undefined): string {
-  const t = (raw ?? '').trim();
-  if (!t) return '';
-  const d = new Date(t);
-  if (Number.isNaN(d.getTime())) return t;
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatVisionMonthYearLabel(raw: string | null | undefined): string {
-  const t = (raw ?? '').trim();
-  if (!t) {
-    return new Date().toLocaleDateString('en-US', {
-      month: 'long',
-      year: 'numeric',
-    });
-  }
-  const d = new Date(t);
-  if (Number.isNaN(d.getTime())) {
-    return new Date().toLocaleDateString('en-US', {
-      month: 'long',
-      year: 'numeric',
-    });
-  }
-  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-}
-
 function escapeHtmlVision(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-function safeVisionFilenamePart(name: string): string {
-  return name.replace(/[^\w\-]+/g, '_').replace(/_+/g, '_').slice(0, 80) || 'Client';
 }
 
 function formatCommunicationDosForPrompt(raw: string | null | undefined): string {
@@ -693,26 +658,6 @@ function formatCommunicationDosForPrompt(raw: string | null | undefined): string
     /* use raw */
   }
   return t;
-}
-
-function visionBodyToThreeParagraphs(text: string): [string, string, string] {
-  const t = text.trim();
-  if (!t) return ['', '', ''];
-  const parts = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
-  if (parts.length >= 3) {
-    return [parts[0] ?? '', parts[1] ?? '', parts.slice(2).join('\n\n')];
-  }
-  if (parts.length === 2) return [parts[0] ?? '', parts[1] ?? '', ''];
-  const lines = t.split(/\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length >= 3) {
-    const n = Math.ceil(lines.length / 3);
-    return [
-      lines.slice(0, n).join(' '),
-      lines.slice(n, n * 2).join(' '),
-      lines.slice(n * 2).join(' '),
-    ];
-  }
-  return [t, '', ''];
 }
 
 function formatLastContactDisplay(raw: string): string {
@@ -1256,6 +1201,18 @@ function ClientDetailModal({
   const [franchiseFormRank, setFranchiseFormRank] = useState<1 | 2 | 3>(1);
   const [franchiseFormZorDate, setFranchiseFormZorDate] = useState('');
   const [franchiseFormNotes, setFranchiseFormNotes] = useState('');
+  const [visionText, setVisionText] = useState('');
+  const [visionGenerating, setVisionGenerating] = useState(false);
+  const [visionError, setVisionError] = useState<string | null>(null);
+  const [visionRubric, setVisionRubric] = useState<{
+    accuracy: number;
+    completeness: number;
+    tone: number;
+    usefulness: number;
+    comment: string;
+  } | null>(null);
+  const [visionRubricSubmitted, setVisionRubricSubmitted] = useState(false);
+  const [territoryNotes, setTerritoryNotes] = useState('');
   const [stageMoveDialog, setStageMoveDialog] = useState<{
     target: PipelineStage;
     direction: 'forward' | 'back';
@@ -1280,6 +1237,21 @@ function ClientDetailModal({
     bio: string | null;
     coaching_philosophy: string | null;
   } | null>(null);
+
+  useEffect(() => {
+    if (client?.vision_statement) {
+      setVisionText(
+        String(
+          client.vision_statement
+        ).trim()
+      );
+    } else {
+      setVisionText('');
+    }
+    setVisionRubric(null);
+    setVisionRubricSubmitted(false);
+    setVisionError(null);
+  }, [client?.id]);
 
   useEffect(() => {
     setCouncilOutput(null);
@@ -2893,271 +2865,352 @@ function ClientDetailModal({
     await handleGenerateBestNextQuestions();
   };
 
-  const handleGenerateVision = async () => {
+  const saveVisionToDb = async (text: string): Promise<void> => {
     if (!client?.id) return;
     try {
-      const you2Text = you2Vision || '';
-      const discText =
-        discStyleLabel === '—' ? '' : discStyleLabel;
-      const dangersText = (you2Details?.dangers ?? []).join(', ');
-      const sessionText = latestSessionNotesPlain || '';
-      const clientNameText = client?.name || '';
+      const db = await getDb();
+      await db.execute(
+        `UPDATE clients
+           SET vision_statement = $1,
+               vision_approved = 1,
+               vision_approved_date =
+                 datetime('now'),
+               updated_at = datetime('now')
+           WHERE id = $2`,
+        [text, client.id]
+      );
+      await logCorrection({
+        clientId: client.id,
+        fieldName: 'vision_statement',
+        originalValue: client?.vision_statement
+          ? String(
+              client.vision_statement
+            )
+          : '',
+        correctedValue: text,
+        correctionType: 'vision_rubric',
+        page: 'client_intelligence',
+      });
+    } catch (err) {
+      console.error(
+        'Vision save error:',
+        err
+      );
+    }
+  };
 
-      if (!you2Text && !discText && !dangersText) {
-        throw new Error(
-          'No client data available. ' +
-            'Upload You 2.0 and DISC first.'
-        );
-      }
+  const handleGenerateVision = async (
+    feedbackContext?: string
+  ): Promise<void> => {
+    if (!client?.id) return;
+    try {
+      setVisionGenerating(true);
+      setVisionError(null);
+      setVisionRubric(null);
+      setVisionRubricSubmitted(false);
+
+      const clientName =
+        client?.name || 'this client';
+      const discStyle =
+        discStyleLabel === '—' ? '' : discStyleLabel;
+      const dangers =
+        (you2Details?.dangers ?? []).join(', ');
+      const vision =
+        you2Vision || '';
+      const sessionNotes =
+        latestSessionNotesPlain || '';
+
+      const feedbackSection =
+        feedbackContext
+          ? `\n\nIMPROVEMENT FEEDBACK
+FROM PREVIOUS VERSION:
+${feedbackContext}
+Apply this feedback directly.
+Fix what was missing.
+Adjust tone as directed.
+Do not repeat the same mistakes.`
+          : '';
 
       const prompt =
         `You are a franchise career coach.
 Write a personal vision statement
-for ${clientNameText}.
+for ${clientName}.
 
-Base it entirely on this information:
+Use only this verified information:
+DISC Style: ${discStyle}
+One Year Vision: ${vision}
+Key Concerns: ${dangers}
+Recent Session Notes: ${sessionNotes}
 
-DISC Style: ${discText}
-One Year Vision: ${you2Text}
-Key Concerns: ${dangersText}
-Recent Session: ${sessionText}
-
+STRICT RULES:
+Write in first person as ${clientName}.
 Write 2-3 paragraphs.
-First person voice as if
-${clientNameText} is speaking.
-Specific to their goals and situation.
-Warm encouraging and forward-looking.
-Do not mention DISC or assessments.
-Do not use coaching jargon.
-Sound like a person not a report.`;
+Sound warm personal and specific.
+Reference their actual goals and fears.
+Do NOT mention DISC assessments.
+Do NOT use coaching jargon.
+Do NOT use the word journey.
+Do NOT say I am committed to.
+Sound like a real person talking
+about their real life.
+Be specific use their actual goals
+not generic statements.${feedbackSection}`;
 
-      const result = await invoke<any>('ollama_generate', {
-        model: 'qwen2.5:7b',
-        prompt,
-        system: '',
-        stream: false,
-      });
+      const result = await invoke<any>(
+        'ollama_generate',
+        {
+          model: 'qwen2.5:7b',
+          prompt: prompt,
+          system: '',
+          stream: false,
+        }
+      );
 
       const generated =
         typeof result === 'string'
           ? result.trim()
           : String(
-              result?.response ??
-                result?.message?.content ??
+              result?.response ||
+                result?.message?.content ||
                 ''
             ).trim();
 
-      if (!generated || generated.length < 20) {
+      if (!generated ||
+          generated.length < 20) {
         throw new Error(
-          'Ollama returned empty response. ' +
-            'Is Ollama running?'
+          'No response from Ollama. ' +
+            'Is it running?'
         );
       }
 
-      await dbExecute(
-        `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [generated, client.id]
+      setVisionText(generated);
+      setVisionGenerating(false);
+    } catch (err) {
+      console.error(
+        'Vision generation error:',
+        err
       );
-      onVisionUpdated?.();
-    } catch (error) {
-      console.error('Vision generation failed:', error);
+      setVisionGenerating(false);
+      setVisionError(
+        'Could not generate. ' +
+          'Make sure Ollama is running.'
+      );
     }
   };
 
-  const handleDownloadVisionPptx = async () => {
-    if (!client?.id) return;
-    const body = persistedVisionText.trim();
-    if (!body) return;
-    const pptx = new PptxGenJS();
-    pptx.layout = 'LAYOUT_16x9';
-    const dateSlide1 = formatVisionMonthYearLabel(client.vision_approved_date);
-    const footDate =
-      formatVisionApprovedDateLabel(client.vision_approved_date) ||
-      localCalendarDateYyyyMmDd();
+  const handleDownloadVisionPpt =
+    async (): Promise<void> => {
+      if (!client?.id) return;
+      try {
+        const text = visionText.trim();
+        if (!text) return;
 
-    const slide1 = pptx.addSlide();
-    slide1.background = { color: '2D4459' };
-    slide1.addText(client.name, {
-      x: 0.5,
-      y: 1.6,
-      w: 9,
-      h: 1.2,
-      fontSize: 36,
-      bold: true,
-      color: 'FFFFFF',
-      align: 'center',
-    });
-    slide1.addText(dateSlide1, {
-      x: 0.5,
-      y: 3,
-      w: 9,
-      h: 0.5,
-      fontSize: 18,
-      color: 'D1DCE4',
-      align: 'center',
-    });
-    slide1.addShape(pptx.ShapeType.rect, {
-      x: 0,
-      y: 5.35,
-      w: 10,
-      h: 0.06,
-      fill: { color: '3BBFBF' },
-      line: { width: 0 },
-    });
+        const PptxGenJS =
+          (await import('pptxgenjs'))
+            .default;
+        const pptx = new PptxGenJS();
 
-    const [para1, para2, para3] = visionBodyToThreeParagraphs(body);
-    const slide2 = pptx.addSlide();
-    slide2.background = { color: 'FFFFFF' };
-    slide2.addText('Vision Statement', {
-      x: 0.5,
-      y: 0.35,
-      w: 5,
-      h: 0.55,
-      fontSize: 24,
-      bold: true,
-      color: '2D4459',
-    });
-    slide2.addText(para1, {
-      x: 0.5,
-      y: 1.05,
-      w: 9,
-      h: 1.35,
-      fontSize: 14,
-      color: '2D4459',
-      lineSpacingMultiple: 1.2,
-    });
-    slide2.addText(para2, {
-      x: 0.5,
-      y: 2.55,
-      w: 9,
-      h: 1.35,
-      fontSize: 14,
-      color: '2D4459',
-      lineSpacingMultiple: 1.2,
-    });
-    slide2.addText(para3, {
-      x: 0.5,
-      y: 4.05,
-      w: 9,
-      h: 1.35,
-      fontSize: 14,
-      color: '2D4459',
-      lineSpacingMultiple: 1.2,
-    });
-    slide2.addText(`${client.name} · ${footDate}`, {
-      x: 0.5,
-      y: 5.35,
-      w: 9,
-      h: 0.35,
-      fontSize: 10,
-      color: '7A8F95',
-    });
+        pptx.defineLayout({
+          name: 'LAYOUT_WIDE',
+          width: 13.33,
+          height: 7.5,
+        });
+        pptx.layout = 'LAYOUT_WIDE';
 
-    const dangersCol =
-      you2Details?.dangers?.length
-        ? you2Details.dangers.join('\n')
-        : '—';
-    const strengthsCol =
-      you2Details?.strengths?.length
-        ? you2Details.strengths.join('\n')
-        : '—';
-    const oppsCol =
-      you2Details?.opportunities?.length
-        ? you2Details.opportunities.join('\n')
-        : '—';
+        const slide = pptx.addSlide();
+        slide.background = {
+          color: '2D4459',
+        };
 
-    const slide3 = pptx.addSlide();
-    slide3.background = { color: 'F4F7F8' };
-    slide3.addText('Your Path Forward', {
-      x: 0.5,
-      y: 0.35,
-      w: 9,
-      h: 0.5,
-      fontSize: 20,
-      bold: true,
-      color: '2D4459',
-    });
-    slide3.addText('Dangers', {
-      x: 0.4,
-      y: 1,
-      w: 2.9,
-      h: 0.35,
-      fontSize: 14,
-      bold: true,
-      color: 'F05F57',
-    });
-    slide3.addText(dangersCol, {
-      x: 0.4,
-      y: 1.45,
-      w: 2.9,
-      h: 3.8,
-      fontSize: 12,
-      color: '2D4459',
-    });
-    slide3.addText('Strengths', {
-      x: 3.55,
-      y: 1,
-      w: 2.9,
-      h: 0.35,
-      fontSize: 14,
-      bold: true,
-      color: '3BBFBF',
-    });
-    slide3.addText(strengthsCol, {
-      x: 3.55,
-      y: 1.45,
-      w: 2.9,
-      h: 3.8,
-      fontSize: 12,
-      color: '2D4459',
-    });
-    slide3.addText('Opportunities', {
-      x: 6.7,
-      y: 1,
-      w: 2.9,
-      h: 0.35,
-      fontSize: 14,
-      bold: true,
-      color: 'C8613F',
-    });
-    slide3.addText(oppsCol, {
-      x: 6.7,
-      y: 1.45,
-      w: 2.9,
-      h: 3.8,
-      fontSize: 12,
-      color: '2D4459',
-    });
+        slide.addText(
+          client?.name || '', {
+            x: 0.5,
+            y: 0.3,
+            w: 12,
+            h: 0.6,
+            fontSize: 24,
+            bold: true,
+            color: '3BBFBF',
+            fontFace: 'Calibri',
+          }
+        );
 
-    const fname = `${safeVisionFilenamePart(client.name)}-Vision-Statement.pptx`;
-    await pptx.writeFile({ fileName: fname });
-  };
+        slide.addText(
+          'Vision Statement', {
+            x: 0.5,
+            y: 0.9,
+            w: 12,
+            h: 0.4,
+            fontSize: 14,
+            color: 'C8E8E5',
+            fontFace: 'Calibri',
+          }
+        );
 
-  const handlePrintVisionPdf = () => {
-    if (!client?.id) return;
-    const body = persistedVisionText.trim();
-    if (!body) return;
-    const dateLine =
-      formatVisionApprovedDateLabel(client.vision_approved_date) ||
-      localCalendarDateYyyyMmDd();
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Vision — ${escapeHtmlVision(client.name)}</title>
-<style>
-  body { font-family: system-ui, Segoe UI, sans-serif; font-size: 14px; line-height: 1.8; color: #2D4459; background: #fff; padding: 24px; max-width: 720px; margin: 0 auto; }
-  .meta { color: #7A8F95; font-size: 12px; margin-bottom: 20px; }
-  .body { white-space: pre-wrap; }
-</style></head><body>
-  <div class="meta">${escapeHtmlVision(client.name)} · ${escapeHtmlVision(dateLine)}</div>
-  <div class="body">${escapeHtmlVision(body)}</div>
-</body></html>`;
-    const w = window.open('', '_blank');
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.print();
-  };
+        slide.addText(text, {
+          x: 0.5,
+          y: 1.5,
+          w: 12,
+          h: 5.0,
+          fontSize: 15,
+          color: 'FFFFFF',
+          fontFace: 'Calibri',
+          valign: 'top',
+          wrap: true,
+        });
 
-  void [handleGenerateVision, handleDownloadVisionPptx, handlePrintVisionPdf];
+        if (territoryNotes.trim()) {
+          slide.addText(
+            `Territory Notes: ${territoryNotes}`,
+            {
+              x: 0.5,
+              y: 6.6,
+              w: 12,
+              h: 0.5,
+              fontSize: 11,
+              color: 'C8E8E5',
+              fontFace: 'Calibri',
+              italic: true,
+            }
+          );
+        }
+
+        slide.addText(
+          'Coach Bot · Dr. Data Decision Intelligence LLC',
+          {
+            x: 0.5,
+            y: 7.1,
+            w: 12,
+            h: 0.3,
+            fontSize: 9,
+            color: '7A8F95',
+            fontFace: 'Calibri',
+          }
+        );
+
+        const safeName =
+          (client?.name || 'client')
+            .replace(/[^a-z0-9]/gi, '_');
+
+        await pptx.writeFile({
+          fileName:
+            `${safeName}_Vision.pptx`,
+        });
+
+        await saveVisionToDb(text);
+      } catch (err) {
+        console.error(
+          'PPT download error:',
+          err
+        );
+        setVisionError(
+          'Could not download PowerPoint.'
+        );
+      }
+    };
+
+  const handleDownloadVisionPdf =
+    async (): Promise<void> => {
+      if (!client?.id) return;
+      try {
+        const text = visionText.trim();
+        if (!text) return;
+
+        const printWindow =
+          window.open('', '_blank');
+        if (!printWindow) {
+          setVisionError(
+            'Could not open print window. ' +
+              'Check browser popup settings.'
+          );
+          return;
+        }
+
+        const paragraphs = text
+          .split('\n\n')
+          .filter((p) => p.trim())
+          .map((p) =>
+            `<p>${escapeHtmlVision(p.trim())}</p>`
+          )
+          .join('');
+
+        const titleName = escapeHtmlVision(
+          client?.name || 'Vision'
+        );
+
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>
+                ${titleName}
+                Vision Statement
+              </title>
+              <style>
+                body {
+                  font-family: Calibri,
+                    sans-serif;
+                  padding: 60px;
+                  max-width: 800px;
+                  margin: 0 auto;
+                  color: #2D4459;
+                }
+                h1 {
+                  color: #2D4459;
+                  font-size: 28px;
+                  margin-bottom: 4px;
+                }
+                h2 {
+                  color: #3BBFBF;
+                  font-size: 16px;
+                  font-weight: normal;
+                  margin-bottom: 40px;
+                }
+                p {
+                  font-size: 16px;
+                  line-height: 1.9;
+                  margin-bottom: 20px;
+                }
+                footer {
+                  margin-top: 60px;
+                  font-size: 11px;
+                  color: #7A8F95;
+                  border-top:
+                    1px solid #C8E8E5;
+                  padding-top: 12px;
+                }
+              </style>
+            </head>
+            <body>
+              <h1>
+                ${escapeHtmlVision(client?.name || '')}
+              </h1>
+              <h2>Vision Statement</h2>
+              ${paragraphs}
+              <footer>
+                Coach Bot &middot;
+                Dr. Data Decision
+                Intelligence LLC
+              </footer>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+
+        await saveVisionToDb(text);
+      } catch (err) {
+        console.error(
+          'PDF download error:',
+          err
+        );
+      }
+    };
+
+  void [
+    handleGenerateVision,
+    handleDownloadVisionPpt,
+    handleDownloadVisionPdf,
+  ];
 
   const handleMarkPinkFlagResolved = async (flagName: string) => {
     if (!client) return;
