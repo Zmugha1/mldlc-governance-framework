@@ -705,14 +705,6 @@ async function visionWriteBytesToDownloads(
   });
 }
 
-/** Tauri v2 file dialog — same IPC as The Capture (`plugin:dialog|open`). */
-async function tauriDialogOpen(options: {
-  multiple?: boolean;
-  filters?: { name: string; extensions: string[] }[];
-}): Promise<string | string[] | null> {
-  return invoke<string | string[] | null>('plugin:dialog|open', { options });
-}
-
 // ADR: em dashes never allowed in user-visible or AI-generated content per
 // CLAUDE.md rule. LLMs ignore prompt rules for style so must post-process.
 function sanitizeVisionEmDashes(raw: string): string {
@@ -1561,7 +1553,6 @@ function ClientDetailModal({
   const [fathomProgress, setFathomProgress] = useState(0);
   const [fathomUploadError, setFathomUploadError] = useState<string | null>(null);
   const [fathomUploadSuccess, setFathomUploadSuccess] = useState<string | null>(null);
-  const [fathomPasteMode, setFathomPasteMode] = useState(false);
   const [fathomPasteText, setFathomPasteText] = useState('');
   const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
   const [editingSessionNotes, setEditingSessionNotes] = useState('');
@@ -6195,7 +6186,7 @@ not generic statements.${feedbackSection}`;
                     margin: '0 0 4px',
                   }}
                 >
-                  Upload Fathom Session
+                  Add Fathom Session
                 </p>
                 <p
                   style={{
@@ -6205,7 +6196,8 @@ not generic statements.${feedbackSection}`;
                     fontStyle: 'italic',
                   }}
                 >
-                  Upload a PDF or TXT transcript, or paste the text directly
+                  Copy your Fathom transcript and paste it below. Coach Bot will extract the 9-block coaching analysis
+                  automatically.
                 </p>
 
                 {fathomUploadError ? (
@@ -6293,212 +6285,103 @@ not generic statements.${feedbackSection}`;
                   </div>
                 ) : null}
 
-                {fathomPasteMode ? (
-                  <div>
-                    <textarea
-                      value={fathomPasteText}
-                      onChange={(e) => setFathomPasteText(e.target.value)}
-                      placeholder="Paste your Fathom transcript text here..."
-                      style={{
-                        width: '100%',
-                        minHeight: 120,
-                        border: '2px solid #3BBFBF',
-                        borderRadius: 8,
-                        padding: '10px 12px',
-                        fontSize: 12,
-                        color: '#2D4459',
-                        resize: 'vertical',
-                        fontFamily: 'inherit',
-                        boxSizing: 'border-box',
-                        marginBottom: 8,
-                      }}
-                    />
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        type="button"
-                        disabled={fathomUploading || !fathomPasteText.trim()}
-                        onClick={async () => {
-                          if (!fathomPasteText.trim()) return;
-                          try {
-                            setFathomUploading(true);
-                            setFathomProgress(20);
-                            setFathomUploadError(null);
-                            setFathomUploadSuccess(null);
+                <textarea
+                  value={fathomPasteText}
+                  onChange={(e) => setFathomPasteText(e.target.value)}
+                  placeholder="Paste your Fathom transcript here..."
+                  style={{
+                    width: '100%',
+                    minHeight: 120,
+                    border: '2px solid #3BBFBF',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    fontSize: 12,
+                    color: '#2D4459',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                    marginBottom: 8,
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    disabled={fathomUploading || !fathomPasteText.trim()}
+                    onClick={async () => {
+                      if (!fathomPasteText.trim()) return;
+                      try {
+                        setFathomUploading(true);
+                        setFathomProgress(20);
+                        setFathomUploadError(null);
+                        setFathomUploadSuccess(null);
 
-                            setFathomProgress(50);
+                        setFathomProgress(50);
 
-                            const result = await extractFathomSession(
-                              client.id,
-                              fathomPasteText.trim(),
-                              'pasted_transcript.txt',
-                              ''
-                            );
+                        const result = await extractFathomSession(
+                          client.id,
+                          fathomPasteText.trim(),
+                          'pasted_transcript.txt',
+                          ''
+                        );
 
-                            setFathomProgress(90);
+                        setFathomProgress(90);
 
-                            if (!result.success) {
-                              throw new Error(result.error ?? 'Extraction failed');
-                            }
-
-                            await loadFathomSessions();
-
-                            setFathomProgress(100);
-                            setFathomUploading(false);
-                            setFathomPasteText('');
-                            setFathomPasteMode(false);
-                            setFathomUploadSuccess('Session extracted successfully');
-                            setTimeout(() => {
-                              setFathomUploadSuccess(null);
-                              setFathomProgress(0);
-                            }, 3000);
-                          } catch (err) {
-                            console.error('Fathom paste error:', err);
-                            setFathomUploading(false);
-                            setFathomProgress(0);
-                            setFathomUploadError(
-                              'Could not extract session. Make sure Ollama is running.'
-                            );
-                          }
-                        }}
-                        style={{
-                          background: fathomUploading ? '#C8E8E5' : '#3BBFBF',
-                          color: 'white',
-                          borderRadius: 8,
-                          padding: '8px 16px',
-                          fontSize: 12,
-                          fontWeight: 'bold',
-                          border: 'none',
-                          cursor: fathomUploading ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        {fathomUploading ? 'Extracting...' : 'Extract Session'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFathomPasteMode(false);
-                          setFathomPasteText('');
-                        }}
-                        style={{
-                          background: 'white',
-                          color: '#7A8F95',
-                          borderRadius: 8,
-                          padding: '8px 14px',
-                          fontSize: 12,
-                          border: '1px solid #C8E8E5',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      disabled={fathomUploading}
-                      onClick={async () => {
-                        try {
-                          setFathomUploadError(null);
-                          setFathomUploadSuccess(null);
-
-                          let result: string | string[] | null;
-                          try {
-                            result = await tauriDialogOpen({
-                              multiple: false,
-                              filters: [{ name: 'Transcript', extensions: ['pdf', 'txt'] }],
-                            });
-                          } catch (dialogErr) {
-                            console.error('Fathom file picker error:', dialogErr);
-                            return;
-                          }
-
-                          const filePath = Array.isArray(result) ? result[0] : result;
-
-                          if (!filePath) return;
-
-                          setFathomUploading(true);
-                          setFathomProgress(20);
-
-                          const extracted = await invoke<{
-                            text: string;
-                            success: boolean;
-                            error?: string;
-                          }>('extract_text_from_any_file', { filePath });
-
-                          if (!extracted.success || !extracted.text) {
-                            throw new Error(extracted.error ?? 'Could not read file');
-                          }
-
-                          setFathomProgress(50);
-
-                          const fileName = filePath.split(/[/\\]/).pop() || 'transcript';
-
-                          const extraction = await extractFathomSession(
-                            client.id,
-                            extracted.text.trim(),
-                            fileName,
-                            filePath
-                          );
-
-                          setFathomProgress(90);
-
-                          if (!extraction.success) {
-                            throw new Error(extraction.error ?? 'Extraction failed');
-                          }
-
-                          await loadFathomSessions();
-
-                          setFathomProgress(100);
-                          setFathomUploading(false);
-                          setFathomUploadSuccess(`Session extracted: ${fileName}`);
-                          setTimeout(() => {
-                            setFathomUploadSuccess(null);
-                            setFathomProgress(0);
-                          }, 3000);
-                        } catch (err) {
-                          console.error('Fathom upload error:', err);
-                          setFathomUploading(false);
-                          setFathomProgress(0);
-                          setFathomUploadError(
-                            'Could not extract session. Make sure Ollama is running.'
-                          );
+                        if (!result.success) {
+                          throw new Error(result.error ?? 'Extraction failed');
                         }
-                      }}
-                      style={{
-                        background: fathomUploading ? '#C8E8E5' : '#3BBFBF',
-                        color: 'white',
-                        borderRadius: 8,
-                        padding: '8px 16px',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        border: 'none',
-                        cursor: fathomUploading ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {fathomUploading ? 'Extracting...' : 'Upload PDF or TXT'}
-                    </button>
 
+                        await loadFathomSessions();
+
+                        setFathomProgress(100);
+                        setFathomUploading(false);
+                        setFathomPasteText('');
+                        setFathomUploadSuccess('Session extracted successfully');
+                        setTimeout(() => {
+                          setFathomUploadSuccess(null);
+                          setFathomProgress(0);
+                        }, 3000);
+                      } catch (err) {
+                        console.error('Fathom paste error:', err);
+                        setFathomUploading(false);
+                        setFathomProgress(0);
+                        setFathomUploadError(
+                          'Could not extract session. Make sure Ollama is running.'
+                        );
+                      }
+                    }}
+                    style={{
+                      background: fathomUploading ? '#C8E8E5' : '#3BBFBF',
+                      color: 'white',
+                      borderRadius: 8,
+                      padding: '8px 16px',
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      border: 'none',
+                      cursor: fathomUploading || !fathomPasteText.trim() ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {fathomUploading ? 'Extracting...' : 'Extract Session'}
+                  </button>
+                  {fathomPasteText.length > 0 ? (
                     <button
                       type="button"
                       disabled={fathomUploading}
-                      onClick={() => setFathomPasteMode(true)}
+                      onClick={() => setFathomPasteText('')}
                       style={{
                         background: 'white',
-                        color: '#2D4459',
+                        color: '#7A8F95',
                         borderRadius: 8,
                         padding: '8px 16px',
                         fontSize: 12,
                         fontWeight: 'bold',
                         border: '1px solid #C8E8E5',
-                        cursor: 'pointer',
+                        cursor: fathomUploading ? 'not-allowed' : 'pointer',
                       }}
                     >
-                      Paste Text
+                      Clear
                     </button>
-                  </div>
-                )}
+                  ) : null}
+                </div>
               </div>
 
               {/* SECTION 1 — Add Session */}
