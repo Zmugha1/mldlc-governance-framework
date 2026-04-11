@@ -3108,7 +3108,7 @@ Sound like a person not a report.`;
       w: 9,
       h: 0.5,
       fontSize: 18,
-      color: 'B3FFFFFF',
+      color: 'D1DCE4',
       align: 'center',
     });
     slide1.addShape(pptx.ShapeType.rect, {
