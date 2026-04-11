@@ -715,35 +715,41 @@ function visionBodyToThreeParagraphs(text: string): [string, string, string] {
   return [t, '', ''];
 }
 
-/** Cheap overlap score for vision edit-distance (avoids huge DP tables on long text). */
+/** LCS length for vision edit-distance (normalized against max length). */
 function longestCommonSubsequence(a: string, b: string): number {
-  if (!a || !b) return 0;
-  let matches = 0;
-  const shorter = a.length < b.length ? a : b;
-  const longer = a.length >= b.length ? a : b;
-  for (const char of shorter) {
-    if (longer.includes(char)) matches += 1;
+  const n = a.length;
+  const m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () =>
+    new Array(m + 1).fill(0)
+  );
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
   }
-  return matches;
+  return dp[n][m];
 }
 
-function formatCouncilContextForVisionPrompt(
-  out: CouncilOutput | null | undefined
-): string {
-  if (!out) return '';
-  try {
-    const rq = Array.isArray(out.chairmanSynthesis?.recommendedQuestions)
-      ? out.chairmanSynthesis.recommendedQuestions
-      : [];
-    return [
-      `Chairman insight: ${out.chairmanSynthesis?.primaryInsight ?? ''}`,
-      `Coaching posture: ${out.chairmanSynthesis?.coachingPosture ?? ''}`,
-      `Chairman questions (themes only):
-${rq.join(' | ')}`,
-    ].join('\n');
-  } catch {
-    return '';
-  }
+function formatCouncilContextForVisionPrompt(out: CouncilOutput): string {
+  const gaps = [
+    ...out.uncertaintyAudit.missing,
+    ...out.uncertaintyAudit.unverified,
+  ];
+  return [
+    `Chairman insight: ${out.chairmanSynthesis.primaryInsight}`,
+    `Coaching posture: ${out.chairmanSynthesis.coachingPosture}`,
+    `Minority perspective: ${out.chairmanSynthesis.minorityPerspective}`,
+    `Chairman questions (themes only, do not paste as a list in the vision): ${out.chairmanSynthesis.recommendedQuestions.join(' | ')}`,
+    `Readiness (${out.readinessLens.confidence}%): ${out.readinessLens.insight}`,
+    `Alignment (${out.alignmentLens.confidence}%): ${out.alignmentLens.insight}`,
+    `Integrity (${out.integrityLens.confidence}%): ${out.integrityLens.insight}`,
+    `Verified inputs: ${out.uncertaintyAudit.verified.join('; ') || 'none'}`,
+    `Data gaps (address responsibly, no meta-labels in client text): ${gaps.join('; ') || 'none'}`,
+  ].join('\n');
 }
 
 function buildVisionStatementOllamaPrompt(args: {
@@ -1386,7 +1392,6 @@ function ClientDetailModal({
     null
   );
   const [councilLoading, setCouncilLoading] = useState(false);
-  const [completedLenses, setCompletedLenses] = useState<string[]>([]);
   const [councilError, setCouncilError] = useState<string | null>(null);
   const [activeLens, setActiveLens] = useState<
     'chairman' | 'readiness' | 'alignment' | 'integrity'
@@ -3043,44 +3048,40 @@ function ClientDetailModal({
     const lastNotes =
       latestSessionNotesPlain.trim() || 'No sessions yet';
 
-    let councilResult: CouncilOutput | null = null;
+    let councilContext = '';
     try {
-      if (!councilOutput) {
-        const spouseRaw =
-          tumayData != null
-            ? String(tumayData.spouse_alignment ?? '').trim()
-            : '';
-        const spouseAlignment =
-          spouseRaw === 'Yes' || spouseRaw === 'No' || spouseRaw === 'Unsure'
-            ? spouseRaw
-            : 'Unknown';
-        const councilInput: CouncilInput = {
-          clientName: client.name,
-          clientId: client.id,
-          discStyle: discStyleLabel === '—' ? '' : discStyleLabel,
-          discScores: { d, i, s, c },
-          currentStage: client.inferred_stage || 'IC',
-          dangers: you2Details?.dangers ?? [],
-          strengths: you2Details?.strengths ?? [],
-          opportunities: you2Details?.opportunities ?? [],
-          oneYearVision:
-            you2Vision.trim() || persistedVisionText || '',
-          lastSessionNotes: latestSessionNotesPlain || '',
-          pinkFlags: activePinkFlagsFiltered,
-          netWorth: clientMergedFinancials.netWorth || '',
-          spouseAlignment,
-          sessionCount: fathomSessionCount,
-          coachIdentity: (coachProfileRow?.bio ?? '').trim(),
-          coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
-        };
-        councilResult = await runCoachingCouncil(councilInput);
-      }
+      const spouseRaw =
+        tumayData != null
+          ? String(tumayData.spouse_alignment ?? '').trim()
+          : '';
+      const spouseAlignment =
+        spouseRaw === 'Yes' || spouseRaw === 'No' || spouseRaw === 'Unsure'
+          ? spouseRaw
+          : 'Unknown';
+      const councilInput: CouncilInput = {
+        clientName: client.name,
+        clientId: client.id,
+        discStyle: discStyleLabel === '—' ? '' : discStyleLabel,
+        discScores: { d, i, s, c },
+        currentStage: client.inferred_stage || 'IC',
+        dangers: you2Details?.dangers ?? [],
+        strengths: you2Details?.strengths ?? [],
+        opportunities: you2Details?.opportunities ?? [],
+        oneYearVision:
+          you2Vision.trim() || persistedVisionText || '',
+        lastSessionNotes: latestSessionNotesPlain || '',
+        pinkFlags: activePinkFlagsFiltered,
+        netWorth: clientMergedFinancials.netWorth || '',
+        spouseAlignment,
+        sessionCount: fathomSessionCount,
+        coachIdentity: (coachProfileRow?.bio ?? '').trim(),
+        coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
+      };
+      const councilResult = await runCoachingCouncil(councilInput);
+      councilContext = formatCouncilContextForVisionPrompt(councilResult);
     } catch (e) {
       console.warn('vision: coaching council context skipped', e);
     }
-    const councilContext = formatCouncilContextForVisionPrompt(
-      councilOutput ?? councilResult ?? null
-    );
 
     const prompt = buildVisionStatementOllamaPrompt({
       clientName: client.name,
@@ -3129,7 +3130,6 @@ function ClientDetailModal({
   const handleGenerateBestNextQuestions = async () => {
     if (!client?.id) return;
     setCouncilLoading(true);
-    setCompletedLenses([]);
     setCouncilError(null);
     setActiveLens('chairman');
     setRatedQuestions({});
@@ -3167,18 +3167,13 @@ function ClientDetailModal({
         coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
       };
 
-      const output = await runCoachingCouncil(input, (lensName) => {
-        setCompletedLenses((prev) =>
-          prev.includes(lensName) ? prev : [...prev, lensName]
-        );
-      });
+      const output = await runCoachingCouncil(input);
       setCouncilOutput(output);
     } catch (e) {
       console.error(e);
       setCouncilError(
         'Could not generate questions. Is Ollama running?'
       );
-      setCompletedLenses([]);
     } finally {
       setCouncilLoading(false);
     }
@@ -3186,22 +3181,18 @@ function ClientDetailModal({
 
   const handleRegenerateCouncil = async () => {
     setCouncilOutput(null);
-    setCompletedLenses([]);
     setRatedQuestions({});
     await handleGenerateBestNextQuestions();
   };
 
   const handleGenerateVision = async () => {
     if (!client?.id) return;
+    setVisionGenError(null);
+    setVisionApproveMsg(null);
+    setVisionGenerating(true);
     try {
-      setVisionGenerating(true);
-      setVisionGenError(null);
-      setVisionApproveMsg(null);
-      setVisionDraftMode(false);
       const result = (await runVisionOllamaGeneration()).trim();
-      if (!result || result.length < 20) {
-        throw new Error('Empty response from Ollama');
-      }
+      if (!result) throw new Error('empty');
       await dbExecute(
         `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
         [result, client.id]
@@ -3211,11 +3202,8 @@ function ClientDetailModal({
       setVisionApproveFeedback(null);
       setVisionDraftMode(true);
       onVisionUpdated?.();
-    } catch (error) {
-      console.error('Vision generation failed:', error);
-      setVisionGenError(
-        'Could not generate vision statement. Make sure Ollama is running.'
-      );
+    } catch {
+      setVisionGenError('Generation failed. Is Ollama running?');
     } finally {
       setVisionGenerating(false);
     }
@@ -3223,17 +3211,14 @@ function ClientDetailModal({
 
   const handleRegenerateVision = async () => {
     if (!client?.id) return;
+    setVisionGenError(null);
+    setVisionApproveMsg(null);
+    setVisionEditText('');
+    setVisionGeneratedBaseline(null);
+    setVisionGenerating(true);
     try {
-      setVisionGenerating(true);
-      setVisionGenError(null);
-      setVisionApproveMsg(null);
-      setVisionDraftMode(false);
-      setVisionEditText('');
-      setVisionGeneratedBaseline(null);
       const result = (await runVisionOllamaGeneration()).trim();
-      if (!result || result.length < 20) {
-        throw new Error('Empty response from Ollama');
-      }
+      if (!result) throw new Error('empty');
       setVisionGeneratedBaseline(result);
       setVisionEditText(result);
       await dbExecute(
@@ -3243,11 +3228,8 @@ function ClientDetailModal({
       setVisionApproveFeedback(null);
       setVisionDraftMode(true);
       onVisionUpdated?.();
-    } catch (error) {
-      console.error('Vision generation failed:', error);
-      setVisionGenError(
-        'Could not generate vision statement. Make sure Ollama is running.'
-      );
+    } catch {
+      setVisionGenError('Generation failed. Is Ollama running?');
     } finally {
       setVisionGenerating(false);
     }
@@ -3286,34 +3268,23 @@ function ClientDetailModal({
         `UPDATE clients SET vision_statement = $1, vision_approved = 1, vision_approved_date = datetime('now'), updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
         [approvedText, client.id]
       );
-      try {
-        const db = await getDb();
-        await db.execute(
-          `UPDATE client_you2_profiles
-           SET one_year_vision = $1
-           WHERE client_id = $2`,
-          [approvedText, client.id]
-        );
-      } catch (dbError) {
-        console.error('Vision save error:', dbError);
-      }
-      try {
-        await dbExecute(
-          `INSERT INTO audit_log
+      await dbExecute(
+        `UPDATE client_you2_profiles SET one_year_vision = $1 WHERE client_id = $2`,
+        [approvedText, client.id]
+      );
+      await dbExecute(
+        `INSERT INTO audit_log
          (action_type, client_id, input_data, output_data, reasoning, model_used)
          VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            'vision_approved',
-            client.id,
-            null,
-            approvedText.slice(0, 100),
-            null,
-            'deterministic',
-          ]
-        );
-      } catch (auditErr) {
-        console.error('Vision audit log error:', auditErr);
-      }
+        [
+          'vision_approved',
+          client.id,
+          null,
+          approvedText.slice(0, 100),
+          null,
+          'deterministic',
+        ]
+      );
       setYou2Vision(approvedText);
       setVisionApproveFeedback({ editDistance });
       setVisionGeneratedBaseline(null);
@@ -3321,7 +3292,7 @@ function ClientDetailModal({
       setVisionApproveMsg('✅ Vision approved and saved');
       onVisionUpdated?.();
     } catch (e) {
-      console.error('Vision approve error:', e);
+      console.error(e);
       setVisionGenError('Could not approve vision. Try again.');
     }
   };
@@ -5819,40 +5790,6 @@ function ClientDetailModal({
           </TabsContent>
 
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
-            {(() => {
-              try {
-                if (visionGenError) {
-                  return (
-                    <div
-                      style={{
-                        padding: 16,
-                        background: '#FFF0F0',
-                        borderRadius: 8,
-                        border: '1px solid #F05F57',
-                        color: '#F05F57',
-                        fontSize: 13,
-                      }}
-                    >
-                      {visionGenError}
-                      <button
-                        type="button"
-                        onClick={() => setVisionGenError(null)}
-                        style={{
-                          marginTop: 8,
-                          display: 'block',
-                          color: '#7A8F95',
-                          fontSize: 12,
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  );
-                }
-                return (
             <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-6">
               <p
                 style={{
@@ -6280,18 +6217,6 @@ function ClientDetailModal({
                 </CardContent>
               </Card>
             </div>
-                );
-              } catch (error) {
-                console.error('Vision tab error:', error);
-                return (
-                  <div style={{ padding: 16, color: '#F05F57' }}>
-                    Vision statement encountered an error. Please refresh the client card.
-                    <br />
-                    Error: {String(error)}
-                  </div>
-                );
-              }
-            })()}
           </TabsContent>
 
           <TabsContent value="fathom" className="h-full min-h-0 mt-0">
@@ -6976,12 +6901,6 @@ Use reminders for:
                 };
 
                 if (councilLoading) {
-                  const lensProgress: { id: string; label: string }[] = [
-                    { id: 'readiness', label: 'Readiness Lens' },
-                    { id: 'alignment', label: 'Alignment Lens' },
-                    { id: 'integrity', label: 'Integrity Lens' },
-                  ];
-                  const allLensesDone = completedLenses.length >= 3;
                   return (
                     <div
                       className="mx-auto w-full max-w-lg"
@@ -6999,41 +6918,24 @@ Use reminders for:
                         STZ Coaching Council deliberating...
                       </p>
                       <div className="mt-6 space-y-3">
-                        {lensProgress.map(({ id, label }) => {
-                          const done = completedLenses.includes(id);
-                          return (
-                            <div key={id} className="flex items-center gap-2 text-white">
-                              {done ? (
-                                <span style={{ color: '#3BBFBF', fontSize: 14 }} aria-hidden>
-                                  ✅
-                                </span>
-                              ) : (
-                                <span
-                                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center animate-spin"
-                                  style={{ fontSize: 14, color: '#C8E8E5' }}
-                                  aria-hidden
-                                >
-                                  ⟳
-                                </span>
-                              )}
-                              <span style={{ fontSize: 13 }}>
-                                {done ? `${label} complete` : `${label} analyzing...`}
-                              </span>
-                            </div>
-                          );
-                        })}
-                        {allLensesDone ? (
-                          <div className="flex items-center gap-2 pt-1 text-white">
-                            <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                            <span style={{ fontSize: 13 }}>Chairman synthesizing...</span>
-                          </div>
-                        ) : null}
+                        <div className="flex items-center gap-2 text-white">
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                          <span style={{ fontSize: 13 }}>Readiness Lens analyzing...</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-white">
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                          <span style={{ fontSize: 13 }}>Alignment Lens analyzing...</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-white">
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                          <span style={{ fontSize: 13 }}>Integrity Lens analyzing...</span>
+                        </div>
                       </div>
                       <p
                         className="m-0 mt-4 italic"
                         style={{ color: '#C8E8E5', fontSize: 12 }}
                       >
-                        Three coaching frameworks run in sequence so you see steady progress
+                        Three coaching frameworks deliberating independently
                       </p>
                     </div>
                   );
