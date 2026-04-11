@@ -278,17 +278,6 @@ function isActiveClientProfileComplete(row: ClientCompletenessRow): boolean {
   );
 }
 
-/** Legacy bar used for coaching performance "data complete" points (pre–status-icons definition). */
-function isDataScoreProfileComplete(row: ClientCompletenessRow): boolean {
-  const vision = row.one_year_vision;
-  return (
-    Number(row.disc_profile_linked) === 1 &&
-    vision != null &&
-    String(vision).trim().length > 0 &&
-    Number(row.dated_session_count) > 0
-  );
-}
-
 function profileStatusLabel(pct: number): string {
   if (pct >= 100) return 'Complete profile';
   if (pct >= 75) return 'Missing TUMAY data';
@@ -379,31 +368,6 @@ const DISC_INSIGHT: Record<'D' | 'I' | 'S' | 'C', string> = {
   C: 'Most clients are Analyst style. Lead with data and give them time.',
 };
 
-function HeroMiniBar({
-  label,
-  value,
-  max,
-}: {
-  label: string;
-  value: number;
-  max: number;
-}) {
-  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
-  return (
-    <div className="mb-3">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-white/90">{label}</span>
-        <span className="text-[10px] tabular-nums text-white">
-          {Math.round(value * 10) / 10} / {max}
-        </span>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.15)' }}>
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: TEAL }} />
-      </div>
-    </div>
-  );
-}
-
 function TierProgressRow({
   title,
   description,
@@ -493,7 +457,6 @@ export default function MyPractice() {
   const [placementCount, setPlacementCount] = useState(0);
   const [revenueSumRaw, setRevenueSumRaw] = useState(0);
   const [c3WeekCount, setC3WeekCount] = useState(0);
-  const [c3YtdCount, setC3YtdCount] = useState(0);
   const [c1Scheduled, setC1Scheduled] = useState(0);
   const [c1Held, setC1Held] = useState(0);
   const [c4WithPoc, setC4WithPoc] = useState(0);
@@ -525,7 +488,6 @@ export default function MyPractice() {
         const now = new Date();
         const weekStart = formatLocalYyyyMmDd(startOfWeekMondayLocal(now));
         const today = formatLocalYyyyMmDd(now);
-        const yearStart = `${now.getFullYear()}-01-01`;
         const monthStart = formatLocalYyyyMmDd(startOfMonthLocal(now));
 
         const activeSql = `c.outcome_bucket = 'active'`;
@@ -540,7 +502,6 @@ export default function MyPractice() {
           placementRows,
           revenueRows,
           c3WeekRows,
-          c3YtdRows,
           c1SchedRows,
           c1HeldRows,
           c4Rows,
@@ -689,14 +650,6 @@ export default function MyPractice() {
           ),
           db.select<{ cnt: number }>(
             `SELECT COUNT(*) as cnt FROM coaching_sessions s
-             WHERE s.stage = 'C3'
-               AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
-               AND date(s.session_date) >= date($1)
-               AND date(s.session_date) <= date($2)`,
-            [yearStart, today]
-          ),
-          db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM coaching_sessions s
              WHERE s.stage = 'C1'
                  AND s.session_scheduled = 1
                  AND s.session_date IS NOT NULL AND TRIM(s.session_date) != ''
@@ -808,7 +761,6 @@ export default function MyPractice() {
           )
         );
         setC3WeekCount(Number(tauriSqlFirst(c3WeekRows)?.cnt ?? 0));
-        setC3YtdCount(Number(tauriSqlFirst(c3YtdRows)?.cnt ?? 0));
         setC1Scheduled(Number(tauriSqlFirst(c1SchedRows)?.cnt ?? 0));
         setC1Held(Number(tauriSqlFirst(c1HeldRows)?.cnt ?? 0));
         setC4WithPoc(Number(tauriSqlFirst(c4Rows)?.with_poc ?? 0));
@@ -872,11 +824,6 @@ export default function MyPractice() {
     ? 0
     : Math.max(1, placementsBehind > 0 ? placementsBehind : 1);
 
-  const jan1 = new Date(refNow.getFullYear(), 0, 1);
-  const weeksElapsedYtd = Math.max(1, Math.ceil((refNow.getTime() - jan1.getTime()) / (7 * 86_400_000)));
-  const c3WeeklyAvgYtd = c3YtdCount / weeksElapsedYtd;
-  const c3ForNorthStar = c3WeekCount > 0 ? c3WeekCount : c3WeeklyAvgYtd;
-
   const c1ShowPct =
     c1Scheduled === 0 ? null : Math.min(100, Math.round((c1Held / c1Scheduled) * 1000) / 10);
   const c4ConversionPct = safePct(c4WithPoc, c4Total);
@@ -884,9 +831,6 @@ export default function MyPractice() {
     interventionTotal <= 0 ? 100 : safePct(interventionResponded, interventionTotal);
 
   const completeCount = clientsComplete.filter((row) => isActiveClientProfileComplete(row)).length;
-  const dataScoreCompleteCount = clientsComplete.filter((row) =>
-    isDataScoreProfileComplete(row)
-  ).length;
 
   const clearDims: {
     key: keyof Pick<ClearAgg, 'contracting' | 'listening' | 'exploring' | 'action' | 'reflection'>;
@@ -909,46 +853,8 @@ export default function MyPractice() {
   const avgClear =
     finiteDims.length > 0 ? finiteDims.reduce((a, b) => a + b, 0) / finiteDims.length : null;
 
-  const placementPacePts = Math.min(25, (placementCount / PLACEMENT_TARGET) * 25);
-  const c3NorthStarPts = Math.min(20, (c3ForNorthStar / C3_WEEKLY_TARGET) * 20);
-  const interventionPts =
-    interventionTotal <= 0 ? 20 : (interventionResponded / interventionTotal) * 20;
-  const dataCompletePts =
-    activeClientTotal <= 0 ? 0 : (dataScoreCompleteCount / activeClientTotal) * 15;
-  let clearQualityPts = 10;
-  if (totalSessions > 0 && avgClear != null) {
-    if (avgClear >= 4) clearQualityPts = 10;
-    else if (avgClear >= 3) clearQualityPts = 7;
-    else if (avgClear >= 2) clearQualityPts = 4;
-    else clearQualityPts = 0;
-  }
-  let ahaPts = 0;
-  if (ahaMonthCount >= 4) ahaPts = 10;
-  else if (ahaMonthCount >= 2) ahaPts = 7;
-  else if (ahaMonthCount >= 1) ahaPts = 4;
-
-  const performanceScore = Math.round(
-    Math.min(
-      100,
-      placementPacePts +
-        c3NorthStarPts +
-        interventionPts +
-        dataCompletePts +
-        clearQualityPts +
-        ahaPts
-    )
-  );
-
   const myPracticePipelineCompletenessPct =
     activeClientTotal <= 0 ? 100 : Math.round((completeCount / activeClientTotal) * 100);
-
-  const scoreLabelSpec = (() => {
-    if (performanceScore >= 90) return { text: 'Elite', color: TEAL };
-    if (performanceScore >= 75) return { text: 'Strong', color: TEAL };
-    if (performanceScore >= 60) return { text: 'Building', color: CORAL };
-    if (performanceScore >= 40) return { text: 'Developing', color: CORAL };
-    return { text: 'Early Stage', color: MUTED };
-  })();
 
   const weeksSince = weeksSinceInstallRounded(refNow, installDate);
   const timeSavedHours = Math.round(weeksSince * weeklyHoursSaved * 10) / 10;
@@ -1051,13 +957,14 @@ export default function MyPractice() {
         </p>
       </header>
 
-      {/* ZONE 1 — PERFORMANCE SCORE */}
+      {/* ZONE 1 — PERFORMANCE SCORE (placeholder) */}
       <section
-        className="overflow-hidden text-white shadow-lg"
+        className="overflow-hidden shadow-lg"
         style={{
           borderRadius: 16,
           padding: '28px 32px',
-          background: 'linear-gradient(135deg, #2D4459 0%, #1a2d3d 100%)',
+          background: '#FFFFFF',
+          border: `1px solid ${BORDER}`,
         }}
       >
         <div className="mb-4 flex flex-wrap items-start justify-end gap-2">
@@ -1066,49 +973,16 @@ export default function MyPractice() {
             dataCompleteness={myPracticePipelineCompletenessPct}
           />
         </div>
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-          <div className="min-w-0 flex-1 lg:w-1/2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
-              Coaching performance score
-            </p>
-            <p className="mt-2 font-bold tabular-nums leading-none" style={{ fontSize: 56 }}>
-              {performanceScore}
-            </p>
-            <p className="mt-2 text-lg font-semibold" style={{ color: scoreLabelSpec.color }}>
-              {scoreLabelSpec.text}
-            </p>
-            <p
-              className="mx-auto italic"
-              style={{
-                color: '#7A8F95',
-                fontSize: 12,
-                marginTop: 8,
-                maxWidth: 300,
-                textAlign: 'center',
-              }}
-            >
-              This score starts low and grows every day you use Coach Bot. Response rate and CLEAR
-              quality are already perfect. Keep coaching.
-            </p>
-            <p className="mt-3 text-xs text-white/60">Updated daily as you coach</p>
-          </div>
-          <div className="min-w-0 flex-1 lg:w-1/2 lg:pl-4">
-            <HeroMiniBar label="Placement pace" value={placementPacePts} max={25} />
-            <HeroMiniBar label="C3 north star" value={c3NorthStarPts} max={20} />
-            <HeroMiniBar label="Response rate" value={interventionPts} max={20} />
-            <HeroMiniBar label="Data complete" value={dataCompletePts} max={15} />
-            <HeroMiniBar label="CLEAR quality" value={clearQualityPts} max={10} />
-            <HeroMiniBar label="Aha moments" value={ahaPts} max={10} />
-            <p className="mt-1 text-sm font-bold text-white">
-              Total: {performanceScore} / 100
-            </p>
-          </div>
+        <div style={{ padding: 16 }}>
+          <p
+            style={{
+              color: '#7A8F95',
+              fontSize: 13,
+            }}
+          >
+            Coaching Quality Score — rebuilding
+          </p>
         </div>
-        <p className="mt-8 border-t border-white/10 pt-4 text-[10px] italic leading-relaxed text-white/40">
-          Year 2: Coach Bot begins learning from your coaching patterns and feedback. The longer you use it,
-          the smarter it gets. Your coaching style becomes part of the intelligence. Your AI learns your
-          clients, your language, and your coaching style. This score compounds.
-        </p>
       </section>
 
       {/* ZONE 2 — TABS */}
