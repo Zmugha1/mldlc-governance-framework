@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import type Database from '@tauri-apps/plugin-sql';
 import { getDb } from '../services/db';
+import {
+  getCorrectionStats,
+  type CorrectionStats,
+} from '../services/correctionService';
 import UATFeedback from '@/components/UATFeedback';
 import { HealthIndicator } from '../components/HealthIndicator';
 
@@ -151,6 +156,338 @@ type GoneQuietClientRow = {
   updated_at: string | null;
   last_sess: string | null;
 };
+
+interface CLEARDimensionScore {
+  dimension: string;
+  label: string;
+  score: number;
+  maxScore: number;
+  percentage: number;
+  sessionCount: number;
+  insight: string;
+}
+
+interface CLEARScore {
+  overall: number;
+  dimensions: CLEARDimensionScore[];
+  sessionCount: number;
+  clientCount: number;
+  dataQuality: 'rich' | 'moderate' | 'thin';
+  caveat: string | null;
+}
+
+interface PipelineScore {
+  overall: number;
+  icToC1Rate: number;
+  c1ToC2Rate: number;
+  c2ToC3Rate: number;
+  c3ToC4Rate: number;
+  avgDaysPerStage: number;
+  placementRate: number;
+}
+
+interface CouncilScore {
+  approvalRate: number;
+  totalRated: number;
+  trend: 'improving' | 'declining' | 'stable';
+}
+
+interface CoachingQualityScore {
+  overall: number;
+  clearScore: CLEARScore;
+  pipelineScore: PipelineScore;
+  councilScore: CouncilScore;
+  grade: string;
+  gradeLabel: string;
+  primaryInsight: string;
+  improvementArea: string;
+}
+
+type ClearSessionBlockRow = {
+  client_id: string;
+  block_opening: string | null;
+  block_emotional: string | null;
+  block_life_context: string | null;
+  block_vision: string | null;
+  block_disc_signals: string | null;
+  block_objections: string | null;
+  block_commitments: string | null;
+  block_reflection: string | null;
+  block_coach_assessment: string | null;
+  next_actions: string | null;
+  notes: string | null;
+};
+
+function councilTrendFromStats(
+  stats: CorrectionStats | null
+): CouncilScore['trend'] {
+  const w = stats?.weekly_trend ?? [];
+  if (w.length < 2) return 'stable';
+  const a = w[0]?.approval_rate ?? 0;
+  const b = w[1]?.approval_rate ?? 0;
+  if (a > b) return 'improving';
+  if (a < b) return 'declining';
+  return 'stable';
+}
+
+async function calculateCLEARScore(
+  db: Database
+): Promise<CLEARScore> {
+  const sessions = await db.select<ClearSessionBlockRow[]>(
+    `SELECT
+       cs.client_id,
+       cs.block_opening,
+       cs.block_emotional,
+       cs.block_life_context,
+       cs.block_vision,
+       cs.block_disc_signals,
+       cs.block_objections,
+       cs.block_commitments,
+       cs.block_reflection,
+       cs.block_coach_assessment,
+       cs.next_actions,
+       cs.notes
+     FROM coaching_sessions cs
+     WHERE cs.notes IS NOT NULL
+       AND LENGTH(TRIM(cs.notes)) > 20
+     ORDER BY cs.session_date DESC`,
+    []
+  );
+
+  const rows = sessions;
+
+  if (rows.length === 0) {
+    return {
+      overall: 0,
+      dimensions: [],
+      sessionCount: 0,
+      clientCount: 0,
+      dataQuality: 'thin',
+      caveat:
+        'Upload Fathom transcripts to calculate your coaching quality score.',
+    };
+  }
+
+  function scoreBlock(text: string | null | undefined): number {
+    if (text == null) return 0;
+    const t = String(text).trim();
+    if (t.length === 0) return 0;
+    const low = t.toLowerCase();
+    if (
+      low === 'unknown' ||
+      low === 'null' ||
+      low === 'none'
+    ) {
+      return 0;
+    }
+    if (t.length < 20) return 1;
+    if (t.length < 60) return 2;
+    return 3;
+  }
+
+  const dimensionConfigs = [
+    {
+      dimension: 'C',
+      label: 'Connect',
+      blocks: ['block_opening', 'block_emotional'] as const,
+      insight: {
+        high:
+          'Strong session openings and emotional connection',
+        low:
+          'Focus on opening with deeper emotional discovery',
+      },
+    },
+    {
+      dimension: 'L',
+      label: 'Listen',
+      blocks: ['block_life_context', 'block_disc_signals'] as const,
+      insight: {
+        high:
+          'Excellent pattern awareness and DISC adaptation',
+        low:
+          'Explore client life context more deeply before moving forward',
+      },
+    },
+    {
+      dimension: 'E',
+      label: 'Explore',
+      blocks: ['block_vision', 'block_objections'] as const,
+      insight: {
+        high: 'Strong vision work and objection handling',
+        low:
+          'Spend more time on possibility exploration before addressing concerns',
+      },
+    },
+    {
+      dimension: 'A',
+      label: 'Activate',
+      blocks: ['block_commitments', 'next_actions'] as const,
+      insight: {
+        high: 'Clear commitments and next steps defined',
+        low:
+          'Strengthen commitment language and concrete next steps',
+      },
+    },
+    {
+      dimension: 'R',
+      label: 'Reflect',
+      blocks: ['block_reflection', 'block_coach_assessment'] as const,
+      insight: {
+        high: 'Consistent insight locking and self-assessment',
+        low:
+          'Build reflection habit to lock insights before ending sessions',
+      },
+    },
+  ] as const;
+
+  const scoredDimensions = dimensionConfigs.map((config) => {
+    let totalScore = 0;
+    let maxPossible = 0;
+    let sessionCount = 0;
+
+    for (const row of rows) {
+      let sessionScore = 0;
+      for (const block of config.blocks) {
+        sessionScore += scoreBlock(row[block]);
+      }
+      if (sessionScore > 0) {
+        sessionCount += 1;
+      }
+      totalScore += sessionScore;
+      maxPossible += config.blocks.length * 3;
+    }
+
+    const percentage =
+      maxPossible > 0
+        ? Math.round((totalScore / maxPossible) * 100)
+        : 0;
+
+    return {
+      dimension: config.dimension,
+      label: config.label,
+      score: totalScore,
+      maxScore: maxPossible,
+      percentage,
+      sessionCount,
+      insight:
+        percentage >= 60 ? config.insight.high : config.insight.low,
+    } satisfies CLEARDimensionScore;
+  });
+
+  const overallPercentage = Math.round(
+    scoredDimensions.reduce((sum, d) => sum + d.percentage, 0) /
+      scoredDimensions.length
+  );
+
+  const uniqueClients = new Set(
+    rows.map((r) => String(r.client_id ?? ''))
+  ).size;
+
+  const dataQuality: CLEARScore['dataQuality'] =
+    rows.length >= 10 ? 'rich' : rows.length >= 5 ? 'moderate' : 'thin';
+
+  const caveat =
+    rows.length < 5
+      ? `Based on ${rows.length} session${rows.length === 1 ? '' : 's'} - upload more Fathom transcripts for a more accurate score`
+      : null;
+
+  return {
+    overall: overallPercentage,
+    dimensions: scoredDimensions,
+    sessionCount: rows.length,
+    clientCount: uniqueClients,
+    dataQuality,
+    caveat,
+  };
+}
+
+async function calculatePipelineScore(
+  db: Database
+): Promise<PipelineScore> {
+  const movements = await db.select<
+    {
+      from_stage: string | null;
+      to_stage: string | null;
+      cnt: number;
+    }[]
+  >(
+    `SELECT
+       from_stage,
+       to_stage,
+       COUNT(*) as cnt
+     FROM client_stage_log
+     WHERE from_stage IS NOT NULL
+       AND TRIM(from_stage) != ''
+       AND to_stage IS NOT NULL
+       AND TRIM(to_stage) != ''
+     GROUP BY from_stage, to_stage`,
+    []
+  );
+
+  const rows = movements;
+
+  function getRate(from: string, to: string): number {
+    const forward = Number(
+      rows.find(
+        (r) =>
+          String(r.from_stage ?? '').trim() === from &&
+          String(r.to_stage ?? '').trim() === to
+      )?.cnt ?? 0
+    );
+    const total = rows
+      .filter((r) => String(r.from_stage ?? '').trim() === from)
+      .reduce((s, r) => s + Number(r.cnt ?? 0), 0);
+    if (total === 0) return 0;
+    return Math.round((forward / total) * 100);
+  }
+
+  const placements = await db.select<{ cnt: number }[]>(
+    `SELECT COUNT(*) as cnt
+     FROM clients
+     WHERE outcome_bucket = 'converted'`,
+    []
+  );
+
+  const totalClients = await db.select<{ cnt: number }[]>(
+    `SELECT COUNT(*) as cnt
+     FROM clients
+     WHERE COALESCE(outcome_bucket, '') != 'inactive'`,
+    []
+  );
+
+  const placementCount = Number(placements[0]?.cnt ?? 0);
+  const total = Math.max(1, Number(totalClients[0]?.cnt ?? 1));
+
+  const placementRate = Math.round(
+    (placementCount / total) * 100
+  );
+
+  const icToC1 = getRate('IC', 'C1');
+  const c1ToC2 = getRate('C1', 'C2');
+  const c2ToC3 = getRate('C2', 'C3');
+  const c3ToC4 = getRate('C3', 'C4');
+
+  const rates = [icToC1, c1ToC2, c2ToC3, c3ToC4].filter(
+    (r) => r > 0
+  );
+
+  const overall =
+    rates.length > 0
+      ? Math.round(
+          rates.reduce((s, r) => s + r, 0) / rates.length
+        )
+      : 0;
+
+  return {
+    overall,
+    icToC1Rate: icToC1,
+    c1ToC2Rate: c1ToC2,
+    c2ToC3Rate: c2ToC3,
+    c3ToC4Rate: c3ToC4,
+    avgDaysPerStage: 0,
+    placementRate,
+  };
+}
 
 function tauriSqlRows<T>(r: T | T[] | null | undefined): T[] {
   if (r == null) return [];
@@ -474,10 +811,118 @@ export default function MyPractice() {
   const [emotionalWith, setEmotionalWith] = useState(0);
   const [emotionalTotal, setEmotionalTotal] = useState(0);
 
+  const [correctionStats, setCorrectionStats] =
+    useState<CorrectionStats | null>(null);
+  const [coachingQuality, setCoachingQuality] =
+    useState<CoachingQualityScore | null>(null);
+  const [qualityLoading, setQualityLoading] =
+    useState(true);
+
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const s = await getCorrectionStats();
+        if (!cancelled) setCorrectionStats(s);
+      } catch {
+        if (!cancelled) setCorrectionStats(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadQuality = async () => {
+      try {
+        setQualityLoading(true);
+        const db = await getDb();
+        const [clear, pipeline] = await Promise.all([
+          calculateCLEARScore(db),
+          calculatePipelineScore(db),
+        ]);
+
+        const councilScore: CouncilScore = {
+          approvalRate:
+            correctionStats?.approval_rate ?? 0,
+          totalRated:
+            (correctionStats?.question_thumbs_up ??
+              0) +
+            (correctionStats?.question_thumbs_down ??
+              0),
+          trend: councilTrendFromStats(correctionStats),
+        };
+
+        const overall = Math.round(
+          clear.overall * 0.5 +
+            pipeline.overall * 0.3 +
+            councilScore.approvalRate * 0.2
+        );
+
+        const lowestDimension =
+          clear.dimensions.length > 0
+            ? clear.dimensions.reduce((min, d) =>
+                d.percentage < min.percentage ? d : min,
+                clear.dimensions[0]
+              )
+            : null;
+
+        const grade =
+          overall >= 85
+            ? 'A'
+            : overall >= 70
+              ? 'B'
+              : overall >= 55
+                ? 'C'
+                : overall >= 40
+                  ? 'D'
+                  : 'F';
+
+        const gradeLabel =
+          overall >= 85
+            ? 'Expert Coach'
+            : overall >= 70
+              ? 'Proficient Coach'
+              : overall >= 55
+                ? 'Developing Coach'
+                : overall >= 40
+                  ? 'Early Stage'
+                  : 'Getting Started';
+
+        const primaryInsight =
+          clear.sessionCount === 0
+            ? 'Upload Fathom transcripts to see your coaching quality score'
+            : `Your coaching is grounded in ${clear.sessionCount} verified sessions across ${clear.clientCount} clients`;
+
+        const improvementArea = lowestDimension
+          ? `Focus area: ${lowestDimension.label} - ${lowestDimension.insight}`
+          : 'Upload more sessions to identify your focus area';
+
+        setCoachingQuality({
+          overall,
+          clearScore: clear,
+          pipelineScore: pipeline,
+          councilScore,
+          grade,
+          gradeLabel,
+          primaryInsight,
+          improvementArea,
+        });
+      } catch (err) {
+        console.error('Quality score error:', err);
+      } finally {
+        setQualityLoading(false);
+      }
+    };
+
+    void loadQuality();
+  }, [correctionStats]);
 
   useEffect(() => {
     let cancelled = false;
@@ -924,6 +1369,10 @@ export default function MyPractice() {
     { id: 'adoption', label: 'Adoption' },
     { id: 'intelligence', label: 'Intelligence' },
   ];
+
+  void coachingQuality;
+  void qualityLoading;
+  void correctionStats;
 
   if (loading) {
     return (
