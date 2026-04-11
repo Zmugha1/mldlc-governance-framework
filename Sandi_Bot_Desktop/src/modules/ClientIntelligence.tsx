@@ -1928,8 +1928,12 @@ function ClientDetailModal({
     return { netWorth, creditScore, timeCommit };
   }, [you2Details, tumayReadinessProfile, tumayData]);
 
-  const persistedVisionText = (client.visionStatement.paragraph ?? '').trim();
-  const visionIsApproved = client.vision_approved === 1;
+  const persistedVisionText = String(
+    client?.vision_statement ||
+      client?.visionStatement ||
+      ''
+  ).trim();
+  const visionIsApproved = client?.vision_approved === 1;
 
   const sandiReadinessDimensions = useMemo(() => {
     const code = resolvedPipelineCode;
@@ -5656,7 +5660,7 @@ Sound like a person not a report.`;
                       lineHeight: 1.8,
                     }}
                   >
-                    {persistedVisionText}
+                    {String(persistedVisionText || '')}
                   </div>
                   {visionApproveMsg ? (
                     <p className="m-0" style={{ color: '#3BBFBF', fontSize: 13 }}>
