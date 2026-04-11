@@ -659,6 +659,18 @@ async function visionWriteBytesToDownloads(
   });
 }
 
+// ADR: em dashes never allowed in user-visible or AI-generated content per
+// CLAUDE.md rule. LLMs ignore prompt rules for style so must post-process.
+function sanitizeVisionEmDashes(raw: string): string {
+  return raw
+    .replace(/\u2014/g, ',')
+    .replace(/\u2013/g, ',')
+    .replace(/--/g, ',')
+    .replace(/ , /g, ', ')
+    .replace(/,,/g, ',')
+    .trim();
+}
+
 function formatCommunicationDosForPrompt(raw: string | null | undefined): string {
   const t = (raw ?? '').trim();
   if (!t) return '—';
@@ -3333,7 +3345,9 @@ not generic statements.${feedbackSection}`;
         );
       }
 
-      setVisionText(generated);
+      const sanitized =
+        sanitizeVisionEmDashes(generated);
+      setVisionText(sanitized);
       setVisionGenerating(false);
     } catch (err) {
       console.error(
@@ -3352,7 +3366,9 @@ not generic statements.${feedbackSection}`;
     async (): Promise<void> => {
       if (!client?.id) return;
       try {
-        const text = visionText.trim();
+        const text = sanitizeVisionEmDashes(
+          visionText
+        );
         if (!text) return;
 
         const PptxGenJS =
