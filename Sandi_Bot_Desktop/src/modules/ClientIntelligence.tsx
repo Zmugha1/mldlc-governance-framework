@@ -727,22 +727,23 @@ function longestCommonSubsequence(a: string, b: string): number {
   return matches;
 }
 
-function formatCouncilContextForVisionPrompt(out: CouncilOutput): string {
-  const gaps = [
-    ...out.uncertaintyAudit.missing,
-    ...out.uncertaintyAudit.unverified,
-  ];
-  return [
-    `Chairman insight: ${out.chairmanSynthesis.primaryInsight}`,
-    `Coaching posture: ${out.chairmanSynthesis.coachingPosture}`,
-    `Minority perspective: ${out.chairmanSynthesis.minorityPerspective}`,
-    `Chairman questions (themes only, do not paste as a list in the vision): ${out.chairmanSynthesis.recommendedQuestions.join(' | ')}`,
-    `Readiness (${out.readinessLens.confidence}%): ${out.readinessLens.insight}`,
-    `Alignment (${out.alignmentLens.confidence}%): ${out.alignmentLens.insight}`,
-    `Integrity (${out.integrityLens.confidence}%): ${out.integrityLens.insight}`,
-    `Verified inputs: ${out.uncertaintyAudit.verified.join('; ') || 'none'}`,
-    `Data gaps (address responsibly, no meta-labels in client text): ${gaps.join('; ') || 'none'}`,
-  ].join('\n');
+function formatCouncilContextForVisionPrompt(
+  out: CouncilOutput | null | undefined
+): string {
+  if (!out) return '';
+  try {
+    const rq = Array.isArray(out.chairmanSynthesis?.recommendedQuestions)
+      ? out.chairmanSynthesis.recommendedQuestions
+      : [];
+    return [
+      `Chairman insight: ${out.chairmanSynthesis?.primaryInsight ?? ''}`,
+      `Coaching posture: ${out.chairmanSynthesis?.coachingPosture ?? ''}`,
+      `Chairman questions (themes only):
+${rq.join(' | ')}`,
+    ].join('\n');
+  } catch {
+    return '';
+  }
 }
 
 function buildVisionStatementOllamaPrompt(args: {
@@ -3042,40 +3043,44 @@ function ClientDetailModal({
     const lastNotes =
       latestSessionNotesPlain.trim() || 'No sessions yet';
 
-    let councilContext = '';
+    let councilResult: CouncilOutput | null = null;
     try {
-      const spouseRaw =
-        tumayData != null
-          ? String(tumayData.spouse_alignment ?? '').trim()
-          : '';
-      const spouseAlignment =
-        spouseRaw === 'Yes' || spouseRaw === 'No' || spouseRaw === 'Unsure'
-          ? spouseRaw
-          : 'Unknown';
-      const councilInput: CouncilInput = {
-        clientName: client.name,
-        clientId: client.id,
-        discStyle: discStyleLabel === '—' ? '' : discStyleLabel,
-        discScores: { d, i, s, c },
-        currentStage: client.inferred_stage || 'IC',
-        dangers: you2Details?.dangers ?? [],
-        strengths: you2Details?.strengths ?? [],
-        opportunities: you2Details?.opportunities ?? [],
-        oneYearVision:
-          you2Vision.trim() || persistedVisionText || '',
-        lastSessionNotes: latestSessionNotesPlain || '',
-        pinkFlags: activePinkFlagsFiltered,
-        netWorth: clientMergedFinancials.netWorth || '',
-        spouseAlignment,
-        sessionCount: fathomSessionCount,
-        coachIdentity: (coachProfileRow?.bio ?? '').trim(),
-        coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
-      };
-      const councilResult = await runCoachingCouncil(councilInput);
-      councilContext = formatCouncilContextForVisionPrompt(councilResult);
+      if (!councilOutput) {
+        const spouseRaw =
+          tumayData != null
+            ? String(tumayData.spouse_alignment ?? '').trim()
+            : '';
+        const spouseAlignment =
+          spouseRaw === 'Yes' || spouseRaw === 'No' || spouseRaw === 'Unsure'
+            ? spouseRaw
+            : 'Unknown';
+        const councilInput: CouncilInput = {
+          clientName: client.name,
+          clientId: client.id,
+          discStyle: discStyleLabel === '—' ? '' : discStyleLabel,
+          discScores: { d, i, s, c },
+          currentStage: client.inferred_stage || 'IC',
+          dangers: you2Details?.dangers ?? [],
+          strengths: you2Details?.strengths ?? [],
+          opportunities: you2Details?.opportunities ?? [],
+          oneYearVision:
+            you2Vision.trim() || persistedVisionText || '',
+          lastSessionNotes: latestSessionNotesPlain || '',
+          pinkFlags: activePinkFlagsFiltered,
+          netWorth: clientMergedFinancials.netWorth || '',
+          spouseAlignment,
+          sessionCount: fathomSessionCount,
+          coachIdentity: (coachProfileRow?.bio ?? '').trim(),
+          coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
+        };
+        councilResult = await runCoachingCouncil(councilInput);
+      }
     } catch (e) {
       console.warn('vision: coaching council context skipped', e);
     }
+    const councilContext = formatCouncilContextForVisionPrompt(
+      councilOutput ?? councilResult ?? null
+    );
 
     const prompt = buildVisionStatementOllamaPrompt({
       clientName: client.name,
@@ -3188,12 +3193,15 @@ function ClientDetailModal({
 
   const handleGenerateVision = async () => {
     if (!client?.id) return;
-    setVisionGenError(null);
-    setVisionApproveMsg(null);
-    setVisionGenerating(true);
     try {
+      setVisionGenerating(true);
+      setVisionGenError(null);
+      setVisionApproveMsg(null);
+      setVisionDraftMode(false);
       const result = (await runVisionOllamaGeneration()).trim();
-      if (!result) throw new Error('empty');
+      if (!result || result.length < 20) {
+        throw new Error('Empty response from Ollama');
+      }
       await dbExecute(
         `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
         [result, client.id]
@@ -3204,9 +3212,9 @@ function ClientDetailModal({
       setVisionDraftMode(true);
       onVisionUpdated?.();
     } catch (error) {
-      console.error('Vision generation error:', error);
+      console.error('Vision generation failed:', error);
       setVisionGenError(
-        'Could not generate vision statement. Is Ollama running?'
+        'Could not generate vision statement. Make sure Ollama is running.'
       );
     } finally {
       setVisionGenerating(false);
@@ -3215,14 +3223,17 @@ function ClientDetailModal({
 
   const handleRegenerateVision = async () => {
     if (!client?.id) return;
-    setVisionGenError(null);
-    setVisionApproveMsg(null);
-    setVisionEditText('');
-    setVisionGeneratedBaseline(null);
-    setVisionGenerating(true);
     try {
+      setVisionGenerating(true);
+      setVisionGenError(null);
+      setVisionApproveMsg(null);
+      setVisionDraftMode(false);
+      setVisionEditText('');
+      setVisionGeneratedBaseline(null);
       const result = (await runVisionOllamaGeneration()).trim();
-      if (!result) throw new Error('empty');
+      if (!result || result.length < 20) {
+        throw new Error('Empty response from Ollama');
+      }
       setVisionGeneratedBaseline(result);
       setVisionEditText(result);
       await dbExecute(
@@ -3233,9 +3244,9 @@ function ClientDetailModal({
       setVisionDraftMode(true);
       onVisionUpdated?.();
     } catch (error) {
-      console.error('Vision generation error:', error);
+      console.error('Vision generation failed:', error);
       setVisionGenError(
-        'Could not generate vision statement. Is Ollama running?'
+        'Could not generate vision statement. Make sure Ollama is running.'
       );
     } finally {
       setVisionGenerating(false);
@@ -5810,6 +5821,37 @@ function ClientDetailModal({
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
             {(() => {
               try {
+                if (visionGenError) {
+                  return (
+                    <div
+                      style={{
+                        padding: 16,
+                        background: '#FFF0F0',
+                        borderRadius: 8,
+                        border: '1px solid #F05F57',
+                        color: '#F05F57',
+                        fontSize: 13,
+                      }}
+                    >
+                      {visionGenError}
+                      <button
+                        type="button"
+                        onClick={() => setVisionGenError(null)}
+                        style={{
+                          marginTop: 8,
+                          display: 'block',
+                          color: '#7A8F95',
+                          fontSize: 12,
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  );
+                }
                 return (
             <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-6">
               <p
