@@ -19,6 +19,7 @@ import {
   Shield,
   HelpCircle,
   Layers,
+  Activity,
 } from 'lucide-react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
@@ -41,6 +42,7 @@ import MyPractice from './modules/MyPractice';
 import AdminStreamliner from '@/modules/AdminStreamliner';
 import AuditTransparency from '@/modules/AuditTransparency';
 import HowToUse from '@/modules/HowToUse';
+import SystemHealth from '@/modules/SystemHealth';
 import { seedKnowledgeBase } from '@/services/knowledgeSeed';
 import { registerGmailTool } from './services/gmailTool';
 import { registerCalendarTool } from './services/calendarTool';
@@ -108,6 +110,7 @@ type ModuleType =
   | 'clients'
   | 'coaching'
   | 'practice'
+  | 'systemhealth'
   | 'admin'
   | 'audit'
   | 'help';
@@ -124,6 +127,7 @@ const mainNavItems: MainNavItem[] = [
   { id: 'clients', label: 'Client Intelligence', icon: Users },
   { id: 'coaching', label: 'Coaching Actions', icon: Zap },
   { id: 'practice', label: 'My Practice', icon: BarChart2 },
+  { id: 'systemhealth', label: 'System Health', icon: Activity },
 ];
 
 const footerNavItems: Array<{
@@ -786,6 +790,25 @@ function App() {
         return (
           <ErrorBoundary moduleName="My Practice">
             <MyPractice />
+          </ErrorBoundary>
+        );
+      case 'systemhealth':
+        return (
+          <ErrorBoundary moduleName="System Health">
+            <SystemHealth
+              onNavigateToCaptureUat={() => {
+                setActiveModule('admin');
+                window.setTimeout(() => {
+                  const list = document.querySelector('[data-slot="tabs-list"].mb-4');
+                  const triggers = list?.querySelectorAll('[data-slot="tabs-trigger"]');
+                  triggers?.forEach((el) => {
+                    if (el.textContent?.includes('Feedback')) {
+                      (el as HTMLButtonElement).click();
+                    }
+                  });
+                }, 600);
+              }}
+            />
           </ErrorBoundary>
         );
       case 'admin':
