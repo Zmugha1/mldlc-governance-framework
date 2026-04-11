@@ -269,6 +269,34 @@ function formatFathomSessionCardDate(iso: string | null | undefined): string {
   });
 }
 
+const NOT_CAPTURED_NEXT = 'Not captured in this session';
+
+function formatNextActions(val: unknown): string {
+  if (val === null || val === undefined) return NOT_CAPTURED_NEXT;
+  if (Array.isArray(val)) {
+    const joined = val
+      .filter(Boolean)
+      .map((x) => String(x).trim())
+      .filter((x) => x.length > 0)
+      .join(', ');
+    return joined.length > 0 ? joined : NOT_CAPTURED_NEXT;
+  }
+  const str = String(val).trim();
+  if (str === '[]' || str === '' || str.toLowerCase() === 'null') return NOT_CAPTURED_NEXT;
+  try {
+    const arr = JSON.parse(str) as unknown;
+    if (!Array.isArray(arr) || arr.length === 0) return NOT_CAPTURED_NEXT;
+    const joined = arr
+      .filter(Boolean)
+      .map((x) => String(x).trim())
+      .filter((x) => x.length > 0)
+      .join(', ');
+    return joined.length > 0 ? joined : NOT_CAPTURED_NEXT;
+  } catch {
+    return str.length > 2 ? str : NOT_CAPTURED_NEXT;
+  }
+}
+
 function sanitizeSessionNotes(notes: string | null): string {
   if (!notes) return '';
   const trimmed = notes.trim();
@@ -1554,6 +1582,8 @@ function ClientDetailModal({
   const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
   const [editingSessionNotes, setEditingSessionNotes] = useState('');
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null);
+  const [editingNotesId, setEditingNotesId] = useState<number | null>(null);
+  const [editingNotesText, setEditingNotesText] = useState('');
   const [placementPocReached, setPlacementPocReached] = useState<string | null>(
     null
   );
@@ -1805,6 +1835,8 @@ function ClientDetailModal({
     setAddSessionMode('fathom');
     setFathomPasteText('');
     setFathomNotesExpanded({});
+    setEditingNotesId(null);
+    setEditingNotesText('');
   }, [client?.id]);
 
   useEffect(() => {
@@ -6674,12 +6706,13 @@ not generic statements.${feedbackSection}`;
                 <div className="space-y-2">
                   {fathomSessions.map((s, idx) => {
                     const plainNotes = fathomSessionPlainNotes(s);
-                    const hasNext = (s.next_actions ?? '').trim().length > 0;
+                    const nextActionsFormatted = formatNextActions(s.next_actions);
+                    const hasNextMeaningful = nextActionsFormatted !== NOT_CAPTURED_NEXT;
                     const hasAnyBlockRaw = blockDefinitions.some((d) =>
                       !fathomBlockRawEmpty(s[d.key as keyof typeof s] as string | null)
                     );
                     const hasStructured = hasAnyBlockRaw;
-                    const isEmptyShell = !hasStructured && !plainNotes && !hasNext;
+                    const isEmptyShell = !hasStructured && !plainNotes && !hasNextMeaningful;
                     const clearScore =
                       s.overall_clear_score != null ? Number(s.overall_clear_score) : null;
                     const clearStyle =
@@ -6975,20 +7008,175 @@ not generic statements.${feedbackSection}`;
                                 {blocksExpanded ? (
                                   <div className="mt-2 space-y-2">
                                     {blockDefinitions.map((def) => renderFathomStructuredSection(s, def))}
+                                    <div
+                                      style={{
+                                        marginTop: 12,
+                                        borderTop: '1px solid #F4F7F8',
+                                        paddingTop: 12,
+                                      }}
+                                    >
+                                      <p
+                                        style={{
+                                          color: '#2D4459',
+                                          fontSize: 12,
+                                          fontWeight: 'bold',
+                                          margin: '0 0 6px',
+                                        }}
+                                      >
+                                        📝 Sandi&apos;s Notes
+                                      </p>
+                                      {editingNotesId === s.id ? (
+                                        <div>
+                                          <textarea
+                                            value={editingNotesText}
+                                            onChange={(e) => setEditingNotesText(e.target.value)}
+                                            placeholder="Add your notes on this session..."
+                                            style={{
+                                              width: '100%',
+                                              minHeight: 80,
+                                              border: '1px solid #3BBFBF',
+                                              borderRadius: 6,
+                                              padding: '8px 10px',
+                                              fontSize: 12,
+                                              color: '#2D4459',
+                                              resize: 'vertical',
+                                              fontFamily: 'inherit',
+                                              boxSizing: 'border-box',
+                                            }}
+                                          />
+                                          <div
+                                            style={{
+                                              display: 'flex',
+                                              gap: 6,
+                                              marginTop: 6,
+                                            }}
+                                          >
+                                            <button
+                                              type="button"
+                                              onClick={async () => {
+                                                try {
+                                                  await dbExecute(
+                                                    `UPDATE coaching_sessions
+                                                     SET notes = ?,
+                                                         updated_at = CURRENT_TIMESTAMP
+                                                     WHERE id = ?`,
+                                                    [editingNotesText, s.id]
+                                                  );
+                                                  setEditingNotesId(null);
+                                                  await loadFathomSessions();
+                                                } catch (err) {
+                                                  console.error('Notes save error:', err);
+                                                }
+                                              }}
+                                              style={{
+                                                background: '#3BBFBF',
+                                                color: 'white',
+                                                borderRadius: 6,
+                                                padding: '5px 12px',
+                                                fontSize: 11,
+                                                fontWeight: 'bold',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                              }}
+                                            >
+                                              Save Notes
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setEditingNotesId(null)}
+                                              style={{
+                                                background: 'white',
+                                                color: '#7A8F95',
+                                                borderRadius: 6,
+                                                padding: '5px 10px',
+                                                fontSize: 11,
+                                                border: '1px solid #C8E8E5',
+                                                cursor: 'pointer',
+                                              }}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          {s.notes &&
+                                          s.notes.length > 0 &&
+                                          !s.notes.trim().startsWith('{') ? (
+                                            <p
+                                              style={{
+                                                color: '#2D4459',
+                                                fontSize: 12,
+                                                margin: '0 0 6px',
+                                                lineHeight: 1.6,
+                                                whiteSpace: 'pre-wrap',
+                                              }}
+                                            >
+                                              {s.notes}
+                                            </p>
+                                          ) : (
+                                            <p
+                                              style={{
+                                                color: '#C8E8E5',
+                                                fontSize: 11,
+                                                fontStyle: 'italic',
+                                                margin: '0 0 6px',
+                                              }}
+                                            >
+                                              No notes added yet
+                                            </p>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingNotesId(s.id);
+                                              setEditingNotesText(
+                                                s.notes && !s.notes.trim().startsWith('{') ? s.notes : ''
+                                              );
+                                            }}
+                                            style={{
+                                              background: 'none',
+                                              border: '1px solid #C8E8E5',
+                                              borderRadius: 6,
+                                              padding: '3px 10px',
+                                              fontSize: 11,
+                                              color: '#7A8F95',
+                                              cursor: 'pointer',
+                                            }}
+                                          >
+                                            {s.notes &&
+                                            s.notes.length > 0 &&
+                                            !s.notes.trim().startsWith('{')
+                                              ? 'Edit Notes'
+                                              : 'Add Notes'}
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 ) : null}
                               </>
                             ) : null}
-                            {hasNext ? (
-                              <div className="mt-3">
-                                <p className="text-[11px] font-medium" style={{ color: '#7A8F95' }}>
-                                  Next call
-                                </p>
-                                <p className="text-[13px] leading-relaxed" style={{ color: '#2D4459' }}>
-                                  {(s.next_actions ?? '').trim()}
-                                </p>
-                              </div>
-                            ) : null}
+                            <div className="mt-3">
+                              <p className="text-[11px] font-medium" style={{ color: '#7A8F95' }}>
+                                Next call
+                              </p>
+                              <p
+                                className="text-[13px] leading-relaxed"
+                                style={{
+                                  color:
+                                    nextActionsFormatted === NOT_CAPTURED_NEXT
+                                      ? '#C8E8E5'
+                                      : '#2D4459',
+                                  fontStyle:
+                                    nextActionsFormatted === NOT_CAPTURED_NEXT
+                                      ? 'italic'
+                                      : undefined,
+                                }}
+                              >
+                                {nextActionsFormatted}
+                              </p>
+                            </div>
                           </>
                         )}
                       </div>

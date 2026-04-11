@@ -74,6 +74,22 @@ function filterEmailsByClients(messages: EmailMessage[], names: string[]): Email
   });
 }
 
+function filterEventsByClients(events: TodaysCall[], names: string[]): TodaysCall[] {
+  if (!names || names.length === 0) return events;
+  return events.filter((call) => {
+    const ev = call.event as TodaysCall['event'] & { title?: string; name?: string; participants?: unknown };
+    const title = String(ev.summary || ev.title || ev.name || '').toLowerCase();
+    const attJoined = Array.isArray(ev.attendees) ? ev.attendees.join(' ') : '';
+    const participants = String(ev.participants ?? '').toLowerCase();
+    const attendees = `${attJoined} ${participants}`.toLowerCase();
+    return names.some((name) => {
+      const trimmed = name.trim().toLowerCase();
+      if (trimmed.length < 5) return false;
+      return title.includes(trimmed) || attendees.includes(trimmed);
+    });
+  });
+}
+
 const DISC_LETTER_COLORS: Record<'D' | 'I' | 'S' | 'C', string> = {
   D: '#EF4444',
   I: '#EAB308',
@@ -727,7 +743,6 @@ export default function ExecutiveDashboard() {
       try {
         const result = await calendarTool.execute('get_todays_calls', {});
         if (result.success) {
-          // All calendar events are shown; pipeline match is display-only (e.g. "Not in pipeline").
           setTodaysCalls((result.data as TodaysCall[]) ?? []);
         }
       } finally {
@@ -742,7 +757,6 @@ export default function ExecutiveDashboard() {
     try {
       const result = await calendarTool.execute('get_todays_calls', {});
       if (result.success) {
-        // All calendar events are shown; pipeline match is display-only (e.g. "Not in pipeline").
         setTodaysCalls((result.data as TodaysCall[]) ?? []);
       }
     } finally {
@@ -1519,6 +1533,11 @@ export default function ExecutiveDashboard() {
 
   const gmailBriefDisplayRows = gmailBriefFiltered;
 
+  const briefCallsFiltered = useMemo(
+    () => filterEventsByClients(todaysCalls, clientNamesForGmailFilter),
+    [todaysCalls, clientNamesForGmailFilter]
+  );
+
   if (loading) {
     return (
       <div className="p-6 space-y-4">
@@ -1658,7 +1677,7 @@ export default function ExecutiveDashboard() {
             <span style={{ fontSize: 12, color: '#C8E8E5' }}>📅 Loading today&apos;s calls...</span>
           </div>
         ) : null}
-        {calendarConnected && !callsLoading && todaysCalls.length > 0 ? (
+        {calendarConnected && !callsLoading ? (
           <div
             style={{
               margin: '12px 0',
@@ -1693,7 +1712,19 @@ export default function ExecutiveDashboard() {
                 </button>
               </div>
             </div>
-            {(briefCallsExpanded ? todaysCalls : todaysCalls.slice(0, 3)).map((call) => {
+            {briefCallsFiltered.length === 0 ? (
+              <p
+                style={{
+                  color: '#7A8F95',
+                  fontSize: 12,
+                  fontStyle: 'italic',
+                  margin: '4px 0 0',
+                }}
+              >
+                No coaching calls scheduled today
+              </p>
+            ) : null}
+            {(briefCallsExpanded ? briefCallsFiltered : briefCallsFiltered.slice(0, 3)).map((call) => {
               const matched = Boolean(call.clientId);
               const title = call.event.summary || 'Event';
               return (
@@ -1778,7 +1809,7 @@ export default function ExecutiveDashboard() {
                 </div>
               );
             })}
-            {todaysCalls.length > 3 ? (
+            {briefCallsFiltered.length > 3 ? (
               <button
                 type="button"
                 className="mt-1 w-full text-left transition-opacity hover:opacity-90"
@@ -1787,7 +1818,7 @@ export default function ExecutiveDashboard() {
               >
                 {briefCallsExpanded
                   ? 'Show fewer'
-                  : `+ ${todaysCalls.length - 3} more today`}
+                  : `+ ${briefCallsFiltered.length - 3} more today`}
               </button>
             ) : null}
           </div>
