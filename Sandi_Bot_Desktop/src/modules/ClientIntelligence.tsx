@@ -715,25 +715,6 @@ function visionBodyToThreeParagraphs(text: string): [string, string, string] {
   return [t, '', ''];
 }
 
-/** LCS length for vision edit-distance (normalized against max length). */
-function longestCommonSubsequence(a: string, b: string): number {
-  const n = a.length;
-  const m = b.length;
-  const dp: number[][] = Array.from({ length: n + 1 }, () =>
-    new Array(m + 1).fill(0)
-  );
-  for (let i = 1; i <= n; i++) {
-    for (let j = 1; j <= m; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-  }
-  return dp[n][m];
-}
-
 function formatLastContactDisplay(raw: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
@@ -3035,64 +3016,57 @@ Sound like a person not a report.`;
   };
 
   const handleApproveVision = async () => {
-    if (!client?.id) return;
-    setVisionGenError(null);
-    const approvedText = visionEditText.trim();
-    if (!approvedText) {
-      setVisionGenError('Add vision text before approving.');
-      return;
-    }
-    const originalText = (
-      visionGeneratedBaseline?.trim() ?? approvedText
-    ).trim();
-    const editDistance =
-      originalText === approvedText
-        ? 0
-        : Math.round(
-            (1 -
-              longestCommonSubsequence(originalText, approvedText) /
-                Math.max(originalText.length, approvedText.length, 1)) *
-              100
-          );
     try {
+      const approvedText = visionEditText.trim();
+
+      if (!approvedText) {
+        setVisionGenError(
+          'Add vision text before approving.'
+        );
+        return;
+      }
+
+      if (!client?.id) {
+        return;
+      }
+
+      const db = await getDb();
+
+      await db.execute(
+        `UPDATE clients
+         SET vision_statement = $1,
+             vision_approved = 1,
+             vision_approved_date =
+               datetime('now'),
+             updated_at = datetime('now')
+         WHERE id = $2`,
+        [approvedText, client.id]
+      );
+
       await logCorrection({
         clientId: client.id,
         fieldName: 'vision_statement',
-        originalValue: originalText,
+        originalValue:
+          persistedVisionText || '',
         correctedValue: approvedText,
         correctionType: 'vision_edit',
         page: 'client_intelligence',
       });
-      await dbExecute(
-        `UPDATE clients SET vision_statement = $1, vision_approved = 1, vision_approved_date = datetime('now'), updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [approvedText, client.id]
-      );
-      await dbExecute(
-        `UPDATE client_you2_profiles SET one_year_vision = $1 WHERE client_id = $2`,
-        [approvedText, client.id]
-      );
-      await dbExecute(
-        `INSERT INTO audit_log
-         (action_type, client_id, input_data, output_data, reasoning, model_used)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          'vision_approved',
-          client.id,
-          null,
-          approvedText.slice(0, 100),
-          null,
-          'deterministic',
-        ]
-      );
-      setYou2Vision(approvedText);
-      setVisionApproveFeedback({ editDistance });
-      setVisionGeneratedBaseline(null);
+
       setVisionDraftMode(false);
-      setVisionApproveMsg('✅ Vision approved and saved');
-      onVisionUpdated?.();
-    } catch (e) {
-      console.error(e);
-      setVisionGenError('Could not approve vision. Try again.');
+
+      if (onVisionUpdated) {
+        onVisionUpdated();
+      }
+    } catch (error) {
+      console.error(
+        'Vision approve failed:',
+        error
+      );
+      setVisionGenError(
+        'Could not save vision statement. ' +
+          'Please try again.'
+      );
     }
   };
 
@@ -5990,7 +5964,16 @@ Sound like a person not a report.`;
                         border: 'none',
                       }}
                       disabled={visionGenerating}
-                      onClick={() => void handleApproveVision()}
+                      onClick={async () => {
+                        try {
+                          await handleApproveVision();
+                        } catch (error) {
+                          console.error(
+                            'Approve button error:',
+                            error
+                          );
+                        }
+                      }}
                     >
                       Approve Vision Statement
                     </button>
