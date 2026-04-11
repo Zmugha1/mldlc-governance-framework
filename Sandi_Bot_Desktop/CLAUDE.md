@@ -30,7 +30,10 @@ Overall STZ coverage: 62%
 51: intervention_logs — NOT YET BUILT
 52: user_feedback — NOT YET BUILT
 53: clients table additions — NOT YET BUILT
-Next migration after 53: 54+
+Next migration: 70+
+(Older note 54+ superseded — never edit
+  migrations already applied; assign new
+  numbers from current schema head.)
 
 ## BINARY FILES — NEVER DELETE
 src-tauri/pdfium.dll — force committed
@@ -579,3 +582,36 @@ Phase 6-15: Not started — retainer months 2-24
 - The Capture identity clear and per-document knowledge deletes must remove knowledge_embeddings rows before knowledge_documents rows for the same ids or domains.
 
 - Exceptions to the default never touch default.json rule apply only when explicitly requested for shell scope or capability updates; always run cargo check after capability edits.
+
+---
+
+## Rules added April 10 2026
+
+Never use HACCP or any food industry
+framework in Coach Bot governance.
+All governance is domain-native to
+professional coaching standards.
+
+Never reference TES in any user-visible
+string prompt or governance lens label.
+Use stage-gate methodology or franchise
+coaching methodology instead.
+
+Never bundle multiple changes to
+ClientIntelligence.tsx in one session
+without testing after each commit.
+It is the largest file in the app
+and the highest regression risk.
+
+Always test Vision Statement tab
+after any change to ClientIntelligence.tsx.
+Tab resetting to Overview = silent error.
+
+When app shows white screen after
+multiple commits — revert immediately.
+Do not attempt to fix forward at
+end of a long session.
+
+uuid package requires both:
+  npm install uuid
+  npm install --save-dev @types/uuid

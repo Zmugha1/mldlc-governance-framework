@@ -364,3 +364,99 @@ Consequence: gmail and google-calendar calls
   rows written after each execute
 Never do: Bypass ToolManager for Google tool
   execution in new integrations
+
+## ADR-027
+Date: 2026-04-10
+Decision: STZ Governance Layer instantiated
+  as Coaching Council
+  Three lenses: Readiness, Alignment,
+  Integrity
+  Built on ICF + CLEAR + MI
+  Never HACCP or food frameworks
+  Never TES in user-visible text
+Layer: Governance
+Context: Coach-facing governance must read
+  as professional coaching not adjacent domains
+Consequence: Council labels prompts and ADRs
+  use coaching-standard language only
+Never do: Surface HACCP food-safety framing
+  or TES acronym in user-visible copy
+
+## ADR-028
+Date: 2026-04-10
+Decision: Coaching Council runs sequentially
+  not in parallel
+  Progressive display per lens
+  Three minutes total acceptable
+  for pre-call preparation
+  Not acceptable mid-call
+Layer: Product
+Context: Parallel Ollama calls stacked latency
+  and hid progress from the coach
+Consequence: runCoachingCouncil awaits each
+  lens and optional onLensComplete callback
+Never do: Promise.all three lenses for
+  same council run without explicit
+  mid-call UX mitigation
+
+## ADR-029
+Date: 2026-04-10
+Decision: Vision Statement improvements
+  must be isolated one prompt at a time
+  with testing after each commit
+  Never bundle vision changes with
+  other file changes
+Layer: Process
+Context: ClientIntelligence.tsx is the
+  largest surface area file high
+  regression risk for Vision tab
+Consequence: Each vision change ships alone
+  with Vision tab smoke test before next edit
+Never do: Batch unrelated vision refactors
+  with council or tab shell edits same commit
+
+## ADR-030
+Date: 2026-04-10
+Decision: Revert policy
+  When white screen occurs after
+  multiple commits to same file
+  revert to last known good commit
+  immediately
+  Do not attempt to fix forward
+  at end of session
+Layer: Process
+Context: End-of-session fatigue compounds
+  risk on hot files
+Consequence: Prefer git revert to known good
+  then next session single-step fixes
+Never do: Stack speculative fixes on a
+  broken tree without a green baseline
+
+## ADR-031
+Date: 2026-04-10
+Decision: Health score formula locked
+  Combined = 50% data completeness
+    + 50% Sandi ratings
+  Logged to system_health_log table
+  Per page separate scores
+Layer: Data
+Context: Per-page HealthIndicator and
+  System Health dashboard read the log
+Consequence: logHealthScore and getHealthScore
+  stay aligned to that formula per page key
+Never do: Change combined formula without
+  matching migration and dashboard copy
+
+## ADR-032
+Date: 2026-04-10
+Decision: Two export reports locked
+  UAT Feedback CSV — already built
+  QLoRA Training Report — new
+  Both export from The Capture
+Layer: Product
+Context: Training pipeline needs repeatable
+  CSV export plus existing UAT path
+Consequence: exportQLoRAReport and Capture
+  Feedback tab remain the two export surfaces
+Never do: Add a third training export path
+  without ADR update

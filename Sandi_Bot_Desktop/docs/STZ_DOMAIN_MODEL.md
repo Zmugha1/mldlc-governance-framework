@@ -282,3 +282,59 @@ Rules:
 Source: ExecutiveDashboard Morning Brief
   build session 2026-04-01
 Layer: L1
+
+DOMAIN-017
+Entity: STZ Coaching Council
+Rules:
+  Three deliberating lenses:
+    Readiness Lens — ICF + stage
+      methodology — is seeker ready?
+    Alignment Lens — Motivational
+      Interviewing — are all stakeholders
+      aligned? change talk vs sustain talk
+    Integrity Lens — ICF ethics + CLEAR
+      is this coaching or selling?
+  Chairman synthesizes all three
+  Minority perspective always preserved
+  Sandi is always the judge
+  AI is always the advisor
+  Uncertainty audit explicit
+Source: coachingCouncil.ts and Client
+  Intelligence Best Next Questions 2026-04-10
+Layer: L2
+
+DOMAIN-018
+Entity: Uncertainty Audit fields
+Rules:
+  Verified: data confirmed present
+  Unverified: data present but
+    quality uncertain
+  Missing: data not uploaded
+  Recommendations: before this call
+Source: CouncilOutput.uncertaintyAudit
+Layer: L2
+
+DOMAIN-019
+Entity: Coaching Council timing
+Rules:
+  Each lens: approximately 60 seconds
+  Chairman synthesis: approximately 60s
+  Total: approximately 3-4 minutes
+  Acceptable for pre-call prep
+  Not acceptable mid-call
+  Tell Sandi: run before call starts
+Source: Sequential council implementation
+  session 2026-04-10
+Layer: L1
+
+DOMAIN-020
+Entity: Training readiness target
+Rules:
+  300 correction pairs minimum
+  for first QLoRA fine-tuning run
+  Current pace logged weekly
+  Weeks remaining calculated
+  automatically from weekly rate
+Source: getTrainingReadiness correctionService
+  System Health dashboard 2026-04-10
+Layer: L3

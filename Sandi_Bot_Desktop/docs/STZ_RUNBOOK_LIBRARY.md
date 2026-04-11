@@ -241,3 +241,51 @@ Expected output: Spawn succeeds without
 Watch out for: Do not add unknown keys under
   plugins.shell in tauri.conf.json — only
   open is valid there for shell plugin config
+
+## RUN-013
+Task: White screen recovery
+Trigger: app shows white screen
+  after recent commits
+Steps:
+  1. git log --oneline -6
+  2. Identify last known good commit
+  3. git revert [bad commits]
+     --no-commit
+  4. git commit with revert message
+  5. git push sandi dev
+  6. Relaunch and confirm loads
+Expected output: app loads normally
+Watch out for: reverting migrations
+  never revert migration commits
+  only revert TypeScript/React files
+
+## RUN-014
+Task: Vision Statement build protocol
+Trigger: any change to Vision tab
+Steps:
+  1. One prompt one change only
+  2. Commit and push
+  3. Relaunch dev immediately
+  4. Test Vision tab specifically
+  5. Confirm tab stays on Vision
+  6. Confirm generation completes
+  7. Only then write next prompt
+Expected output: tab stays on Vision
+  generation produces text
+Watch out for: tab resetting to
+  Overview = silent error
+  check console immediately
+
+## RUN-015
+Task: Package install check
+Trigger: vite import-analysis error
+  on any new import
+Steps:
+  1. Read the missing package name
+  2. npm install [package]
+  3. npm install --save-dev
+     @types/[package] if TypeScript
+  4. Relaunch dev
+Expected output: import resolves cleanly
+Watch out for: uuid needs both
+  uuid and @types/uuid

@@ -79,3 +79,49 @@ Blockers or open items:
   upsertCoachProfileFromResumeText if not
   already done; Client Intelligence may need
   to read selected_client_name for tab jumps
+
+## Session April 10 2026
+
+Commits this session:
+  4fe3220 delete buttons identity knowledge
+  8a79376 years experience date ranges
+  ee8479e ollama shell scope fix
+  12865a2 spec session capture
+  423f76e migrations 67-69 correctionService
+  b3ac3ea STZ Coaching Council service
+  cd07cdc Council UI Best Next Questions
+  0794147 Vision Statement edit approve
+  33ec7ef per-page health indicators
+  66b5bd6 System Health Dashboard
+  597f790 sequential council display
+  7c68bce vision error boundary
+  351e8bc vision null safety
+  766470e revert to 66b5bd6
+
+Last known good commit: 66b5bd6
+
+ADRs added:
+  Governance layer instantiated
+  Council runs sequentially
+  Vision changes isolated
+  Revert policy
+  Health score formula
+  Two export reports
+
+Incidents resolved:
+  White screen from bundled changes
+  uuid package missing
+  Vision tab reset to Overview
+
+Next session must start with:
+  Build Vision Statement improvements
+  One prompt at a time
+  Test after every single commit
+  Then build installer
+
+Blockers:
+  Vision Statement sequential
+    improvements pending
+  Prompt Manager not built
+  Installer not built yet
+  Monday delivery target

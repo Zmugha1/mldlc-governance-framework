@@ -303,3 +303,47 @@ Commit: 0d43cc4
 Prevention rule: Use import type for every
   interface-only import from toolManager
 Layer: Tech
+
+## INC-022
+Date: 2026-04-10
+What broke: White screen from multiple
+  ClientIntelligence.tsx changes
+Root cause: Commits 597f790 7c68bce 351e8bc
+  all touched same large file
+  without testing between each
+  bundled changes to largest file in app
+Fix applied: git revert to 66b5bd6
+  (documented session policy)
+Commit: 766470e (revert to 66b5bd6)
+Prevention rule: one change one test
+  on ClientIntelligence.tsx always
+Layer: Process
+
+## INC-023
+Date: 2026-04-10
+What broke: uuid package not installed
+  correctionService.ts imported uuid
+  package was not in node_modules
+Root cause: New dependency added without
+  package.json install in workspace
+Fix applied: npm install uuid
+  npm install --save-dev @types/uuid
+Prevention rule: always check imports
+  against package.json before commit
+Layer: Tech
+
+## INC-024
+Date: 2026-04-10
+What broke: Vision Statement tab reset
+  to Overview on generate
+Root cause: council context called
+  on null CouncilOutput before
+  any council had been run
+Fix applied: make council context optional
+  null safe with try/catch wrapper
+  prefer cached councilOutput when present
+Commit: 351e8bc
+Prevention rule: never depend on
+  optional state being populated
+  in generation handlers
+Layer: Product
