@@ -7,6 +7,7 @@ import {
   useCallback,
   type ChangeEvent,
   type Dispatch,
+  type ReactNode,
   type SetStateAction,
 } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -1535,16 +1536,12 @@ function ClientDetailModal({
   const [ahaTextError, setAhaTextError] = useState(false);
   const [ahaSaving, setAhaSaving] = useState(false);
   const [ahaToast, setAhaToast] = useState<string | null>(null);
-  const [manualSessionDate, setManualSessionDate] = useState(() =>
-    localCalendarDateYyyyMmDd()
-  );
-  const [manualSessionStage, setManualSessionStage] = useState<PipelineStageCode>('IC');
-  const [manualSessionDuration, setManualSessionDuration] = useState('');
-  const [manualSessionNotes, setManualSessionNotes] = useState('');
-  const [manualSessionSaving, setManualSessionSaving] = useState(false);
-  const [manualSessionScheduledInAdvance, setManualSessionScheduledInAdvance] =
-    useState(true);
-  const [sessionLogAddedAck, setSessionLogAddedAck] = useState(false);
+  const [addSessionMode, setAddSessionMode] = useState<'fathom' | 'manual'>('fathom');
+  const [addSessionStage, setAddSessionStage] = useState<string>('IC');
+  const [addSessionDate, setAddSessionDate] = useState(() => localCalendarDateYyyyMmDd());
+  const [addSessionDuration, setAddSessionDuration] = useState('');
+  const [addSessionManualNotes, setAddSessionManualNotes] = useState('');
+  const [addSessionManualSaving, setAddSessionManualSaving] = useState(false);
   const [fathomNotesExpanded, setFathomNotesExpanded] = useState<Record<number, boolean>>(
     {}
   );
@@ -1720,12 +1717,6 @@ function ClientDetailModal({
   }, [ahaToast]);
 
   useEffect(() => {
-    if (!sessionLogAddedAck) return;
-    const t = window.setTimeout(() => setSessionLogAddedAck(false), 4000);
-    return () => clearTimeout(t);
-  }, [sessionLogAddedAck]);
-
-  useEffect(() => {
     setAhaModalOpen(false);
     setAhaText('');
     setAhaType('client_specific');
@@ -1808,11 +1799,11 @@ function ClientDetailModal({
 
   useEffect(() => {
     if (!client) return;
-    setManualSessionDate(localCalendarDateYyyyMmDd());
-    setManualSessionNotes('');
-    setManualSessionDuration('');
-    setManualSessionScheduledInAdvance(true);
-    setSessionLogAddedAck(false);
+    setAddSessionDate(localCalendarDateYyyyMmDd());
+    setAddSessionManualNotes('');
+    setAddSessionDuration('');
+    setAddSessionMode('fathom');
+    setFathomPasteText('');
     setFathomNotesExpanded({});
   }, [client?.id]);
 
@@ -1863,7 +1854,7 @@ function ClientDetailModal({
     if (client) {
       const stageResolved =
         resolvePipelineStageCode(client.inferred_stage) ?? 'IC';
-      setManualSessionStage(stageResolved);
+      setAddSessionStage(stageResolved);
       getStageReadiness(client.id).then(setReadiness);
       dbSelect<{
         zor_learning_notes: string | null;
@@ -2757,21 +2748,21 @@ function ClientDetailModal({
     }
   };
 
-  const handleAddManualSession = async () => {
+  const handleAddUnifiedManualSession = async () => {
     if (!client) return;
-    const dateStr = manualSessionDate.trim();
+    const dateStr = addSessionDate.trim();
     if (!dateStr) return;
-    setManualSessionSaving(true);
-    setSessionLogAddedAck(false);
+    setAddSessionManualSaving(true);
+    setFathomUploadError(null);
     try {
       const countRows = await dbSelect<{ c: number }>(
         `SELECT COUNT(*) as c FROM coaching_sessions WHERE client_id = ?`,
         [client.id]
       );
       const nextSessionNumber = Number(countRows[0]?.c ?? 0) + 1;
-      const stageCode = manualSessionStage;
-      const notesVal = manualSessionNotes.trim() || null;
-      const durationVal = manualSessionDuration.trim() || null;
+      const stageCode = addSessionStage as PipelineStageCode;
+      const notesVal = addSessionManualNotes.trim() || null;
+      const durationVal = addSessionDuration.trim() || null;
       const now = new Date().toISOString();
       await dbExecute(
         `INSERT INTO coaching_sessions
@@ -2785,7 +2776,7 @@ function ClientDetailModal({
           notesVal,
           null,
           now,
-          manualSessionScheduledInAdvance ? 1 : 0,
+          1,
           durationVal,
         ]
       );
@@ -2803,15 +2794,16 @@ function ClientDetailModal({
         'deterministic'
       );
       await loadFathomSessions();
-      setSessionLogAddedAck(true);
-      setManualSessionDate(localCalendarDateYyyyMmDd());
-      setManualSessionNotes('');
-      setManualSessionDuration('');
-      setManualSessionScheduledInAdvance(true);
+      setAddSessionDate(localCalendarDateYyyyMmDd());
+      setAddSessionManualNotes('');
+      setAddSessionDuration('');
+      setFathomUploadSuccess('Session saved. Last contacted date updated.');
+      setTimeout(() => setFathomUploadSuccess(null), 3000);
     } catch (e) {
       console.error('manual session add failed:', e);
+      setFathomUploadError('Could not save session.');
     } finally {
-      setManualSessionSaving(false);
+      setAddSessionManualSaving(false);
     }
   };
 
@@ -3611,14 +3603,52 @@ not generic statements.${feedbackSection}`;
     return { background: '#FEE2E2', color: '#B91C1C' };
   };
 
+  const FATHOM_NOT_CAPTURED = (
+    <span style={{ color: '#C8E8E5', fontSize: 11, fontStyle: 'italic' }}>Not captured in this session</span>
+  );
+
+  const fathomValueEmpty = (value: unknown): boolean => {
+    if (value === null || value === undefined) return true;
+    const s = String(value).trim();
+    if (s === '') return true;
+    const sl = s.toLowerCase();
+    if (sl === 'unknown' || sl === 'null' || sl === '-' || sl === '—') return true;
+    if (/^[-—\s]+$/u.test(s)) return true;
+    return false;
+  };
+
+  const fathomBlockRawEmpty = (raw: string | null | undefined): boolean => {
+    if (raw == null) return true;
+    const t = String(raw).trim();
+    if (t === '') return true;
+    const tl = t.toLowerCase();
+    if (tl === 'unknown' || tl === 'null' || tl === '-' || tl === '—') return true;
+    if (t === '{}' || t === '[]') return true;
+    if (/^[-—\s]+$/u.test(t)) return true;
+    return false;
+  };
+
+  const fathomField = (value: unknown): ReactNode =>
+    fathomValueEmpty(value) ? FATHOM_NOT_CAPTURED : String(value).trim();
+
+  const fathomEmptyBlockShell = (def: (typeof blockDefinitions)[number]) => (
+    <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
+      <summary className={`cursor-pointer font-medium ${def.color}`}>
+        {def.icon} {def.title}
+      </summary>
+      <div className="mt-2 text-sm">{FATHOM_NOT_CAPTURED}</div>
+    </details>
+  );
+
   const renderFathomStructuredSection = (
     s: (typeof fathomSessions)[number],
     def: (typeof blockDefinitions)[number]
   ) => {
     switch (def.key) {
       case 'block_opening': {
+        if (fathomBlockRawEmpty(s.block_opening)) return fathomEmptyBlockShell(def);
         const opening = parseSessionBlock(s.block_opening);
-        if (!opening) return null;
+        if (!opening) return fathomEmptyBlockShell(def);
         return (
           <details key={def.key} open className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
@@ -3627,18 +3657,24 @@ not generic statements.${feedbackSection}`;
             <div className="mt-2 space-y-1 text-sm">
               <div>
                 Energy:{' '}
-                <Badge variant="outline">{toDisplayValue(opening?.client_energy as string | undefined)}</Badge>
+                <Badge variant="outline">{fathomField(opening?.client_energy as string | undefined)}</Badge>
               </div>
               <div>Contracting: {opening?.contracting_done ? '✓' : '✗'}</div>
               <div>Client set agenda: {opening?.client_set_agenda ? '✓' : '✗'}</div>
-              <p>{toDisplayValue(opening?.opening_summary as string | undefined)}</p>
+              <p>{fathomField(opening?.opening_summary as string | undefined)}</p>
             </div>
           </details>
         );
       }
       case 'block_emotional': {
+        if (fathomBlockRawEmpty(s.block_emotional)) return fathomEmptyBlockShell(def);
         const emotional = parseSessionBlock(s.block_emotional);
-        if (!emotional) return null;
+        if (!emotional) return fathomEmptyBlockShell(def);
+        const emotions = parseListField(emotional?.emotions_expressed).filter((v) => !fathomValueEmpty(v));
+        const fears = parseListField(emotional?.fears_mentioned).filter((v) => !fathomValueEmpty(v));
+        const identityJoined = parseListField(emotional?.identity_statements)
+          .filter((v) => !fathomValueEmpty(v))
+          .join(' | ');
         return (
           <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
@@ -3646,27 +3682,34 @@ not generic statements.${feedbackSection}`;
             </summary>
             <div className="mt-2 space-y-2 text-sm">
               <div className="flex flex-wrap gap-2">
-                {parseListField(emotional?.emotions_expressed).map((v, i) => (
-                  <Badge key={`e-${i}`} className="bg-purple-100 text-purple-800 hover:bg-purple-100">
-                    {v}
-                  </Badge>
-                ))}
+                {emotions.length === 0
+                  ? FATHOM_NOT_CAPTURED
+                  : emotions.map((v, i) => (
+                      <Badge key={`e-${i}`} className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+                        {v}
+                      </Badge>
+                    ))}
               </div>
-              <ul className="list-inside list-disc">
-                {parseListField(emotional?.fears_mentioned).map((v, i) => (
-                  <li key={`f-${i}`}>{v}</li>
-                ))}
-              </ul>
+              {fears.length === 0 ? (
+                FATHOM_NOT_CAPTURED
+              ) : (
+                <ul className="list-inside list-disc">
+                  {fears.map((v, i) => (
+                    <li key={`f-${i}`}>{v}</li>
+                  ))}
+                </ul>
+              )}
               <blockquote className="border-l-2 pl-2 text-slate-700">
-                {parseListField(emotional?.identity_statements).join(' | ') || '—'}
+                {identityJoined.length > 0 ? identityJoined : FATHOM_NOT_CAPTURED}
               </blockquote>
             </div>
           </details>
         );
       }
       case 'block_life_context': {
+        if (fathomBlockRawEmpty(s.block_life_context)) return fathomEmptyBlockShell(def);
         const life = parseSessionBlock(s.block_life_context);
-        if (!life) return null;
+        if (!life) return fathomEmptyBlockShell(def);
         return (
           <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
@@ -3674,18 +3717,21 @@ not generic statements.${feedbackSection}`;
             </summary>
             <div className="mt-2 space-y-1 text-sm">
               <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">{toDisplayValue(life?.spouse_sentiment as string | undefined)}</Badge>
-                <Badge variant="outline">{toDisplayValue(life?.current_job_situation as string | undefined)}</Badge>
-                <Badge variant="outline">{toDisplayValue(life?.financial_comfort as string | undefined)}</Badge>
+                <Badge variant="outline">{fathomField(life?.spouse_sentiment as string | undefined)}</Badge>
+                <Badge variant="outline">{fathomField(life?.current_job_situation as string | undefined)}</Badge>
+                <Badge variant="outline">{fathomField(life?.financial_comfort as string | undefined)}</Badge>
               </div>
-              <p>{toDisplayValue(life?.personal_circumstances as string | undefined)}</p>
+              <p>{fathomField(life?.personal_circumstances as string | undefined)}</p>
             </div>
           </details>
         );
       }
       case 'block_vision': {
+        if (fathomBlockRawEmpty(s.block_vision)) return fathomEmptyBlockShell(def);
         const vision = parseSessionBlock(s.block_vision);
-        if (!vision) return null;
+        if (!vision) return fathomEmptyBlockShell(def);
+        const lifestyle = parseListField(vision?.lifestyle_details).filter((v) => !fathomValueEmpty(v));
+        const bizModels = parseListField(vision?.business_models_discussed).filter((v) => !fathomValueEmpty(v));
         return (
           <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
@@ -3693,29 +3739,37 @@ not generic statements.${feedbackSection}`;
             </summary>
             <div className="mt-2 space-y-1 text-sm">
               <div>Future described: {vision?.future_life_described ? '✓' : '✗'}</div>
-              <ul className="list-inside list-disc">
-                {parseListField(vision?.lifestyle_details).map((v, i) => (
-                  <li key={`l-${i}`}>{v}</li>
-                ))}
-              </ul>
+              {lifestyle.length === 0 ? (
+                FATHOM_NOT_CAPTURED
+              ) : (
+                <ul className="list-inside list-disc">
+                  {lifestyle.map((v, i) => (
+                    <li key={`l-${i}`}>{v}</li>
+                  ))}
+                </ul>
+              )}
               <div className="flex flex-wrap gap-2">
-                {parseListField(vision?.business_models_discussed).map((v, i) => (
-                  <Badge key={`bm-${i}`} variant="secondary">
-                    {v}
-                  </Badge>
-                ))}
+                {bizModels.length === 0
+                  ? FATHOM_NOT_CAPTURED
+                  : bizModels.map((v, i) => (
+                      <Badge key={`bm-${i}`} variant="secondary">
+                        {v}
+                      </Badge>
+                    ))}
               </div>
               <div>
                 Ownership identity:{' '}
-                <Badge variant="outline">{toDisplayValue(vision?.ownership_identity as string | undefined)}</Badge>
+                <Badge variant="outline">{fathomField(vision?.ownership_identity as string | undefined)}</Badge>
               </div>
             </div>
           </details>
         );
       }
       case 'block_disc_signals': {
+        if (fathomBlockRawEmpty(s.block_disc_signals)) return fathomEmptyBlockShell(def);
         const discB = parseSessionBlock(s.block_disc_signals);
-        if (!discB) return null;
+        if (!discB) return fathomEmptyBlockShell(def);
+        const styleObs = parseListField(discB?.style_observations).filter((v) => !fathomValueEmpty(v));
         return (
           <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
@@ -3725,71 +3779,94 @@ not generic statements.${feedbackSection}`;
               <div>
                 Observed style:{' '}
                 <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100">
-                  {toDisplayValue(discB?.observed_style as string | undefined)}
+                  {fathomField(discB?.observed_style as string | undefined)}
                 </Badge>
               </div>
-              <ul className="list-inside list-disc">
-                {parseListField(discB?.style_observations).map((v, i) => (
-                  <li key={`so-${i}`}>{v}</li>
-                ))}
-              </ul>
+              {styleObs.length === 0 ? (
+                FATHOM_NOT_CAPTURED
+              ) : (
+                <ul className="list-inside list-disc">
+                  {styleObs.map((v, i) => (
+                    <li key={`so-${i}`}>{v}</li>
+                  ))}
+                </ul>
+              )}
               <div>Matches profile: {discB?.matches_profile ? '✓' : '✗'}</div>
-              <p className="italic">{toDisplayValue(discB?.coaching_note as string | undefined)}</p>
+              <p className="italic">{fathomField(discB?.coaching_note as string | undefined)}</p>
             </div>
           </details>
         );
       }
       case 'block_objections': {
+        if (fathomBlockRawEmpty(s.block_objections)) return fathomEmptyBlockShell(def);
         const objections = parseSessionBlock(s.block_objections);
-        if (!objections) return null;
+        if (!objections) return fathomEmptyBlockShell(def);
+        const objList = parseListField(objections?.objections).filter((v) => !fathomValueEmpty(v));
+        const pink = parseListField(objections?.pink_flag_language).filter((v) => !fathomValueEmpty(v));
+        const repeatJoined = parseListField(objections?.repeat_objections)
+          .filter((v) => !fathomValueEmpty(v))
+          .join(', ');
         return (
           <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
               {def.icon} {def.title}
             </summary>
             <div className="mt-2 space-y-1 text-sm">
-              <ul className="list-inside list-disc">
-                {parseListField(objections?.objections).map((v, i) => (
-                  <li key={`o-${i}`}>{v}</li>
-                ))}
-              </ul>
+              {objList.length === 0 ? (
+                FATHOM_NOT_CAPTURED
+              ) : (
+                <ul className="list-inside list-disc">
+                  {objList.map((v, i) => (
+                    <li key={`o-${i}`}>{v}</li>
+                  ))}
+                </ul>
+              )}
               <div className="flex flex-wrap gap-2">
-                {parseListField(objections?.pink_flag_language).map((v, i) => (
-                  <Badge key={`pfl-${i}`} className="bg-red-100 text-red-800 hover:bg-red-100">
-                    {v}
-                  </Badge>
-                ))}
+                {pink.length === 0
+                  ? FATHOM_NOT_CAPTURED
+                  : pink.map((v, i) => (
+                      <Badge key={`pfl-${i}`} className="bg-red-100 text-red-800 hover:bg-red-100">
+                        {v}
+                      </Badge>
+                    ))}
               </div>
               <p className="font-medium">
-                Repeat: {parseListField(objections?.repeat_objections).join(', ') || '—'}
+                Repeat: {repeatJoined.length > 0 ? repeatJoined : FATHOM_NOT_CAPTURED}
               </p>
             </div>
           </details>
         );
       }
       case 'block_commitments': {
+        if (fathomBlockRawEmpty(s.block_commitments)) return fathomEmptyBlockShell(def);
         const commitments = parseSessionBlock(s.block_commitments);
-        if (!commitments) return null;
+        if (!commitments) return fathomEmptyBlockShell(def);
+        const cc = parseListField(commitments?.client_commitments).filter((v) => !fathomValueEmpty(v));
         return (
           <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
               {def.icon} {def.title}
             </summary>
             <div className="mt-2 space-y-1 text-sm">
-              <ul className="list-inside list-disc">
-                {parseListField(commitments?.client_commitments).map((v, i) => (
-                  <li key={`cc-${i}`}>{v}</li>
-                ))}
-              </ul>
+              {cc.length === 0 ? (
+                FATHOM_NOT_CAPTURED
+              ) : (
+                <ul className="list-inside list-disc">
+                  {cc.map((v, i) => (
+                    <li key={`cc-${i}`}>{v}</li>
+                  ))}
+                </ul>
+              )}
               <div>Client chose action: {commitments?.client_chose_action ? '✓' : '✗'}</div>
-              <div>Next call: {toDisplayValue(commitments?.next_call_date as string | undefined)}</div>
+              <div>Next call: {fathomField(commitments?.next_call_date as string | undefined)}</div>
             </div>
           </details>
         );
       }
       case 'block_reflection_block': {
+        if (fathomBlockRawEmpty(s.block_reflection_block)) return fathomEmptyBlockShell(def);
         const reflection = parseSessionBlock(s.block_reflection_block);
-        if (!reflection) return null;
+        if (!reflection) return fathomEmptyBlockShell(def);
         return (
           <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
@@ -3797,19 +3874,18 @@ not generic statements.${feedbackSection}`;
             </summary>
             <div className="mt-2 space-y-1 text-sm">
               <blockquote className="border-l-2 pl-2">
-                {toDisplayValue(reflection?.insight_surfaced as string | undefined)}
+                {fathomField(reflection?.insight_surfaced as string | undefined)}
               </blockquote>
-              <p>{toDisplayValue(reflection?.mindset_shift as string | undefined)}</p>
-              <Badge variant="outline">
-                {toDisplayValue(reflection?.engagement_quality as string | undefined)}
-              </Badge>
+              <p>{fathomField(reflection?.mindset_shift as string | undefined)}</p>
+              <Badge variant="outline">{fathomField(reflection?.engagement_quality as string | undefined)}</Badge>
             </div>
           </details>
         );
       }
       case 'block_coach_assessment': {
+        if (fathomBlockRawEmpty(s.block_coach_assessment)) return fathomEmptyBlockShell(def);
         const assessment = parseSessionBlock(s.block_coach_assessment);
-        if (!assessment) return null;
+        if (!assessment) return fathomEmptyBlockShell(def);
         return (
           <details key={def.key} className="rounded border border-[#C8E8E5] bg-white p-2">
             <summary className={`cursor-pointer font-medium ${def.color}`}>
@@ -3825,7 +3901,7 @@ not generic statements.${feedbackSection}`;
                       : 'bg-amber-100 text-amber-800 hover:bg-amber-100'
                 }
               >
-                {toDisplayValue(assessment?.recommendation as string | undefined)}
+                {fathomField(assessment?.recommendation as string | undefined)}
               </Badge>
               <p>
                 {String(assessment?.readiness_direction ?? '') === 'improving'
@@ -3833,11 +3909,11 @@ not generic statements.${feedbackSection}`;
                   : String(assessment?.readiness_direction ?? '') === 'declining'
                     ? '↓ '
                     : '→ '}
-                {toDisplayValue(assessment?.readiness_direction as string | undefined)}
+                {fathomField(assessment?.readiness_direction as string | undefined)}
               </p>
-              <p>{toDisplayValue(assessment?.next_call_focus as string | undefined)}</p>
+              <p>{fathomField(assessment?.next_call_focus as string | undefined)}</p>
               <div className="rounded bg-blue-50 p-2 text-blue-900">
-                {toDisplayValue(assessment?.priority_question as string | undefined)}
+                {fathomField(assessment?.priority_question as string | undefined)}
               </div>
             </div>
           </details>
@@ -6183,32 +6259,250 @@ not generic statements.${feedbackSection}`;
                     color: '#2D4459',
                     fontSize: 13,
                     fontWeight: 'bold',
-                    margin: '0 0 4px',
-                  }}
-                >
-                  Add Fathom Session
-                </p>
-                <p
-                  style={{
-                    color: '#7A8F95',
-                    fontSize: 11,
                     margin: '0 0 12px',
-                    fontStyle: 'italic',
                   }}
                 >
-                  Copy your Fathom transcript and paste it below. Coach Bot will extract the 9-block coaching analysis
-                  automatically.
+                  Add Session
                 </p>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 1fr',
+                    gap: 8,
+                    marginBottom: 12,
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        color: '#7A8F95',
+                        fontSize: 11,
+                        display: 'block',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Stage
+                    </label>
+                    <select
+                      value={addSessionStage}
+                      onChange={(e) => setAddSessionStage(e.target.value)}
+                      style={{
+                        width: '100%',
+                        border: '1px solid #C8E8E5',
+                        borderRadius: 6,
+                        padding: '6px 8px',
+                        fontSize: 12,
+                        color: '#2D4459',
+                      }}
+                    >
+                      <option value="IC">IC — Initial Contact</option>
+                      <option value="C1">C1 — Seeker Connection</option>
+                      <option value="C2">C2 — Seeker Clarification</option>
+                      <option value="C3">C3 — Possibilities</option>
+                      <option value="C4">C4 — Initial Validation</option>
+                      <option value="C5">C5 — Continued Validation</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        color: '#7A8F95',
+                        fontSize: 11,
+                        display: 'block',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Session Date
+                    </label>
+                    <input
+                      type="date"
+                      value={addSessionDate}
+                      onChange={(e) => setAddSessionDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        border: '1px solid #C8E8E5',
+                        borderRadius: 6,
+                        padding: '6px 8px',
+                        fontSize: 12,
+                        color: '#2D4459',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        color: '#7A8F95',
+                        fontSize: 11,
+                        display: 'block',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Duration (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={addSessionDuration}
+                      onChange={(e) => setAddSessionDuration(e.target.value)}
+                      placeholder="e.g. 45 min"
+                      style={{
+                        width: '100%',
+                        border: '1px solid #C8E8E5',
+                        borderRadius: 6,
+                        padding: '6px 8px',
+                        fontSize: 12,
+                        color: '#2D4459',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => setAddSessionMode('fathom')}
+                    style={{
+                      background: addSessionMode === 'fathom' ? '#3BBFBF' : 'white',
+                      color: addSessionMode === 'fathom' ? 'white' : '#7A8F95',
+                      border: '1px solid #C8E8E5',
+                      borderRadius: 6,
+                      padding: '5px 14px',
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Fathom Transcript
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddSessionMode('manual')}
+                    style={{
+                      background: addSessionMode === 'manual' ? '#3BBFBF' : 'white',
+                      color: addSessionMode === 'manual' ? 'white' : '#7A8F95',
+                      border: '1px solid #C8E8E5',
+                      borderRadius: 6,
+                      padding: '5px 14px',
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    My Notes
+                  </button>
+                </div>
+
+                {addSessionMode === 'fathom' ? (
+                  <div>
+                    <p
+                      style={{
+                        color: '#7A8F95',
+                        fontSize: 11,
+                        margin: '0 0 6px',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      Copy your Fathom transcript and paste below. Coach Bot extracts the 9-block analysis.
+                    </p>
+                    <textarea
+                      value={fathomPasteText}
+                      onChange={(e) => setFathomPasteText(e.target.value)}
+                      placeholder="Paste Fathom transcript here..."
+                      style={{
+                        width: '100%',
+                        minHeight: 120,
+                        border: '2px solid #3BBFBF',
+                        borderRadius: 8,
+                        padding: '10px 12px',
+                        fontSize: 12,
+                        color: '#2D4459',
+                        resize: 'vertical',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <p
+                      style={{
+                        color: '#7A8F95',
+                        fontSize: 11,
+                        margin: '0 0 6px',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      Add your own session notes. Saved as-is without extraction.
+                    </p>
+                    <textarea
+                      value={addSessionManualNotes}
+                      onChange={(e) => setAddSessionManualNotes(e.target.value)}
+                      placeholder="What happened in this session? Key insights, decisions made, next steps..."
+                      style={{
+                        width: '100%',
+                        minHeight: 120,
+                        border: '1px solid #C8E8E5',
+                        borderRadius: 8,
+                        padding: '10px 12px',
+                        fontSize: 12,
+                        color: '#2D4459',
+                        resize: 'vertical',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                )}
+
+                {fathomUploading ? (
+                  <div style={{ marginTop: 10 }}>
+                    <div
+                      style={{
+                        background: '#E8F4F4',
+                        borderRadius: 4,
+                        height: 8,
+                        overflow: 'hidden',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${fathomProgress}%`,
+                          background: '#3BBFBF',
+                          borderRadius: 4,
+                          transition: 'width 0.4s ease',
+                        }}
+                      />
+                    </div>
+                    <p
+                      style={{
+                        color: '#7A8F95',
+                        fontSize: 11,
+                        margin: 0,
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      {fathomProgress < 30
+                        ? 'Reading transcript...'
+                        : fathomProgress < 60
+                          ? 'Extracting coaching blocks...'
+                          : fathomProgress < 90
+                            ? 'Analyzing patterns...'
+                            : 'Saving session...'}
+                    </p>
+                  </div>
+                ) : null}
 
                 {fathomUploadError ? (
                   <div
                     style={{
+                      marginTop: 8,
                       padding: '8px 12px',
                       background: '#FFF0F0',
                       borderRadius: 6,
                       color: '#F05F57',
                       fontSize: 12,
-                      marginBottom: 10,
                     }}
                   >
                     {fathomUploadError}
@@ -6232,270 +6526,135 @@ not generic statements.${feedbackSection}`;
                 {fathomUploadSuccess ? (
                   <div
                     style={{
+                      marginTop: 8,
                       padding: '8px 12px',
                       background: '#F0FAFA',
                       borderRadius: 6,
                       color: '#3BBFBF',
                       fontSize: 12,
                       fontWeight: 'bold',
-                      marginBottom: 10,
                     }}
                   >
                     ✓ {fathomUploadSuccess}
                   </div>
                 ) : null}
 
-                {fathomUploading ? (
-                  <div>
-                    <div
-                      style={{
-                        background: '#E8F4F4',
-                        borderRadius: 4,
-                        height: 8,
-                        overflow: 'hidden',
-                        marginBottom: 6,
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: '100%',
-                          width: `${fathomProgress}%`,
-                          background: '#3BBFBF',
-                          borderRadius: 4,
-                          transition: 'width 0.4s ease',
-                        }}
-                      />
-                    </div>
-                    <p
-                      style={{
-                        color: '#7A8F95',
-                        fontSize: 11,
-                        margin: '0 0 10px',
-                        fontStyle: 'italic',
-                      }}
-                    >
-                      {fathomProgress < 30
-                        ? 'Reading transcript...'
-                        : fathomProgress < 60
-                          ? 'Extracting coaching blocks...'
-                          : fathomProgress < 90
-                            ? 'Analyzing session patterns...'
-                            : 'Saving session...'}
-                    </p>
-                  </div>
-                ) : null}
-
-                <textarea
-                  value={fathomPasteText}
-                  onChange={(e) => setFathomPasteText(e.target.value)}
-                  placeholder="Paste your Fathom transcript here..."
-                  style={{
-                    width: '100%',
-                    minHeight: 120,
-                    border: '2px solid #3BBFBF',
-                    borderRadius: 8,
-                    padding: '10px 12px',
-                    fontSize: 12,
-                    color: '#2D4459',
-                    resize: 'vertical',
-                    fontFamily: 'inherit',
-                    boxSizing: 'border-box',
-                    marginBottom: 8,
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    disabled={fathomUploading || !fathomPasteText.trim()}
-                    onClick={async () => {
-                      if (!fathomPasteText.trim()) return;
-                      try {
-                        setFathomUploading(true);
-                        setFathomProgress(20);
-                        setFathomUploadError(null);
-                        setFathomUploadSuccess(null);
-
-                        setFathomProgress(50);
-
-                        const result = await extractFathomSession(
-                          client.id,
-                          fathomPasteText.trim(),
-                          'pasted_transcript.txt',
-                          ''
-                        );
-
-                        setFathomProgress(90);
-
-                        if (!result.success) {
-                          throw new Error(result.error ?? 'Extraction failed');
-                        }
-
-                        await loadFathomSessions();
-
-                        setFathomProgress(100);
-                        setFathomUploading(false);
-                        setFathomPasteText('');
-                        setFathomUploadSuccess('Session extracted successfully');
-                        setTimeout(() => {
-                          setFathomUploadSuccess(null);
-                          setFathomProgress(0);
-                        }, 3000);
-                      } catch (err) {
-                        console.error('Fathom paste error:', err);
-                        setFathomUploading(false);
-                        setFathomProgress(0);
-                        setFathomUploadError(
-                          'Could not extract session. Make sure Ollama is running.'
-                        );
-                      }
-                    }}
-                    style={{
-                      background: fathomUploading ? '#C8E8E5' : '#3BBFBF',
-                      color: 'white',
-                      borderRadius: 8,
-                      padding: '8px 16px',
-                      fontSize: 12,
-                      fontWeight: 'bold',
-                      border: 'none',
-                      cursor: fathomUploading || !fathomPasteText.trim() ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {fathomUploading ? 'Extracting...' : 'Extract Session'}
-                  </button>
-                  {fathomPasteText.length > 0 ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  {addSessionMode === 'fathom' ? (
                     <button
                       type="button"
-                      disabled={fathomUploading}
-                      onClick={() => setFathomPasteText('')}
+                      disabled={fathomUploading || !fathomPasteText.trim()}
+                      onClick={async () => {
+                        if (!fathomPasteText.trim() || !client) return;
+                        try {
+                          setFathomUploading(true);
+                          setFathomProgress(10);
+                          setFathomUploadError(null);
+                          setFathomUploadSuccess(null);
+                          setFathomProgress(40);
+                          const result = await extractFathomSession(
+                            client.id,
+                            fathomPasteText.trim(),
+                            'fathom_transcript.txt',
+                            ''
+                          );
+                          setFathomProgress(80);
+                          if (!result.success) {
+                            throw new Error(result.error ?? 'Extraction failed');
+                          }
+                          const now = new Date().toISOString();
+                          const contactDay = addSessionDate.trim();
+                          if (contactDay) {
+                            await dbExecute(
+                              `UPDATE clients SET last_contact_date = ?, updated_at = ? WHERE id = ?`,
+                              [contactDay, now, client.id]
+                            );
+                            setLastContactDateDb(contactDay);
+                          }
+                          await loadFathomSessions();
+                          setFathomProgress(100);
+                          setFathomUploading(false);
+                          setFathomPasteText('');
+                          setFathomUploadSuccess(
+                            'Session extracted. Last contacted date updated.'
+                          );
+                          setTimeout(() => {
+                            setFathomUploadSuccess(null);
+                            setFathomProgress(0);
+                          }, 3000);
+                        } catch (err) {
+                          console.error('Fathom extract error:', err);
+                          setFathomUploading(false);
+                          setFathomProgress(0);
+                          setFathomUploadError(
+                            'Could not extract. Make sure Ollama is running.'
+                          );
+                        }
+                      }}
                       style={{
-                        background: 'white',
-                        color: '#7A8F95',
+                        background:
+                          fathomUploading || !fathomPasteText.trim() ? '#C8E8E5' : '#3BBFBF',
+                        color: 'white',
                         borderRadius: 8,
-                        padding: '8px 16px',
+                        padding: '8px 18px',
                         fontSize: 12,
                         fontWeight: 'bold',
-                        border: '1px solid #C8E8E5',
-                        cursor: fathomUploading ? 'not-allowed' : 'pointer',
+                        border: 'none',
+                        cursor:
+                          fathomUploading || !fathomPasteText.trim() ? 'not-allowed' : 'pointer',
                       }}
                     >
-                      Clear
+                      {fathomUploading ? 'Extracting...' : 'Extract Session'}
                     </button>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* SECTION 1 — Add Session */}
-              <div
-                style={{
-                  marginBottom: 20,
-                  background: '#F4F7F8',
-                  border: '1px solid #C8E8E5',
-                  borderRadius: 12,
-                  padding: '16px 20px',
-                }}
-              >
-                <h3 className="font-bold" style={{ color: '#2D4459', fontSize: 14 }}>
-                  Log a Session
-                </h3>
-                <p className="mt-1" style={{ color: '#7A8F95', fontSize: 11 }}>
-                  Add sessions manually until Fathom transcripts are uploaded
-                </p>
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div>
-                    <Label htmlFor="manual-session-date" style={{ color: '#2D4459' }}>
-                      Session date
-                    </Label>
-                    <Input
-                      id="manual-session-date"
-                      type="date"
-                      className="mt-1 w-full"
-                      value={manualSessionDate}
-                      onChange={(e) => {
-                        setManualSessionDate(e.target.value);
-                        setSessionLogAddedAck(false);
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={addSessionManualSaving || !addSessionManualNotes.trim()}
+                      onClick={() => {
+                        void handleAddUnifiedManualSession();
                       }}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="manual-session-stage" style={{ color: '#2D4459' }}>
-                      Stage
-                    </Label>
-                    <select
-                      id="manual-session-stage"
-                      className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={manualSessionStage}
-                      onChange={(e) =>
-                        setManualSessionStage(e.target.value as PipelineStageCode)
-                      }
+                      style={{
+                        background:
+                          !addSessionManualNotes.trim() || addSessionManualSaving
+                            ? '#C8E8E5'
+                            : '#2D4459',
+                        color: 'white',
+                        borderRadius: 8,
+                        padding: '8px 18px',
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        border: 'none',
+                        cursor:
+                          !addSessionManualNotes.trim() || addSessionManualSaving
+                            ? 'not-allowed'
+                            : 'pointer',
+                      }}
                     >
-                      {(['IC', 'C1', 'C2', 'C3', 'C4', 'C5'] as const).map((code) => (
-                        <option key={code} value={code}>
-                          {getStageDisplayName(code)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <Label htmlFor="manual-session-duration" style={{ color: '#2D4459' }}>
-                      Duration (optional)
-                    </Label>
-                    <Input
-                      id="manual-session-duration"
-                      className="mt-1 w-full"
-                      placeholder="45 min"
-                      value={manualSessionDuration}
-                      onChange={(e) => setManualSessionDuration(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 flex items-start gap-2">
-                  <Checkbox
-                    id="manual-session-scheduled"
-                    checked={manualSessionScheduledInAdvance}
-                    onCheckedChange={(v) => setManualSessionScheduledInAdvance(v === true)}
-                    className="mt-0.5"
-                  />
-                  <Label
-                    htmlFor="manual-session-scheduled"
-                    className="cursor-pointer text-xs font-normal leading-snug"
-                    style={{ color: '#2D4459' }}
+                      {addSessionManualSaving ? 'Saving…' : 'Save Session'}
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFathomPasteText('');
+                      setAddSessionManualNotes('');
+                      setFathomUploadError(null);
+                      setFathomUploadSuccess(null);
+                    }}
+                    style={{
+                      background: 'white',
+                      color: '#7A8F95',
+                      borderRadius: 8,
+                      padding: '8px 14px',
+                      fontSize: 12,
+                      border: '1px solid #C8E8E5',
+                      cursor: 'pointer',
+                    }}
                   >
-                    This session was scheduled
-                    <br />
-                    in advance
-                  </Label>
+                    Clear
+                  </button>
                 </div>
-                <div className="mt-3">
-                  <Label htmlFor="manual-session-notes" style={{ color: '#2D4459' }}>
-                    Session notes (optional)
-                  </Label>
-                  <Textarea
-                    id="manual-session-notes"
-                    rows={2}
-                    className="mt-1 w-full resize-none"
-                    placeholder={
-                      'Key topics, client energy, what came up...'
-                    }
-                    value={manualSessionNotes}
-                    onChange={(e) => setManualSessionNotes(e.target.value)}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  className="mt-4 w-full font-bold text-white hover:opacity-95"
-                  style={{ background: '#3BBFBF', borderRadius: 8, padding: '10px 20px', fontSize: 13 }}
-                  onClick={() => {
-                    void handleAddManualSession();
-                  }}
-                  disabled={manualSessionSaving || !manualSessionDate.trim()}
-                >
-                  {manualSessionSaving ? 'Adding…' : 'Add Session'}
-                </Button>
-                {sessionLogAddedAck ? (
-                  <p className="mt-3 text-center text-sm font-semibold text-green-600">
-                    Session added ✓
-                  </p>
-                ) : null}
               </div>
 
               {fathomSessionCount === 0 ? (
@@ -6508,7 +6667,7 @@ not generic statements.${feedbackSection}`;
                     No sessions yet.
                   </p>
                   <p className="mt-2 max-w-sm px-4 text-center whitespace-pre-line" style={{ color: '#7A8F95', fontSize: 13 }}>
-                    {`Add your first session below,\nor upload a Fathom PDF at the top of this tab,\nor use The Capture → My Clients.`}
+                    {`Use Add Session above (Fathom transcript or My Notes),\nor use The Capture → My Clients.`}
                   </p>
                 </div>
               ) : (
@@ -6516,10 +6675,10 @@ not generic statements.${feedbackSection}`;
                   {fathomSessions.map((s, idx) => {
                     const plainNotes = fathomSessionPlainNotes(s);
                     const hasNext = (s.next_actions ?? '').trim().length > 0;
-                    const blocksWithContent = blockDefinitions.filter((d) =>
-                      parseSessionBlock(s[d.key as keyof typeof s] as string | null)
+                    const hasAnyBlockRaw = blockDefinitions.some((d) =>
+                      !fathomBlockRawEmpty(s[d.key as keyof typeof s] as string | null)
                     );
-                    const hasStructured = blocksWithContent.length > 0;
+                    const hasStructured = hasAnyBlockRaw;
                     const isEmptyShell = !hasStructured && !plainNotes && !hasNext;
                     const clearScore =
                       s.overall_clear_score != null ? Number(s.overall_clear_score) : null;
@@ -6785,7 +6944,7 @@ not generic statements.${feedbackSection}`;
                                 ) : null}
                               </div>
                             ) : null}
-                            {blocksWithContent.length > 0 ? (
+                            {hasAnyBlockRaw ? (
                               <>
                                 <button
                                   type="button"
@@ -6815,7 +6974,7 @@ not generic statements.${feedbackSection}`;
                                 </button>
                                 {blocksExpanded ? (
                                   <div className="mt-2 space-y-2">
-                                    {blocksWithContent.map((def) => renderFathomStructuredSection(s, def))}
+                                    {blockDefinitions.map((def) => renderFathomStructuredSection(s, def))}
                                   </div>
                                 ) : null}
                               </>
