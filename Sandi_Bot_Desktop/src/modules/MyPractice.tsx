@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getDb } from '../services/db';
 import UATFeedback from '@/components/UATFeedback';
+import { HealthIndicator } from '../components/HealthIndicator';
 
 const HEADER = '#2D4459';
 const MUTED = '#7A8F95';
@@ -938,6 +939,9 @@ export default function MyPractice() {
     )
   );
 
+  const myPracticePipelineCompletenessPct =
+    activeClientTotal <= 0 ? 100 : Math.round((completeCount / activeClientTotal) * 100);
+
   const scoreLabelSpec = (() => {
     if (performanceScore >= 90) return { text: 'Elite', color: TEAL };
     if (performanceScore >= 75) return { text: 'Strong', color: TEAL };
@@ -1056,6 +1060,12 @@ export default function MyPractice() {
           background: 'linear-gradient(135deg, #2D4459 0%, #1a2d3d 100%)',
         }}
       >
+        <div className="mb-4 flex flex-wrap items-start justify-end gap-2">
+          <HealthIndicator
+            page="My Practice"
+            dataCompleteness={myPracticePipelineCompletenessPct}
+          />
+        </div>
         <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
           <div className="min-w-0 flex-1 lg:w-1/2">
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">

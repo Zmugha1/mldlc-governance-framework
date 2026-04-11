@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/tooltip';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
+import { HealthIndicator } from '../components/HealthIndicator';
 import UATFeedback from '@/components/UATFeedback';
 import { stageConfig, discColors } from '@/data/sampleClients';
 import type { Client } from '@/types';
@@ -2118,6 +2119,30 @@ function ClientDetailModal({
     clientReadinessDbFields,
   ]);
 
+  const clientIntelDataCompleteness = useMemo(() => {
+    let pts = 0;
+    if (
+      discScores != null &&
+      discScores.d + discScores.i + discScores.s + discScores.c > 0
+    ) {
+      pts += 25;
+    }
+    const hasYou2 =
+      you2Vision.trim().length > 10 ||
+      (you2Details != null &&
+        ((you2Details.launch_timeline ?? '').trim().length > 0 ||
+          (you2Details.spouse_role ?? '').trim().length > 0 ||
+          (you2Details.dangers?.length ?? 0) > 0 ||
+          (you2Details.strengths?.length ?? 0) > 0));
+    if (hasYou2) pts += 25;
+    if (fathomSessionCount >= 1) pts += 25;
+    const hasTumay =
+      tumayReadinessProfile != null ||
+      (tumayData != null && Object.keys(tumayData).length > 0);
+    if (hasTumay) pts += 25;
+    return pts;
+  }, [discScores, you2Vision, you2Details, fathomSessionCount, tumayReadinessProfile, tumayData]);
+
   const latestSessionNotesPlain = useMemo(() => {
     const first = fathomSessions[0];
     if (!first) return '';
@@ -3849,6 +3874,10 @@ function ClientDetailModal({
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
+          <HealthIndicator
+            page="Client Intelligence"
+            dataCompleteness={clientIntelDataCompleteness}
+          />
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"

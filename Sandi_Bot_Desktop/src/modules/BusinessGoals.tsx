@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { HealthIndicator } from '../components/HealthIndicator';
 import { Star, MessageSquare, CheckCircle, Target, Info } from 'lucide-react';
 import { getDb } from '../services/db';
 import UATFeedback from '@/components/UATFeedback';
@@ -436,6 +437,11 @@ export default function BusinessGoals() {
     },
   ];
 
+  const businessGoalsDataCompleteness =
+    gapRows.length === 0
+      ? 100
+      : Math.round((gapRows.filter((r) => r.actual != null).length / gapRows.length) * 100);
+
   if (loading) {
     return (
       <div className="p-6 text-sm" style={{ color: '#7A8F95' }}>
@@ -463,9 +469,12 @@ export default function BusinessGoals() {
             Your $300,000 year — year to date
           </p>
         </div>
-        <p className="text-right text-xs" style={{ color: '#7A8F95', fontSize: 12 }}>
-          {headerDateStr}
-        </p>
+        <div className="flex flex-col items-end gap-2">
+          <HealthIndicator page="Business Goals" dataCompleteness={businessGoalsDataCompleteness} />
+          <p className="text-right text-xs" style={{ color: '#7A8F95', fontSize: 12 }}>
+            {headerDateStr}
+          </p>
+        </div>
       </header>
 
       {/* ZONE 1 — NORTH STAR */}

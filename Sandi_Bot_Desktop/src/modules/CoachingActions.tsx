@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getDb } from '../services/db';
+import { HealthIndicator } from '../components/HealthIndicator';
 import UATFeedback from '@/components/UATFeedback';
 
 function tauriSqlRows<T>(r: T | T[] | null | undefined): T[] {
@@ -190,6 +191,7 @@ type PageData = {
   converted: ConvertedRow[];
   history: HistoryRow[];
   goldenDrafts: Record<string, string>;
+  signalsProfileCompletenessPct: number;
 };
 
 async function loadCoachingActionsPageData(): Promise<PageData> {
@@ -379,11 +381,29 @@ async function loadCoachingActionsPageData(): Promise<PageData> {
     goldenDrafts[row.id] = row.golden_rules_notes ?? '';
   }
 
+  const signalClientIds = [...new Set(signalClients.map((s) => s.clientId))];
+  let signalsProfileCompletenessPct = 100;
+  if (signalClientIds.length > 0) {
+    const ph = signalClientIds.map(() => '?').join(',');
+    const completeRows = await db.select<{ client_id: string }>(
+      `SELECT DISTINCT c.id AS client_id
+       FROM clients c
+       INNER JOIN client_disc_profiles p ON p.client_id = c.id
+       INNER JOIN client_you2_profiles y ON y.client_id = c.id
+       WHERE c.id IN (${ph})
+         AND (COALESCE(p.natural_d,0)+COALESCE(p.natural_i,0)+COALESCE(p.natural_s,0)+COALESCE(p.natural_c,0)) > 0`,
+      signalClientIds
+    );
+    const complete = tauriSqlRows(completeRows).length;
+    signalsProfileCompletenessPct = Math.round((complete / signalClientIds.length) * 100);
+  }
+
   return {
     signalClients,
     converted: convList,
     history: histList,
     goldenDrafts,
+    signalsProfileCompletenessPct,
   };
 }
 
@@ -406,6 +426,7 @@ export default function CoachingActions() {
   const [converted, setConverted] = useState<ConvertedRow[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [goldenDrafts, setGoldenDrafts] = useState<Record<string, string>>({});
+  const [signalsProfileCompletenessPct, setSignalsProfileCompletenessPct] = useState(100);
   const [dropdownValue, setDropdownValue] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [loggedId, setLoggedId] = useState<string | null>(null);
@@ -422,6 +443,7 @@ export default function CoachingActions() {
           setConverted(data.converted);
           setHistory(data.history);
           setGoldenDrafts(data.goldenDrafts);
+          setSignalsProfileCompletenessPct(data.signalsProfileCompletenessPct);
         }
       } catch (e) {
         if (!cancelled) {
@@ -441,6 +463,7 @@ export default function CoachingActions() {
     setConverted(data.converted);
     setHistory(data.history);
     setGoldenDrafts(data.goldenDrafts);
+    setSignalsProfileCompletenessPct(data.signalsProfileCompletenessPct);
   };
 
   const handleResponseChange = async (item: ClientSignalCard, value: string) => {
@@ -517,14 +540,20 @@ export default function CoachingActions() {
 
   return (
     <div className="space-y-10 p-6">
-      <header>
-        <h1 className="font-bold" style={{ fontSize: 22, color: '#2D4459' }}>
-          Coaching Actions
-        </h1>
-        <p className="mt-1 whitespace-pre-line" style={{ fontSize: 13, color: '#7A8F95' }}>
-          Every signal. Every response.{'\n'}
-          Every outcome.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-bold" style={{ fontSize: 22, color: '#2D4459' }}>
+            Coaching Actions
+          </h1>
+          <p className="mt-1 whitespace-pre-line" style={{ fontSize: 13, color: '#7A8F95' }}>
+            Every signal. Every response.{'\n'}
+            Every outcome.
+          </p>
+        </div>
+        <HealthIndicator
+          page="Coaching Actions"
+          dataCompleteness={signalsProfileCompletenessPct}
+        />
       </header>
 
       <section>

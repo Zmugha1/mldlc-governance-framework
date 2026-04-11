@@ -75,6 +75,7 @@ import { clientToDisplay, normalizeDisplayStage } from '@/services/clientAdapter
 import { rebuildClientProfile } from '@/services/profileBuilderService';
 import { cn } from '@/lib/utils';
 import FeedbackButton from '../components/FeedbackButton';
+import { HealthIndicator } from '../components/HealthIndicator';
 import { ToolManager, type ToolConnection } from '../services/toolManager';
 import {
   connectGoogle,
@@ -2968,19 +2969,24 @@ ${workingText}`;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-4">
-        <Layers
-          className="shrink-0"
-          aria-hidden
-          style={{ color: '#3BBFBF', width: 24, height: 24 }}
-        />
-        <div>
-          <h1 className="font-bold" style={{ color: '#2D4459', fontSize: 24 }}>
-            The Capture
-          </h1>
-          <p className="mt-2 max-w-xl text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
-            Your coaching intelligence grows here. Everything you add makes Coach Bot smarter.
-          </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-4">
+          <Layers
+            className="shrink-0"
+            aria-hidden
+            style={{ color: '#3BBFBF', width: 24, height: 24 }}
+          />
+          <div className="min-w-0">
+            <h1 className="font-bold" style={{ color: '#2D4459', fontSize: 24 }}>
+              The Capture
+            </h1>
+            <p className="mt-2 max-w-xl text-[13px] leading-relaxed" style={{ color: '#7A8F95' }}>
+              Your coaching intelligence grows here. Everything you add makes Coach Bot smarter.
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0 pt-0.5">
+          <HealthIndicator page="The Capture" dataCompleteness={knowledgeHealthPct} />
         </div>
       </div>
 

@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/tooltip';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
+import { HealthIndicator } from '../components/HealthIndicator';
 import UATFeedback from '@/components/UATFeedback';
 import { getDashboardStats, getAllClients } from '@/services/clientService';
 import { getAllStageReadiness } from '@/services/stageReadinessService';
@@ -687,6 +688,7 @@ export default function ExecutiveDashboard() {
   const [postCallClient, setPostCallClient] = useState<TodaysCall | null>(null);
   const [showPostCallToast, setShowPostCallToast] = useState(false);
   const [briefCallsExpanded, setBriefCallsExpanded] = useState(false);
+  const [you2ClientIdSet, setYou2ClientIdSet] = useState<Set<string>>(() => new Set());
   const todaysCallsRef = useRef<TodaysCall[]>([]);
   const postCallPromptedRef = useRef<Set<string>>(new Set());
 
@@ -796,6 +798,26 @@ export default function ExecutiveDashboard() {
     [greetingNow]
   );
 
+  const morningBriefDataCompleteness = useMemo(() => {
+    const activeClients = clients.filter(
+      (cl) => (cl.outcome_bucket ?? '').toLowerCase() !== 'inactive'
+    );
+    const total = activeClients.length;
+    if (total === 0) return 100;
+    let withDisc = 0;
+    let withYou2 = 0;
+    let withSessions = 0;
+    for (const cl of activeClients) {
+      if (discLetterFromClient(cl) != null) withDisc += 1;
+      if (you2ClientIdSet.has(cl.id)) withYou2 += 1;
+      const n = sessionStatsByClient.get(cl.id)?.count ?? 0;
+      if (n > 0) withSessions += 1;
+    }
+    return Math.round(
+      ((withDisc / total) * 100 + (withYou2 / total) * 100 + (withSessions / total) * 100) / 3
+    );
+  }, [clients, you2ClientIdSet, sessionStatsByClient]);
+
   const loadDashboardData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
       setRefreshing(true);
@@ -828,6 +850,7 @@ export default function ExecutiveDashboard() {
         userPrefsRows,
         glanceAtTableRows,
         goneQuietCountRows,
+        you2ClientRows,
       ] = await Promise.all([
         getDashboardStats(),
         getAllClients(),
@@ -933,6 +956,10 @@ export default function ExecutiveDashboard() {
            )`,
           []
         ),
+        dbSelect<{ client_id: string }>(
+          `SELECT DISTINCT client_id FROM client_you2_profiles`,
+          []
+        ),
       ]);
       setStats(s);
       setClients(c);
@@ -998,6 +1025,7 @@ export default function ExecutiveDashboard() {
         if (letter) discFromProfiles.set(row.client_id, letter);
       }
       setDiscLetterByProfileClientId(discFromProfiles);
+      setYou2ClientIdSet(new Set(you2ClientRows.map((r) => String(r.client_id))));
       setPlacementByPeriod({
         weekly: Number(placementW[0]?.count ?? 0),
         monthly: Number(placementM[0]?.count ?? 0),
@@ -1517,7 +1545,9 @@ export default function ExecutiveDashboard() {
             </h1>
             <p style={{ fontSize: 14, color: '#C8E8E5', marginTop: 4 }}>{greetingDateLine}</p>
           </div>
-          <div
+          <div className="flex flex-col items-end gap-2">
+            <HealthIndicator page="Morning Brief" dataCompleteness={morningBriefDataCompleteness} />
+            <div
             style={{
               background: 'rgba(255,255,255,0.08)',
               border: '1px solid rgba(255,255,255,0.15)',
@@ -1548,6 +1578,7 @@ export default function ExecutiveDashboard() {
                 }}
               />
             </div>
+          </div>
           </div>
         </div>
         {calendarConnected && callsLoading ? (
