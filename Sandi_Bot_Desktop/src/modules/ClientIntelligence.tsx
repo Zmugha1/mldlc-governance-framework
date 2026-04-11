@@ -714,6 +714,43 @@ function visionBodyToThreeParagraphs(text: string): [string, string, string] {
   return [t, '', ''];
 }
 
+/** LCS length for vision edit-distance (normalized against max length). */
+function longestCommonSubsequence(a: string, b: string): number {
+  const n = a.length;
+  const m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () =>
+    new Array(m + 1).fill(0)
+  );
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  return dp[n][m];
+}
+
+function formatCouncilContextForVisionPrompt(out: CouncilOutput): string {
+  const gaps = [
+    ...out.uncertaintyAudit.missing,
+    ...out.uncertaintyAudit.unverified,
+  ];
+  return [
+    `Chairman insight: ${out.chairmanSynthesis.primaryInsight}`,
+    `Coaching posture: ${out.chairmanSynthesis.coachingPosture}`,
+    `Minority perspective: ${out.chairmanSynthesis.minorityPerspective}`,
+    `Chairman questions (themes only, do not paste as a list in the vision): ${out.chairmanSynthesis.recommendedQuestions.join(' | ')}`,
+    `Readiness (${out.readinessLens.confidence}%): ${out.readinessLens.insight}`,
+    `Alignment (${out.alignmentLens.confidence}%): ${out.alignmentLens.insight}`,
+    `Integrity (${out.integrityLens.confidence}%): ${out.integrityLens.insight}`,
+    `Verified inputs: ${out.uncertaintyAudit.verified.join('; ') || 'none'}`,
+    `Data gaps (address responsibly, no meta-labels in client text): ${gaps.join('; ') || 'none'}`,
+  ].join('\n');
+}
+
 function buildVisionStatementOllamaPrompt(args: {
   clientName: string;
   primaryStyleLabel: string;
@@ -734,6 +771,7 @@ function buildVisionStatementOllamaPrompt(args: {
   selfSufficiencyExcitement: string;
   areasOfInterest: string;
   lastSessionNotes: string;
+  councilContext?: string;
 }): string {
   const coaching =
     args.discLetter != null
@@ -768,6 +806,12 @@ Self-sufficiency / excitement: ${args.selfSufficiencyExcitement}
 Areas of interest: ${args.areasOfInterest}
 Last session notes:
 ${args.lastSessionNotes}
+${args.councilContext && args.councilContext.trim().length > 0
+    ? `
+
+STZ Coaching Council alignment (internal planning context only; do not quote framework names or this block in the client-facing vision):
+${args.councilContext}`
+    : ''}
 
 Write THREE paragraphs:
 PARAGRAPH 1 — Professional:
@@ -1326,6 +1370,14 @@ function ClientDetailModal({
   const [visionDraftMode, setVisionDraftMode] = useState(false);
   const [visionEditText, setVisionEditText] = useState('');
   const [visionApproveMsg, setVisionApproveMsg] = useState<string | null>(null);
+  /** Raw model output from the latest Generate/Regenerate (for edit-distance on approve). */
+  const [visionGeneratedBaseline, setVisionGeneratedBaseline] = useState<
+    string | null
+  >(null);
+  /** After Approve, short-lived feedback for edit magnitude (LCS-based). */
+  const [visionApproveFeedback, setVisionApproveFeedback] = useState<{
+    editDistance: number;
+  } | null>(null);
   const [stageMoveDialog, setStageMoveDialog] = useState<{
     target: PipelineStage;
     direction: 'forward' | 'back';
@@ -1357,6 +1409,8 @@ function ClientDetailModal({
     setVisionGenError(null);
     setVisionApproveMsg(null);
     setVisionDraftMode(false);
+    setVisionGeneratedBaseline(null);
+    setVisionApproveFeedback(null);
   }, [client?.id]);
 
   useEffect(() => {
@@ -2077,24 +2131,6 @@ function ClientDetailModal({
     if (!raw || raw === '{}') return '';
     return raw;
   }, [fathomSessions]);
-
-  const visionDataChecklist = useMemo(
-    () => ({
-      disc: !!(
-        discScores &&
-        discScores.d + discScores.i + discScores.s + discScores.c > 0
-      ),
-      you2Vision: you2Vision.trim().length > 10,
-      dangersOpps: !!(
-        you2Details &&
-        you2Details.dangers.length > 0 &&
-        you2Details.opportunities.length > 0
-      ),
-      tumay: tumayData != null,
-      lastSession: latestSessionNotesPlain.trim().length > 0,
-    }),
-    [discScores, you2Vision, you2Details, tumayData, latestSessionNotesPlain]
-  );
 
   const bestNextQuestionsChecklist = useMemo(() => {
     const hasDisc =
@@ -2987,6 +3023,41 @@ function ClientDetailModal({
     const lastNotes =
       latestSessionNotesPlain.trim() || 'No sessions yet';
 
+    let councilContext = '';
+    try {
+      const spouseRaw =
+        tumayData != null
+          ? String(tumayData.spouse_alignment ?? '').trim()
+          : '';
+      const spouseAlignment =
+        spouseRaw === 'Yes' || spouseRaw === 'No' || spouseRaw === 'Unsure'
+          ? spouseRaw
+          : 'Unknown';
+      const councilInput: CouncilInput = {
+        clientName: client.name,
+        clientId: client.id,
+        discStyle: discStyleLabel === '—' ? '' : discStyleLabel,
+        discScores: { d, i, s, c },
+        currentStage: client.inferred_stage || 'IC',
+        dangers: you2Details?.dangers ?? [],
+        strengths: you2Details?.strengths ?? [],
+        opportunities: you2Details?.opportunities ?? [],
+        oneYearVision:
+          you2Vision.trim() || persistedVisionText || '',
+        lastSessionNotes: latestSessionNotesPlain || '',
+        pinkFlags: activePinkFlagsFiltered,
+        netWorth: clientMergedFinancials.netWorth || '',
+        spouseAlignment,
+        sessionCount: fathomSessionCount,
+        coachIdentity: (coachProfileRow?.bio ?? '').trim(),
+        coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
+      };
+      const councilResult = await runCoachingCouncil(councilInput);
+      councilContext = formatCouncilContextForVisionPrompt(councilResult);
+    } catch (e) {
+      console.warn('vision: coaching council context skipped', e);
+    }
+
     const prompt = buildVisionStatementOllamaPrompt({
       clientName: client.name,
       primaryStyleLabel: primaryStyle,
@@ -3021,6 +3092,7 @@ function ClientDetailModal({
       selfSufficiencyExcitement: selfSuff,
       areasOfInterest: areasInt,
       lastSessionNotes: lastNotes,
+      councilContext,
     });
 
     return invoke<string>('ollama_generate', {
@@ -3100,7 +3172,9 @@ function ClientDetailModal({
         `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
         [result, client.id]
       );
+      setVisionGeneratedBaseline(result);
       setVisionEditText(result);
+      setVisionApproveFeedback(null);
       setVisionDraftMode(true);
       onVisionUpdated?.();
     } catch {
@@ -3114,15 +3188,20 @@ function ClientDetailModal({
     if (!client?.id) return;
     setVisionGenError(null);
     setVisionApproveMsg(null);
+    setVisionEditText('');
+    setVisionGeneratedBaseline(null);
     setVisionGenerating(true);
     try {
       const result = (await runVisionOllamaGeneration()).trim();
       if (!result) throw new Error('empty');
+      setVisionGeneratedBaseline(result);
       setVisionEditText(result);
       await dbExecute(
         `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
         [result, client.id]
       );
+      setVisionApproveFeedback(null);
+      setVisionDraftMode(true);
       onVisionUpdated?.();
     } catch {
       setVisionGenError('Generation failed. Is Ollama running?');
@@ -3134,15 +3213,39 @@ function ClientDetailModal({
   const handleApproveVision = async () => {
     if (!client?.id) return;
     setVisionGenError(null);
-    const text = visionEditText.trim();
-    if (!text) {
+    const approvedText = visionEditText.trim();
+    if (!approvedText) {
       setVisionGenError('Add vision text before approving.');
       return;
     }
+    const originalText = (
+      visionGeneratedBaseline?.trim() ?? approvedText
+    ).trim();
+    const editDistance =
+      originalText === approvedText
+        ? 0
+        : Math.round(
+            (1 -
+              longestCommonSubsequence(originalText, approvedText) /
+                Math.max(originalText.length, approvedText.length, 1)) *
+              100
+          );
     try {
+      await logCorrection({
+        clientId: client.id,
+        fieldName: 'vision_statement',
+        originalValue: originalText,
+        correctedValue: approvedText,
+        correctionType: 'vision_edit',
+        page: 'client_intelligence',
+      });
       await dbExecute(
         `UPDATE clients SET vision_statement = $1, vision_approved = 1, vision_approved_date = datetime('now'), updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [text, client.id]
+        [approvedText, client.id]
+      );
+      await dbExecute(
+        `UPDATE client_you2_profiles SET one_year_vision = $1 WHERE client_id = $2`,
+        [approvedText, client.id]
       );
       await dbExecute(
         `INSERT INTO audit_log
@@ -3152,15 +3255,16 @@ function ClientDetailModal({
           'vision_approved',
           client.id,
           null,
-          text.slice(0, 100),
+          approvedText.slice(0, 100),
           null,
           'deterministic',
         ]
       );
+      setYou2Vision(approvedText);
+      setVisionApproveFeedback({ editDistance });
+      setVisionGeneratedBaseline(null);
       setVisionDraftMode(false);
-      setVisionApproveMsg(
-        `${client.name}'s vision statement approved and saved ✓`
-      );
+      setVisionApproveMsg('✅ Vision approved and saved');
       onVisionUpdated?.();
     } catch (e) {
       console.error(e);
@@ -5704,7 +5808,11 @@ function ClientDetailModal({
                       type="button"
                       className="shrink-0 text-sm font-semibold underline-offset-2 hover:underline"
                       style={{ color: '#3BBFBF' }}
-                      onClick={() => setVisionDraftMode(true)}
+                      onClick={() => {
+                        setVisionApproveFeedback(null);
+                        setVisionApproveMsg(null);
+                        setVisionDraftMode(true);
+                      }}
                     >
                       Edit
                     </button>
@@ -5719,6 +5827,50 @@ function ClientDetailModal({
                   >
                     {persistedVisionText}
                   </div>
+                  {visionApproveMsg ? (
+                    <p className="m-0" style={{ color: '#3BBFBF', fontSize: 13 }}>
+                      {visionApproveMsg}
+                    </p>
+                  ) : null}
+                  {visionApproveFeedback ? (
+                    <div
+                      style={{
+                        background: '#F0FAFA',
+                        borderLeft: '4px solid #3BBFBF',
+                        borderRadius: 8,
+                        padding: '12px 16px',
+                      }}
+                    >
+                      <p
+                        className="m-0 font-bold"
+                        style={{ color: '#2D4459', fontSize: 13 }}
+                      >
+                        Vision approved
+                      </p>
+                      <p
+                        className="m-0 mt-2"
+                        style={{ color: '#7A8F95', fontSize: 12 }}
+                      >
+                        {visionApproveFeedback.editDistance === 0
+                          ? 'Approved without changes, Coach Bot understood this client well'
+                          : visionApproveFeedback.editDistance < 30
+                            ? 'Minor edits, good foundation'
+                            : 'Significant edits, Coach Bot is learning your voice'}
+                      </p>
+                      <button
+                        type="button"
+                        className="mt-2 border-0 bg-transparent p-0 underline-offset-2 hover:underline"
+                        style={{ color: '#7A8F95', fontSize: 11 }}
+                        onClick={() => {
+                          setVisionApproveFeedback(null);
+                          setVisionApproveMsg(null);
+                          setVisionDraftMode(true);
+                        }}
+                      >
+                        Edit Again
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-3 pt-2">
                     <button
                       type="button"
@@ -5774,46 +5926,109 @@ function ClientDetailModal({
                     Generate Vision Statement
                   </h3>
                   <p style={{ color: '#7A8F95', fontSize: 13, lineHeight: 1.55 }}>
-                    Coach Bot will generate a personalized vision statement using this
-                    client&apos;s DISC profile, You 2.0 goals, TUMAY data, and most recent
-                    session notes.
+                    Coach Bot runs the STZ Coaching Council for alignment, then drafts a
+                    three-paragraph vision in the client&apos;s voice from DISC, You 2.0,
+                    sessions, and coach identity.
                   </p>
-                  <ul className="space-y-2 text-sm" style={{ listStyle: 'none', padding: 0 }}>
-                    {(
-                      [
-                        {
-                          ok: visionDataChecklist.disc,
-                          label: 'DISC profile',
-                        },
-                        {
-                          ok: visionDataChecklist.you2Vision,
-                          label: 'You 2.0 vision',
-                        },
-                        {
-                          ok: visionDataChecklist.dangersOpps,
-                          label: 'Dangers and opportunities',
-                        },
-                        {
-                          ok: visionDataChecklist.tumay,
-                          label: 'TUMAY data',
-                        },
-                        {
-                          ok: visionDataChecklist.lastSession,
-                          label: 'Last session',
-                        },
-                      ] as const
-                    ).map((row) => (
-                      <li
-                        key={row.label}
-                        style={{
-                          color: row.ok ? '#3BBFBF' : '#F05F57',
-                        }}
-                      >
-                        {row.ok ? '✓' : '✗'} {row.label}{' '}
-                        {row.ok ? '— available' : '— not found'}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="text-center">
+                    <p
+                      className="m-0"
+                      style={{ color: '#7A8F95', fontSize: 11 }}
+                    >
+                      Vision powered by:
+                    </p>
+                    <div
+                      className="mt-2 flex flex-wrap items-center justify-center gap-4"
+                      style={{ fontSize: 12, color: '#2D4459' }}
+                    >
+                      <span>
+                        DISC{' '}
+                        <span
+                          style={{
+                            color:
+                              discScores != null &&
+                              discScores.d +
+                                discScores.i +
+                                discScores.s +
+                                discScores.c >
+                                0
+                                ? '#3BBFBF'
+                                : '#C8C8C8',
+                          }}
+                        >
+                          {discScores != null &&
+                          discScores.d +
+                            discScores.i +
+                            discScores.s +
+                            discScores.c >
+                            0
+                            ? '●'
+                            : '○'}
+                        </span>
+                      </span>
+                      <span>
+                        You 2.0{' '}
+                        <span
+                          style={{
+                            color:
+                              (you2Details?.dangers?.length ?? 0) > 0 ||
+                              (you2Details?.strengths?.length ?? 0) > 0 ||
+                              (you2Details?.opportunities?.length ?? 0) > 0
+                                ? '#3BBFBF'
+                                : '#C8C8C8',
+                          }}
+                        >
+                          {(you2Details?.dangers?.length ?? 0) > 0 ||
+                          (you2Details?.strengths?.length ?? 0) > 0 ||
+                          (you2Details?.opportunities?.length ?? 0) > 0
+                            ? '●'
+                            : '○'}
+                        </span>
+                      </span>
+                      <span>
+                        Sessions{' '}
+                        <span
+                          style={{
+                            color:
+                              fathomSessionCount > 0 ||
+                              latestSessionNotesPlain.trim().length > 20
+                                ? '#3BBFBF'
+                                : '#C8C8C8',
+                          }}
+                        >
+                          {fathomSessionCount > 0 ||
+                          latestSessionNotesPlain.trim().length > 20
+                            ? '●'
+                            : '○'}
+                        </span>
+                      </span>
+                      <span>
+                        Identity{' '}
+                        <span
+                          style={{
+                            color:
+                              !!(coachProfileRow?.bio?.trim() ||
+                                coachProfileRow?.coaching_philosophy?.trim())
+                                ? '#3BBFBF'
+                                : '#C8C8C8',
+                          }}
+                        >
+                          {!!(
+                            coachProfileRow?.bio?.trim() ||
+                            coachProfileRow?.coaching_philosophy?.trim()
+                          )
+                            ? '●'
+                            : '○'}
+                        </span>
+                      </span>
+                    </div>
+                    <p
+                      className="m-0 mt-1 italic"
+                      style={{ color: '#7A8F95', fontSize: 10 }}
+                    >
+                      More complete data produces a more personal vision statement
+                    </p>
+                  </div>
                   {visionGenerating ? (
                     <p
                       className="flex items-center gap-2 italic"
@@ -5841,21 +6056,27 @@ function ClientDetailModal({
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <p style={{ color: '#7A8F95', fontSize: 12 }}>
-                    Review and edit your client&apos;s vision statement
+                <div className="space-y-4">
+                  <p
+                    className="m-0 italic"
+                    style={{ color: '#7A8F95', fontSize: 12 }}
+                  >
+                    Review and edit this vision statement. When it sounds right click
+                    Approve.
                   </p>
                   <Textarea
-                    rows={12}
-                    className="w-full min-h-[300px] resize-y border font-sans outline-none focus:ring-2 focus:ring-[#3BBFBF]/30"
+                    rows={8}
+                    className="w-full resize-y border-0 font-sans outline-none focus:ring-2 focus:ring-[#3BBFBF]/40"
                     style={{
-                      borderColor: '#C8E8E5',
-                      borderRadius: 8,
+                      background: 'white',
+                      border: '2px solid #3BBFBF',
+                      borderRadius: 10,
                       padding: 16,
                       fontSize: 14,
                       color: '#2D4459',
                       lineHeight: 1.8,
-                      background: '#FEFAF5',
+                      minHeight: 120,
+                      width: '100%',
                     }}
                     value={visionEditText}
                     onChange={(e) => setVisionEditText(e.target.value)}
@@ -5869,8 +6090,8 @@ function ClientDetailModal({
                         border: '1px solid #C8E8E5',
                         color: '#7A8F95',
                         borderRadius: 8,
-                        padding: '8px 20px',
-                        fontSize: 14,
+                        padding: '10px 16px',
+                        fontSize: 12,
                       }}
                       disabled={visionGenerating}
                       onClick={() => void handleRegenerateVision()}
@@ -5884,16 +6105,27 @@ function ClientDetailModal({
                         background: '#3BBFBF',
                         color: 'white',
                         borderRadius: 8,
-                        padding: '8px 20px',
+                        padding: '10px 20px',
                         fontSize: 13,
                         border: 'none',
                       }}
                       disabled={visionGenerating}
                       onClick={() => void handleApproveVision()}
                     >
-                      Approve &amp; Save
+                      Approve Vision Statement
                     </button>
                   </div>
+                  {fathomSessionCount === 0 ? (
+                    <p className="m-0" style={{ color: '#F59E0B', fontSize: 12 }}>
+                      ⚠️ No session history, vision based on You 2.0 only. Upload Fathom
+                      transcripts for a richer vision statement.
+                    </p>
+                  ) : null}
+                  {you2Vision.trim().length === 0 ? (
+                    <p className="m-0" style={{ color: '#F05F57', fontSize: 12 }}>
+                      ⚠️ No You 2.0 vision found. Upload You 2.0 document first.
+                    </p>
+                  ) : null}
                   {visionGenerating ? (
                     <p
                       className="flex items-center gap-2 italic"
@@ -5908,9 +6140,6 @@ function ClientDetailModal({
 
               {visionGenError ? (
                 <p className="text-sm text-red-600">{visionGenError}</p>
-              ) : null}
-              {visionApproveMsg ? (
-                <p className="text-sm font-medium text-green-600">{visionApproveMsg}</p>
               ) : null}
 
               <Card>
