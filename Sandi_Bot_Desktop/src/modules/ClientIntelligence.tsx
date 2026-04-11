@@ -715,23 +715,16 @@ function visionBodyToThreeParagraphs(text: string): [string, string, string] {
   return [t, '', ''];
 }
 
-/** LCS length for vision edit-distance (normalized against max length). */
+/** Cheap overlap score for vision edit-distance (avoids huge DP tables on long text). */
 function longestCommonSubsequence(a: string, b: string): number {
-  const n = a.length;
-  const m = b.length;
-  const dp: number[][] = Array.from({ length: n + 1 }, () =>
-    new Array(m + 1).fill(0)
-  );
-  for (let i = 1; i <= n; i++) {
-    for (let j = 1; j <= m; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
+  if (!a || !b) return 0;
+  let matches = 0;
+  const shorter = a.length < b.length ? a : b;
+  const longer = a.length >= b.length ? a : b;
+  for (const char of shorter) {
+    if (longer.includes(char)) matches += 1;
   }
-  return dp[n][m];
+  return matches;
 }
 
 function formatCouncilContextForVisionPrompt(out: CouncilOutput): string {
@@ -3210,8 +3203,11 @@ function ClientDetailModal({
       setVisionApproveFeedback(null);
       setVisionDraftMode(true);
       onVisionUpdated?.();
-    } catch {
-      setVisionGenError('Generation failed. Is Ollama running?');
+    } catch (error) {
+      console.error('Vision generation error:', error);
+      setVisionGenError(
+        'Could not generate vision statement. Is Ollama running?'
+      );
     } finally {
       setVisionGenerating(false);
     }
@@ -3236,8 +3232,11 @@ function ClientDetailModal({
       setVisionApproveFeedback(null);
       setVisionDraftMode(true);
       onVisionUpdated?.();
-    } catch {
-      setVisionGenError('Generation failed. Is Ollama running?');
+    } catch (error) {
+      console.error('Vision generation error:', error);
+      setVisionGenError(
+        'Could not generate vision statement. Is Ollama running?'
+      );
     } finally {
       setVisionGenerating(false);
     }
@@ -3276,23 +3275,34 @@ function ClientDetailModal({
         `UPDATE clients SET vision_statement = $1, vision_approved = 1, vision_approved_date = datetime('now'), updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
         [approvedText, client.id]
       );
-      await dbExecute(
-        `UPDATE client_you2_profiles SET one_year_vision = $1 WHERE client_id = $2`,
-        [approvedText, client.id]
-      );
-      await dbExecute(
-        `INSERT INTO audit_log
+      try {
+        const db = await getDb();
+        await db.execute(
+          `UPDATE client_you2_profiles
+           SET one_year_vision = $1
+           WHERE client_id = $2`,
+          [approvedText, client.id]
+        );
+      } catch (dbError) {
+        console.error('Vision save error:', dbError);
+      }
+      try {
+        await dbExecute(
+          `INSERT INTO audit_log
          (action_type, client_id, input_data, output_data, reasoning, model_used)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          'vision_approved',
-          client.id,
-          null,
-          approvedText.slice(0, 100),
-          null,
-          'deterministic',
-        ]
-      );
+          [
+            'vision_approved',
+            client.id,
+            null,
+            approvedText.slice(0, 100),
+            null,
+            'deterministic',
+          ]
+        );
+      } catch (auditErr) {
+        console.error('Vision audit log error:', auditErr);
+      }
       setYou2Vision(approvedText);
       setVisionApproveFeedback({ editDistance });
       setVisionGeneratedBaseline(null);
@@ -3300,7 +3310,7 @@ function ClientDetailModal({
       setVisionApproveMsg('✅ Vision approved and saved');
       onVisionUpdated?.();
     } catch (e) {
-      console.error(e);
+      console.error('Vision approve error:', e);
       setVisionGenError('Could not approve vision. Try again.');
     }
   };
@@ -5798,6 +5808,9 @@ function ClientDetailModal({
           </TabsContent>
 
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
+            {(() => {
+              try {
+                return (
             <div className="overflow-y-auto h-full max-h-[75vh] p-6 space-y-6">
               <p
                 style={{
@@ -6225,6 +6238,18 @@ function ClientDetailModal({
                 </CardContent>
               </Card>
             </div>
+                );
+              } catch (error) {
+                console.error('Vision tab error:', error);
+                return (
+                  <div style={{ padding: 16, color: '#F05F57' }}>
+                    Vision statement encountered an error. Please refresh the client card.
+                    <br />
+                    Error: {String(error)}
+                  </div>
+                );
+              }
+            })()}
           </TabsContent>
 
           <TabsContent value="fathom" className="h-full min-h-0 mt-0">
