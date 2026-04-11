@@ -82,6 +82,7 @@ import {
   type CouncilOutput,
 } from '../services/coachingCouncil';
 import { logCorrection } from '../services/correctionService';
+import { processDocument } from '@/services/documentExtractionService';
 
 /** Client Intelligence sidebar / header — DISC ring colors (solid + ~20% fill). */
 const CI_DISC_STYLE: Record<'D' | 'I' | 'S' | 'C', { solid: string; muted: string }> = {
@@ -640,6 +641,9 @@ const FRANCHISE_NOTES_PLACEHOLDER =
 /** {@link https://v2.tauri.app/reference/javascript/api/namespacepath/#downloaddir BaseDirectory.Download} */
 const TAURI_BASE_DIRECTORY_DOWNLOAD = 7;
 
+/** {@link https://v2.tauri.app/reference/javascript/api/namespacepath/#homedir BaseDirectory.Home} */
+const TAURI_BASE_DIRECTORY_HOME = 21;
+
 /**
  * Writes bytes into the user's Downloads folder via the Tauri fs plugin
  * (same IPC as @tauri-apps/plugin-fs writeFile), without requiring the
@@ -654,6 +658,24 @@ async function visionWriteBytesToDownloads(
       path: encodeURIComponent(relativeFileName),
       options: JSON.stringify({
         baseDir: TAURI_BASE_DIRECTORY_DOWNLOAD,
+      }),
+    },
+  });
+}
+
+/**
+ * Writes a file under ~/SandiBot (same root as {@link get_app_dir}) so
+ * {@link extract_text_from_any_file} can open it by absolute path.
+ */
+async function writeFathomStagingPdfToSandiBot(
+  baseName: string,
+  bytes: Uint8Array
+): Promise<void> {
+  await invoke('plugin:fs|write_file', bytes, {
+    headers: {
+      path: encodeURIComponent(`SandiBot/${baseName}`),
+      options: JSON.stringify({
+        baseDir: TAURI_BASE_DIRECTORY_HOME,
       }),
     },
   });
@@ -1502,6 +1524,13 @@ function ClientDetailModal({
   const [fathomNotesExpanded, setFathomNotesExpanded] = useState<Record<number, boolean>>(
     {}
   );
+  const [fathomUploading, setFathomUploading] = useState(false);
+  const [fathomProgress, setFathomProgress] = useState(0);
+  const [fathomUploadError, setFathomUploadError] = useState<string | null>(null);
+  const [fathomUploadSuccess, setFathomUploadSuccess] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
+  const [editingSessionNotes, setEditingSessionNotes] = useState('');
+  const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null);
   const [placementPocReached, setPlacementPocReached] = useState<string | null>(
     null
   );
@@ -6153,6 +6182,194 @@ not generic statements.${feedbackSection}`;
 
           <TabsContent value="fathom" className="h-full min-h-0 mt-0">
             <div className="h-full max-h-[75vh] overflow-y-auto p-6">
+              <div
+                style={{
+                  background: '#F4F7F8',
+                  borderRadius: 10,
+                  border: '1px solid #C8E8E5',
+                  padding: '16px 20px',
+                  marginBottom: 16,
+                }}
+              >
+                <p
+                  style={{
+                    color: '#2D4459',
+                    fontSize: 13,
+                    fontWeight: 'bold',
+                    margin: '0 0 4px',
+                  }}
+                >
+                  Upload Fathom Session
+                </p>
+                <p
+                  style={{
+                    color: '#7A8F95',
+                    fontSize: 11,
+                    margin: '0 0 12px',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  Upload a Fathom transcript PDF to automatically extract the 9-block coaching analysis
+                </p>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  id={`fathom-upload-${client.id}`}
+                  style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+
+                    try {
+                      setFathomUploading(true);
+                      setFathomProgress(10);
+                      setFathomUploadError(null);
+                      setFathomUploadSuccess(null);
+
+                      const arrayBuffer = await file.arrayBuffer();
+                      const uint8Array = new Uint8Array(arrayBuffer);
+                      setFathomProgress(30);
+
+                      const appDir = await invoke<string>('get_app_dir');
+                      const sep = appDir.includes('\\') ? '\\' : '/';
+                      const stagingName = `fathom_upload_${client.id}_${Date.now()}.pdf`;
+                      const tempPath = `${appDir.replace(/[/\\]+$/, '')}${sep}${stagingName}`;
+
+                      await writeFathomStagingPdfToSandiBot(stagingName, uint8Array);
+                      setFathomProgress(50);
+
+                      const extracted = await invoke<{
+                        text: string;
+                        success: boolean;
+                        error?: string;
+                      }>('extract_text_from_any_file', { filePath: tempPath });
+
+                      const textToUse =
+                        extracted.success && extracted.text ? extracted.text : '';
+                      if (!extracted.success || !textToUse.trim()) {
+                        throw new Error(
+                          extracted.error ?? 'Could not read transcript from PDF'
+                        );
+                      }
+                      setFathomProgress(65);
+
+                      const res = await processDocument(
+                        client.id,
+                        'fathom',
+                        textToUse,
+                        file.name,
+                        tempPath
+                      );
+                      const ok =
+                        res.extraction_status === 'complete' ||
+                        res.extraction_status === 'pending' ||
+                        (res.success === true && res.extraction_status !== 'failed');
+                      if (!ok || res.extraction_status === 'skipped') {
+                        throw new Error(res.error ?? 'Fathom extraction failed');
+                      }
+
+                      setFathomProgress(90);
+                      await loadFathomSessions();
+                      setFathomProgress(100);
+                      setFathomUploading(false);
+                      setFathomUploadSuccess('Session extracted successfully');
+                      setTimeout(() => {
+                        setFathomUploadSuccess(null);
+                        setFathomProgress(0);
+                      }, 3000);
+                    } catch (err) {
+                      console.error('Fathom upload error:', err);
+                      setFathomUploading(false);
+                      setFathomProgress(0);
+                      setFathomUploadError(
+                        'Could not extract session. Make sure Ollama is running.'
+                      );
+                    }
+
+                    e.target.value = '';
+                  }}
+                />
+                <label
+                  htmlFor={`fathom-upload-${client.id}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: fathomUploading ? '#C8E8E5' : '#3BBFBF',
+                    color: 'white',
+                    borderRadius: 8,
+                    padding: '8px 16px',
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    cursor: fathomUploading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {fathomUploading ? 'Extracting...' : 'Upload Fathom PDF'}
+                </label>
+                {fathomUploading ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      background: '#E8F4F4',
+                      borderRadius: 4,
+                      height: 8,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${fathomProgress}%`,
+                        background: '#3BBFBF',
+                        borderRadius: 4,
+                        transition: 'width 0.4s ease',
+                      }}
+                    />
+                  </div>
+                ) : null}
+                {fathomUploading ? (
+                  <p
+                    style={{
+                      color: '#7A8F95',
+                      fontSize: 11,
+                      margin: '4px 0 0',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {fathomProgress < 30
+                      ? 'Reading PDF...'
+                      : fathomProgress < 60
+                        ? 'Extracting session blocks...'
+                        : fathomProgress < 90
+                          ? 'Analyzing coaching patterns...'
+                          : 'Saving session...'}
+                  </p>
+                ) : null}
+                {fathomUploadError ? (
+                  <p
+                    style={{
+                      color: '#F05F57',
+                      fontSize: 12,
+                      margin: '8px 0 0',
+                    }}
+                  >
+                    {fathomUploadError}
+                  </p>
+                ) : null}
+                {fathomUploadSuccess ? (
+                  <p
+                    style={{
+                      color: '#3BBFBF',
+                      fontSize: 12,
+                      margin: '8px 0 0',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    ✓ {fathomUploadSuccess}
+                  </p>
+                ) : null}
+              </div>
+
               {/* SECTION 1 — Add Session */}
               <div
                 style={{
@@ -6281,7 +6498,7 @@ not generic statements.${feedbackSection}`;
                     No sessions yet.
                   </p>
                   <p className="mt-2 max-w-sm px-4 text-center whitespace-pre-line" style={{ color: '#7A8F95', fontSize: 13 }}>
-                    {`Add your first session above\nor upload a Fathom transcript\nin The Capture → My Clients.`}
+                    {`Add your first session below,\nor upload a Fathom PDF at the top of this tab,\nor use The Capture → My Clients.`}
                   </p>
                 </div>
               ) : (
@@ -6349,8 +6566,195 @@ not generic statements.${feedbackSection}`;
                             <span className="text-[11px]" style={{ color: '#7A8F95' }}>
                               {sessionNumLabel}
                             </span>
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                justifyContent: 'flex-end',
+                                gap: 6,
+                                marginTop: 4,
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingSessionId(s.id);
+                                  setEditingSessionNotes(s.notes ?? '');
+                                  setDeletingSessionId(null);
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: '1px solid #C8E8E5',
+                                  borderRadius: 6,
+                                  padding: '3px 10px',
+                                  fontSize: 11,
+                                  color: '#7A8F95',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeletingSessionId(s.id);
+                                  setEditingSessionId(null);
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: '1px solid #F05F57',
+                                  borderRadius: 6,
+                                  padding: '3px 10px',
+                                  fontSize: 11,
+                                  color: '#F05F57',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
                         </div>
+
+                        {editingSessionId === s.id ? (
+                          <div style={{ marginTop: 8 }}>
+                            <textarea
+                              value={editingSessionNotes}
+                              onChange={(ev) => setEditingSessionNotes(ev.target.value)}
+                              style={{
+                                width: '100%',
+                                minHeight: 100,
+                                border: '2px solid #3BBFBF',
+                                borderRadius: 8,
+                                padding: '8px 10px',
+                                fontSize: 13,
+                                color: '#2D4459',
+                                resize: 'vertical',
+                                fontFamily: 'inherit',
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                            <div
+                              style={{
+                                display: 'flex',
+                                gap: 8,
+                                marginTop: 8,
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await dbExecute(
+                                      `UPDATE coaching_sessions
+                                       SET notes = ?,
+                                           updated_at = CURRENT_TIMESTAMP
+                                       WHERE id = ?`,
+                                      [editingSessionNotes, s.id]
+                                    );
+                                    setEditingSessionId(null);
+                                    await loadFathomSessions();
+                                  } catch (err) {
+                                    console.error('Session edit error:', err);
+                                  }
+                                }}
+                                style={{
+                                  background: '#3BBFBF',
+                                  color: 'white',
+                                  borderRadius: 6,
+                                  padding: '6px 14px',
+                                  fontSize: 12,
+                                  fontWeight: 'bold',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingSessionId(null)}
+                                style={{
+                                  background: 'white',
+                                  color: '#7A8F95',
+                                  borderRadius: 6,
+                                  padding: '6px 14px',
+                                  fontSize: 12,
+                                  border: '1px solid #C8E8E5',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {deletingSessionId === s.id ? (
+                          <div
+                            style={{
+                              background: '#FFF0F0',
+                              borderRadius: 8,
+                              border: '1px solid #F05F57',
+                              padding: '12px 14px',
+                              marginTop: 8,
+                            }}
+                          >
+                            <p
+                              style={{
+                                color: '#2D4459',
+                                fontSize: 13,
+                                margin: '0 0 8px',
+                              }}
+                            >
+                              Delete this session? This cannot be undone.
+                            </p>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await dbExecute(
+                                      `DELETE FROM coaching_sessions WHERE id = ?`,
+                                      [s.id]
+                                    );
+                                    setDeletingSessionId(null);
+                                    await loadFathomSessions();
+                                  } catch (err) {
+                                    console.error('Session delete error:', err);
+                                  }
+                                }}
+                                style={{
+                                  background: '#F05F57',
+                                  color: 'white',
+                                  borderRadius: 6,
+                                  padding: '6px 14px',
+                                  fontSize: 12,
+                                  fontWeight: 'bold',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Delete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingSessionId(null)}
+                                style={{
+                                  background: 'white',
+                                  color: '#7A8F95',
+                                  borderRadius: 6,
+                                  padding: '6px 14px',
+                                  fontSize: 12,
+                                  border: '1px solid #C8E8E5',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
 
                         {isEmptyShell ? (
                           <p className="mt-2 text-[13px]" style={{ color: '#7A8F95' }}>
@@ -6408,21 +6812,6 @@ not generic statements.${feedbackSection}`;
                   })}
                 </div>
               )}
-
-              {/* SECTION 3 — Upload prompt */}
-              <div
-                className="mt-6 text-center text-xs leading-relaxed"
-                style={{
-                  background: '#F4F7F8',
-                  border: '1px dashed #C8E8E5',
-                  borderRadius: 10,
-                  padding: '12px 16px',
-                  color: '#7A8F95',
-                  fontSize: 12,
-                }}
-              >
-                Upload Fathom transcripts in The Capture → My Clients to populate this tab automatically.
-              </div>
             </div>
           </TabsContent>
 
