@@ -6,6 +6,8 @@ import {
   useRef,
   useCallback,
   type ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
 } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -1003,6 +1005,315 @@ type UndoState = StageUndoPayload & {
   timeoutId: ReturnType<typeof setTimeout>;
 };
 
+type VisionRubricValue = {
+  accuracy: number;
+  completeness: number;
+  tone: number;
+  usefulness: number;
+  comment: string;
+};
+
+type VisionRubricProps = {
+  clientName: string | undefined;
+  setVisionRubric: Dispatch<SetStateAction<VisionRubricValue | null>>;
+  setVisionRubricSubmitted: Dispatch<SetStateAction<boolean>>;
+  handleGenerateVision: (feedbackContext?: string) => Promise<void>;
+};
+
+function VisionRubric({
+  clientName,
+  setVisionRubric,
+  setVisionRubricSubmitted,
+  handleGenerateVision,
+}: VisionRubricProps) {
+  const [scores, setScores] = useState({
+    accuracy: 0,
+    completeness: 0,
+    tone: 0,
+    usefulness: 0,
+  });
+  const [comment, setComment] = useState('');
+
+  const displayName = clientName || 'this client';
+
+  const dimensions = [
+    {
+      key: 'accuracy' as const,
+      label: 'Accuracy',
+      question:
+        'Does this sound like ' +
+        displayName +
+        '?',
+    },
+    {
+      key: 'completeness' as const,
+      label: 'Completeness',
+      question:
+        'Does it capture their goals?',
+    },
+    {
+      key: 'tone' as const,
+      label: 'Tone',
+      question:
+        'Does it sound like their voice?',
+    },
+    {
+      key: 'usefulness' as const,
+      label: 'Usefulness',
+      question:
+        'Would you use this in a presentation?',
+    },
+  ];
+
+  const totalScore =
+    scores.accuracy +
+    scores.completeness +
+    scores.tone +
+    scores.usefulness;
+
+  const avgScore =
+    totalScore > 0
+      ? totalScore / 4
+      : 0;
+
+  const allRated =
+    scores.accuracy > 0 &&
+    scores.completeness > 0 &&
+    scores.tone > 0 &&
+    scores.usefulness > 0;
+
+  return (
+    <div
+      style={{
+        background: '#F4F7F8',
+        borderRadius: 10,
+        border: '1px solid #C8E8E5',
+        padding: '16px 20px',
+        marginTop: 12,
+      }}
+    >
+      <p
+        style={{
+          color: '#2D4459',
+          fontSize: 13,
+          fontWeight: 'bold',
+          margin: '0 0 4px',
+        }}
+      >
+        Rate this vision statement
+      </p>
+      <p
+        style={{
+          color: '#7A8F95',
+          fontSize: 11,
+          margin: '0 0 14px',
+          fontStyle: 'italic',
+        }}
+      >
+        Your ratings teach Coach Bot
+        what a good vision statement
+        sounds like
+      </p>
+
+      {dimensions.map((dim) => (
+        <div
+          key={dim.key}
+          style={{ marginBottom: 12 }}
+        >
+          <p
+            style={{
+              color: '#7A8F95',
+              fontSize: 11,
+              margin: '0 0 4px',
+            }}
+          >
+            <strong
+              style={{
+                color: '#2D4459',
+              }}
+            >
+              {dim.label}
+            </strong>
+            {' — '}
+            {dim.question}
+          </p>
+          <div
+            style={{
+              display: 'flex',
+              gap: 6,
+            }}
+          >
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() =>
+                  setScores((prev) => ({
+                    ...prev,
+                    [dim.key]: n,
+                  }))
+                }
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 6,
+                  border:
+                    '1px solid #C8E8E5',
+                  background:
+                    scores[dim.key] >= n
+                      ? '#3BBFBF'
+                      : 'white',
+                  color:
+                    scores[dim.key] >= n
+                      ? 'white'
+                      : '#7A8F95',
+                  fontSize: 13,
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ marginTop: 12 }}>
+        <p
+          style={{
+            color: '#7A8F95',
+            fontSize: 11,
+            margin: '0 0 4px',
+          }}
+        >
+          What did it miss? (optional)
+        </p>
+        <textarea
+          value={comment}
+          onChange={(e) =>
+            setComment(e.target.value)
+          }
+          placeholder="Too formal. Missing her family goals. Wrong tone..."
+          style={{
+            width: '100%',
+            height: 60,
+            border: '1px solid #C8E8E5',
+            borderRadius: 8,
+            padding: '8px 10px',
+            fontSize: 12,
+            color: '#2D4459',
+            resize: 'vertical',
+            fontFamily: 'inherit',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
+
+      {allRated && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            marginTop: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          {avgScore < 3 && (
+            <button
+              type="button"
+              onClick={() => {
+                const feedback =
+                  `Scores — ` +
+                  `Accuracy: ${scores.accuracy}/5, ` +
+                  `Completeness: ${scores.completeness}/5, ` +
+                  `Tone: ${scores.tone}/5, ` +
+                  `Usefulness: ${scores.usefulness}/5. ` +
+                  (comment
+                    ? `What was missing: ${comment}`
+                    : 'No specific feedback.');
+                setVisionRubric({
+                  ...scores,
+                  comment,
+                });
+                setVisionRubricSubmitted(
+                  true
+                );
+                void handleGenerateVision(
+                  feedback
+                );
+              }}
+              style={{
+                background: '#F05F57',
+                color: 'white',
+                borderRadius: 8,
+                padding: '8px 16px',
+                fontSize: 12,
+                fontWeight: 'bold',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Regenerate with Feedback
+            </button>
+          )}
+
+          {avgScore >= 3 && (
+            <button
+              type="button"
+              onClick={() => {
+                setVisionRubric({
+                  ...scores,
+                  comment,
+                });
+                setVisionRubricSubmitted(
+                  true
+                );
+              }}
+              style={{
+                background: '#3BBFBF',
+                color: 'white',
+                borderRadius: 8,
+                padding: '8px 16px',
+                fontSize: 12,
+                fontWeight: 'bold',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Looks Good — Download
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setVisionRubric({
+                ...scores,
+                comment,
+              });
+              setVisionRubricSubmitted(
+                true
+              );
+            }}
+            style={{
+              background: 'white',
+              color: '#7A8F95',
+              borderRadius: 8,
+              padding: '8px 16px',
+              fontSize: 12,
+              border: '1px solid #C8E8E5',
+              cursor: 'pointer',
+            }}
+          >
+            Skip Rating
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClientDetailModal({
   client,
   onInactivate,
@@ -1204,13 +1515,9 @@ function ClientDetailModal({
   const [visionText, setVisionText] = useState('');
   const [visionGenerating, setVisionGenerating] = useState(false);
   const [visionError, setVisionError] = useState<string | null>(null);
-  const [visionRubric, setVisionRubric] = useState<{
-    accuracy: number;
-    completeness: number;
-    tone: number;
-    usefulness: number;
-    comment: string;
-  } | null>(null);
+  const [visionRubric, setVisionRubric] = useState<VisionRubricValue | null>(
+    null
+  );
   const [visionRubricSubmitted, setVisionRubricSubmitted] = useState(false);
   const [territoryNotes, setTerritoryNotes] = useState('');
   const [stageMoveDialog, setStageMoveDialog] = useState<{
@@ -3205,12 +3512,6 @@ not generic statements.${feedbackSection}`;
         );
       }
     };
-
-  void [
-    handleGenerateVision,
-    handleDownloadVisionPpt,
-    handleDownloadVisionPdf,
-  ];
 
   const handleMarkPinkFlagResolved = async (flagName: string) => {
     if (!client) return;
@@ -5512,15 +5813,312 @@ not generic statements.${feedbackSection}`;
           </TabsContent>
 
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
-            <div style={{ padding: 16 }}>
-              <p
-                style={{
-                  color: '#7A8F95',
-                  fontSize: 13,
-                }}
-              >
-                Vision Statement — rebuilding
-              </p>
+            <div className="overflow-y-auto h-full max-h-[75vh] px-6 py-4">
+              <div style={{ padding: '16px 0' }}>
+                {/* DATA FOUNDATION INDICATOR */}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 10,
+                    marginBottom: 16,
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: '#7A8F95',
+                    }}
+                  >
+                    Powered by:
+                  </span>
+                  {[
+                    {
+                      label: 'DISC',
+                      has:
+                        discScores != null &&
+                        discScores.d +
+                          discScores.i +
+                          discScores.s +
+                          discScores.c >
+                          0,
+                    },
+                    {
+                      label: 'You 2.0',
+                      has: Boolean(you2Vision?.trim()),
+                    },
+                    {
+                      label: 'Sessions',
+                      has:
+                        latestSessionNotesPlain.trim().length > 10,
+                    },
+                    {
+                      label: 'Identity',
+                      has: Boolean(
+                        (coachProfileRow?.bio ?? '').trim()
+                      ),
+                    },
+                  ].map((item) => (
+                    <span
+                      key={item.label}
+                      style={{
+                        fontSize: 11,
+                        color: item.has
+                          ? '#3BBFBF'
+                          : '#C8E8E5',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {item.has ? '●' : '○'}{' '}
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
+
+                {/* ERROR STATE */}
+                {visionError ? (
+                  <div
+                    style={{
+                      padding: '12px 16px',
+                      background: '#FFF0F0',
+                      borderRadius: 8,
+                      border: '1px solid #F05F57',
+                      color: '#F05F57',
+                      fontSize: 13,
+                      marginBottom: 12,
+                    }}
+                  >
+                    {visionError}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisionError(null)
+                      }
+                      style={{
+                        display: 'block',
+                        marginTop: 6,
+                        color: '#7A8F95',
+                        fontSize: 11,
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                ) : null}
+
+                {/* GENERATE BUTTON — shown when
+                    no text and not generating */}
+                {!visionText && !visionGenerating ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void handleGenerateVision()
+                    }
+                    style={{
+                      background: '#3BBFBF',
+                      color: 'white',
+                      borderRadius: 8,
+                      padding: '10px 20px',
+                      fontSize: 13,
+                      fontWeight: 'bold',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Generate Vision Statement
+                  </button>
+                ) : null}
+
+                {/* LOADING STATE */}
+                {visionGenerating ? (
+                  <div
+                    style={{
+                      padding: '16px 0',
+                      color: '#7A8F95',
+                      fontSize: 13,
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    Writing vision statement for{' '}
+                    {client?.name}...
+                  </div>
+                ) : null}
+
+                {/* GENERATED TEXT + RUBRIC
+                    + DOWNLOADS */}
+                {visionText && !visionGenerating ? (
+                  <div>
+                    {/* EDITABLE TEXTAREA */}
+                    <textarea
+                      value={visionText}
+                      onChange={(e) =>
+                        setVisionText(e.target.value)
+                      }
+                      style={{
+                        width: '100%',
+                        minHeight: 160,
+                        border: '2px solid #3BBFBF',
+                        borderRadius: 10,
+                        padding: '14px 16px',
+                        fontSize: 14,
+                        color: '#2D4459',
+                        lineHeight: 1.8,
+                        resize: 'vertical',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+
+                    <p
+                      style={{
+                        color: '#7A8F95',
+                        fontSize: 11,
+                        fontStyle: 'italic',
+                        margin: '4px 0 12px',
+                      }}
+                    >
+                      Edit directly in the box above
+                      before downloading
+                    </p>
+
+                    {/* RUBRIC — shown before
+                        rating is submitted */}
+                    {!visionRubricSubmitted ? (
+                      <VisionRubric
+                        key={client?.id ?? 'no-client'}
+                        clientName={client?.name}
+                        setVisionRubric={setVisionRubric}
+                        setVisionRubricSubmitted={
+                          setVisionRubricSubmitted
+                        }
+                        handleGenerateVision={
+                          handleGenerateVision
+                        }
+                      />
+                    ) : null}
+
+                    {/* DOWNLOAD BUTTONS — shown
+                        after rubric submitted
+                        or always after generate */}
+                    {visionRubricSubmitted &&
+                    visionRubric != null ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 8,
+                          marginTop: 12,
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleDownloadVisionPpt()
+                          }
+                          style={{
+                            background: '#2D4459',
+                            color: 'white',
+                            borderRadius: 8,
+                            padding: '10px 20px',
+                            fontSize: 13,
+                            fontWeight: 'bold',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Download PowerPoint
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleDownloadVisionPdf()
+                          }
+                          style={{
+                            background: 'white',
+                            color: '#2D4459',
+                            borderRadius: 8,
+                            padding: '10px 20px',
+                            fontSize: 13,
+                            border:
+                              '1px solid #2D4459',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Download PDF
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVisionText('');
+                            setVisionRubric(null);
+                            setVisionRubricSubmitted(
+                              false
+                            );
+                            setVisionError(null);
+                          }}
+                          style={{
+                            background: 'white',
+                            color: '#7A8F95',
+                            borderRadius: 8,
+                            padding: '10px 16px',
+                            fontSize: 12,
+                            border:
+                              '1px solid #C8E8E5',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Start Over
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {/* TERRITORY CHECK */}
+                    <div style={{ marginTop: 20 }}>
+                      <p
+                        style={{
+                          color: '#7A8F95',
+                          fontSize: 11,
+                          fontStyle: 'italic',
+                          margin: '0 0 6px',
+                        }}
+                      >
+                        Optional — paste territory
+                        check results to include
+                        in the PowerPoint
+                      </p>
+                      <textarea
+                        value={territoryNotes}
+                        onChange={(e) =>
+                          setTerritoryNotes(
+                            e.target.value
+                          )
+                        }
+                        placeholder="Paste territory check results here..."
+                        style={{
+                          width: '100%',
+                          height: 80,
+                          border: '1px solid #C8E8E5',
+                          borderRadius: 8,
+                          padding: '8px 10px',
+                          fontSize: 12,
+                          color: '#2D4459',
+                          resize: 'vertical',
+                          fontFamily: 'inherit',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </TabsContent>
 
