@@ -1257,6 +1257,8 @@ function ClientDetailModal({
   const [franchiseFormZorDate, setFranchiseFormZorDate] = useState('');
   const [franchiseFormNotes, setFranchiseFormNotes] = useState('');
   const [visionGenerating, setVisionGenerating] = useState(false);
+  const [localVisionText, setLocalVisionText] = useState<string | null>(null);
+  const [localVisionApproved, setLocalVisionApproved] = useState(false);
   const [visionGenError, setVisionGenError] = useState<string | null>(null);
   const [visionDraftMode, setVisionDraftMode] = useState(false);
   const [visionEditText, setVisionEditText] = useState('');
@@ -1297,6 +1299,8 @@ function ClientDetailModal({
   useEffect(() => {
     if (!client?.id) return;
     setVisionGenerating(false);
+    setLocalVisionText(null);
+    setLocalVisionApproved(false);
     setVisionGenError(null);
     setVisionApproveMsg(null);
     setVisionDraftMode(false);
@@ -1910,11 +1914,13 @@ function ClientDetailModal({
   }, [you2Details, tumayReadinessProfile, tumayData]);
 
   const persistedVisionText = String(
-    client?.vision_statement ||
-      client?.visionStatement ||
+    localVisionText ??
+      client?.vision_statement ??
+      client?.visionStatement ??
       ''
   ).trim();
-  const visionIsApproved = client?.vision_approved === 1;
+  const visionIsApproved =
+    localVisionApproved || client?.vision_approved === 1;
 
   const sandiReadinessDimensions = useMemo(() => {
     const code = resolvedPipelineCode;
@@ -3053,7 +3059,10 @@ Sound like a person not a report.`;
         page: 'client_intelligence',
       });
 
+      setLocalVisionText(approvedText);
+      setLocalVisionApproved(true);
       setVisionDraftMode(false);
+      setVisionApproveFeedback({ editDistance: 0 });
 
       if (onVisionUpdated) {
         onVisionUpdated();
