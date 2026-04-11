@@ -61,19 +61,15 @@ const REC_ORDER: Record<'VALIDATE' | 'GATHER' | 'PAUSE', number> = {
 };
 
 function filterEmailsByClients(messages: EmailMessage[], names: string[]): EmailMessage[] {
-  if (!names || names.length === 0) return messages;
+  if (!names || names.length === 0) return [];
   return messages.filter((msg) => {
-    const sender = String(msg.from || msg.fromEmail || '').toLowerCase();
+    const m = msg as EmailMessage & { sender?: string; fromName?: string };
+    const sender = String(m.from || m.sender || m.fromName || '').toLowerCase();
     const subject = String(msg.subject || '').toLowerCase();
-    const body = String(msg.snippet || msg.body || '').toLowerCase();
     return names.some((name) => {
-      const parts = name.split(/\s+/).filter((p) => p.length > 2);
-      if (parts.length === 0) {
-        return sender.includes(name) || subject.includes(name) || body.includes(name);
-      }
-      return parts.some(
-        (part) => sender.includes(part) || subject.includes(part) || body.includes(part)
-      );
+      const trimmed = name.trim().toLowerCase();
+      if (trimmed.length < 5) return false;
+      return sender.includes(trimmed) || subject.includes(trimmed);
     });
   });
 }
@@ -731,6 +727,7 @@ export default function ExecutiveDashboard() {
       try {
         const result = await calendarTool.execute('get_todays_calls', {});
         if (result.success) {
+          // All calendar events are shown; pipeline match is display-only (e.g. "Not in pipeline").
           setTodaysCalls((result.data as TodaysCall[]) ?? []);
         }
       } finally {
@@ -745,6 +742,7 @@ export default function ExecutiveDashboard() {
     try {
       const result = await calendarTool.execute('get_todays_calls', {});
       if (result.success) {
+        // All calendar events are shown; pipeline match is display-only (e.g. "Not in pipeline").
         setTodaysCalls((result.data as TodaysCall[]) ?? []);
       }
     } finally {
@@ -1511,7 +1509,7 @@ export default function ExecutiveDashboard() {
     return clients
       .filter((c) => (c.outcome_bucket ?? '').toLowerCase() !== 'inactive')
       .map((c) => String(c.name ?? '').toLowerCase().trim())
-      .filter((n) => n.length > 0);
+      .filter((n) => n.length >= 5);
   }, [clients]);
 
   const gmailBriefFiltered = useMemo(
@@ -1519,13 +1517,7 @@ export default function ExecutiveDashboard() {
     [gmailBriefMessages, clientNamesForGmailFilter]
   );
 
-  const gmailBriefDisplay = useMemo(() => {
-    const filtered = gmailBriefFiltered;
-    const raw = gmailBriefMessages;
-    if (filtered.length > 0) return { rows: filtered, mode: 'filtered' as const };
-    if (raw.length > 0) return { rows: raw, mode: 'fallback' as const };
-    return { rows: [] as EmailMessage[], mode: 'empty' as const };
-  }, [gmailBriefFiltered, gmailBriefMessages]);
+  const gmailBriefDisplayRows = gmailBriefFiltered;
 
   if (loading) {
     return (
@@ -1821,7 +1813,7 @@ export default function ExecutiveDashboard() {
                 >
                   Recent Gmail
                 </p>
-                {gmailBriefDisplay.mode === 'filtered' ? (
+                {gmailBriefFiltered.length > 0 ? (
                   <span style={{ fontSize: 11, color: '#7A8F95' }}>
                     {gmailBriefFiltered.length} client emails
                   </span>
@@ -1837,21 +1829,26 @@ export default function ExecutiveDashboard() {
                 </button>
               </div>
             </div>
-            {gmailBriefDisplay.mode === 'fallback' ? (
-              <p style={{ fontSize: 11, color: '#C8E8E5', marginBottom: 8, lineHeight: 1.4 }}>
-                No client emails found. Showing emails from your connected Gmail account.
-              </p>
-            ) : null}
             {gmailBriefLoading ? (
               <div className="flex items-center gap-2" style={{ margin: '4px 0' }}>
                 <Loader2 className="h-3 w-3 shrink-0 animate-spin" style={{ color: '#C8E8E5' }} aria-hidden />
                 <span style={{ fontSize: 12, color: '#C8E8E5' }}>Loading inbox…</span>
               </div>
-            ) : gmailBriefDisplay.rows.length === 0 ? (
-              <p style={{ fontSize: 12, color: '#C8E8E5' }}>No recent inbox messages.</p>
+            ) : gmailBriefDisplayRows.length === 0 ? (
+              <div
+                style={{
+                  padding: '12px 16px',
+                  color: '#7A8F95',
+                  fontSize: 12,
+                  fontStyle: 'italic',
+                }}
+              >
+                No recent emails from your coaching clients. Client emails will appear here as you correspond with
+                them.
+              </div>
             ) : (
               <div className="space-y-1">
-                {gmailBriefDisplay.rows.slice(0, 8).map((msg) => (
+                {gmailBriefDisplayRows.slice(0, 8).map((msg) => (
                   <div
                     key={msg.id}
                     style={{
