@@ -6,6 +6,11 @@ const MUTED = '#7A8F95';
 const BORDER = '#C8E8E5';
 const TEAL = '#3BBFBF';
 
+type LabSubSection = {
+  heading: string;
+  items: string[];
+};
+
 type LabSpec = {
   n: number;
   title: string;
@@ -13,6 +18,8 @@ type LabSpec = {
   whatYouWillDo: string;
   steps: string[];
   success: string;
+  subSections?: LabSubSection[];
+  afterStepsNote?: string;
 };
 
 const LABS: LabSpec[] = [
@@ -37,17 +44,48 @@ const LABS: LabSpec[] = [
     title: 'Upload a Fathom Session',
     minutes: '~8 min',
     whatYouWillDo:
-      'Add one coaching session from a Fathom transcript using paste and extraction (no file upload on the client card).',
+      'Use the unified Add Session area on the client Fathom tab: paste a Fathom transcript for extraction, or save notes on the My Notes tab. Optionally add Sandi’s Notes after extraction.',
     steps: [
-      'Open Client Intelligence and pick any active client.',
-      'Open the Fathom tab on that client’s card.',
-      'In Fathom, copy the full transcript text from Fathom (copyable text, not a screenshot).',
-      'Paste into the “Add Fathom Session” box and click Extract Session.',
-      'Wait for the progress steps to finish. If something fails, confirm Ollama is running locally.',
-      'Expand the new session with “Show 9-block analysis” and skim the blocks for sanity.',
+      'Open Client Intelligence.',
+      'Find the client whose transcript you have.',
+      'Open their card.',
+      'Click the Fathom tab.',
+      'Set the Stage and Session Date.',
+      'Click the Fathom Transcript tab.',
+      'Open the Fathom app or website.',
+      'Find the call transcript.',
+      'Select all text (Ctrl+A).',
+      'Copy (Ctrl+C).',
+      'Paste into the text box (Ctrl+V).',
+      'Click Extract Session.',
+      'Watch the progress bar (often about 60-90 seconds).',
+      'When done, the session appears below.',
+      'Click Show 9-block analysis to review the blocks.',
+    ],
+    subSections: [
+      {
+        heading: 'OR use My Notes tab',
+        items: [
+          'Click the My Notes tab.',
+          'Type your own session notes.',
+          'Click Save Session.',
+          'Notes are saved immediately.',
+        ],
+      },
+      {
+        heading: 'Add Sandi’s Notes to a session',
+        items: [
+          'Open any session row.',
+          'Click Show 9-block analysis.',
+          'Scroll to the bottom.',
+          'Click Add Notes under Coach Assessment.',
+          'Type your notes.',
+          'Click Save Notes.',
+        ],
+      },
     ],
     success:
-      'A new row appears in session history and the nine blocks populate from your pasted transcript.',
+      'Success looks like: nine blocks populated with content from your session (or your My Notes text saved as-is). Last contacted date updates automatically to the session date you set.',
   },
   {
     n: 3,
@@ -76,6 +114,8 @@ const LABS: LabSpec[] = [
       'Read the chairman synthesis and the suggested questions.',
       'Star or note the two or three questions you will actually ask on the call.',
     ],
+    afterStepsNote:
+      'The Coaching Council takes 3-4 minutes to deliberate. Run this before your call starts, not during it. Click Generate, then review your client file while the Council works.',
     success:
       'You have a short list of council-backed questions ready for one real client conversation.',
   },
@@ -84,28 +124,37 @@ const LABS: LabSpec[] = [
     title: 'Generate Vision Statement',
     minutes: '~15 min',
     whatYouWillDo:
-      'Produce a client-ready vision narrative, rate it with the rubric, and export when quality is good enough.',
+      'Produce a client-ready vision narrative, rate it with the rubric, regenerate or finalize, and export PowerPoint when quality is good enough.',
     steps: [
       'Open the client’s Vision tab in Client Intelligence.',
-      'Generate a draft vision statement from the client’s stored context.',
-      'Use the rubric (Accuracy, Completeness, Tone, Usefulness) and note any weak dimension.',
-      'If average is below your bar, use regenerate-with-feedback; if it is strong, download the PPT export.',
-      'Remember: PPT color fields use six-digit hex without the # symbol for PptxGenJS.',
+      'Check the data foundation dots so Coach Bot has enough context.',
+      'Click Generate Vision Statement.',
+      'Wait 60-90 seconds for the draft.',
+      'Read the generated text and edit directly in the box.',
+      'Rate using the rubric: Accuracy 1-5, Completeness 1-5, Tone 1-5, Usefulness 1-5.',
+      'If the score is below 3: click Regenerate with Feedback so Coach Bot improves the next version.',
+      'If the score is 3 or above: click Looks Good — Download.',
+      'Click Download PowerPoint; the file saves to your Downloads folder.',
+      'Note: no em dashes will appear in the generated text. There is no PDF download — PowerPoint only.',
+      'Remember: PPT brand color fields use six-digit hex without the # symbol for PptxGenJS.',
     ],
     success:
-      'A draft you would not be embarrassed to share, or a clear list of edits you still want before sharing.',
+      'A draft you would not be embarrassed to share, or a clear path (regenerate with feedback) until it is client-ready.',
   },
   {
     n: 6,
     title: 'Review My Practice Score',
     minutes: '~8 min',
     whatYouWillDo:
-      'Understand what the score is measuring so thin data does not feel like a personal “F.”',
+      'Understand what the Coaching Quality Score is measuring so thin data does not feel like a personal “F.”',
     steps: [
       'Open My Practice from the sidebar.',
-      'Identify the three sources: session quality (CLEAR from Fathom), pipeline movement, council prep.',
+      'Your Coaching Quality Score is based on three sources:',
+      'Session Quality (60%): based on your Fathom sessions analyzed against the CLEAR framework. Currently about 54% until more sessions are logged.',
+      'Pipeline Effectiveness (25%): based on how clients advance through stages. Builds as you move clients in Coach Bot.',
+      'Coaching Preparation (15%): based on how you rate questions in Best Next Questions. Builds as you rate questions.',
+      'Your strongest dimension: Activate. Your focus area: Reflect. Locking insights at the end of sessions builds deeper commitment.',
       'If a slice is zero, treat it as “no signal yet,” not failure, until you have logged data there.',
-      'Pick one dimension you can improve this week (for example, one more Fathom session logged).',
     ],
     success:
       'You can explain in one sentence what the score is telling you and what you will do next week.',
@@ -186,6 +235,40 @@ function LabCard({ lab }: { lab: LabSpec }) {
           <li key={i}>{s}</li>
         ))}
       </ol>
+      {lab.afterStepsNote ? (
+        <p
+          className="mt-3 rounded-md border px-3 py-2"
+          style={{
+            borderColor: BORDER,
+            background: '#F4F7F8',
+            color: HEADER,
+            fontSize: 12,
+            lineHeight: 1.65,
+            fontStyle: 'italic',
+          }}
+        >
+          {lab.afterStepsNote}
+        </p>
+      ) : null}
+      {lab.subSections?.map((sub, si) => (
+        <div key={si} style={{ marginTop: 16 }}>
+          <p className="mb-2 font-bold" style={{ color: HEADER, fontSize: 12 }}>
+            {sub.heading}
+          </p>
+          <ol
+            className="list-decimal space-y-1 pl-5"
+            style={{
+              color: HEADER,
+              fontSize: 13,
+              lineHeight: 1.8,
+            }}
+          >
+            {sub.items.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+        </div>
+      ))}
       <div
         style={{
           marginTop: 14,
@@ -223,6 +306,73 @@ export default function HowToUse() {
         {LABS.map((lab) => (
           <LabCard key={lab.n} lab={lab} />
         ))}
+
+        <section style={{ ...cardShell, marginTop: 8 }}>
+          <h2 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 16 }}>
+            Morning Brief: Gmail and Calendar
+          </h2>
+          <div className="space-y-4" style={{ color: HEADER, fontSize: 13, lineHeight: 1.75 }}>
+            <div>
+              <p className="mb-2 font-bold" style={{ fontSize: 12, color: TEAL }}>
+                Gmail
+              </p>
+              <p style={{ marginBottom: 8 }}>
+                Shows only emails from your active coaching clients. Non-client emails are filtered out. If no
+                client emails appear, your clients have not emailed you recently from their registered email address.
+              </p>
+            </div>
+            <div>
+              <p className="mb-2 font-bold" style={{ fontSize: 12, color: TEAL }}>
+                Calendar
+              </p>
+              <p>
+                Shows only calendar events that match your client names. Non-coaching events are hidden from this
+                list. Elsewhere in the app, an event can show &quot;Not in pipeline&quot; when the person is not yet a
+                client.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section style={cardShell}>
+          <h2 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 16 }}>
+            The Capture — Your Knowledge Hub
+          </h2>
+          <p className="mb-3" style={{ color: MUTED, fontSize: 13 }}>
+            Three sections:
+          </p>
+          <ul
+            className="mb-4 list-disc space-y-2 pl-5"
+            style={{ color: HEADER, fontSize: 13, lineHeight: 1.75 }}
+          >
+            <li>
+              <strong>My Clients:</strong> Upload documents for each client: DISC assessment PDF, You 2.0 PDF, TUMAY
+              PDF, and Fathom sessions via paste.
+            </li>
+            <li>
+              <strong>My Identity:</strong> Upload your resume and coaching philosophy. Coach Bot uses this to shape
+              its voice to match yours.
+            </li>
+            <li>
+              <strong>My Knowledge:</strong> Upload your coaching frameworks, guides, and methodology documents. Coach
+              Bot searches these before every recommendation.
+            </li>
+          </ul>
+          <p className="mb-2 font-bold" style={{ color: HEADER, fontSize: 12 }}>
+            How to upload a Fathom session from The Capture
+          </p>
+          <ol
+            className="list-decimal space-y-1 pl-5"
+            style={{ color: HEADER, fontSize: 13, lineHeight: 1.8 }}
+          >
+            <li>Go to The Capture.</li>
+            <li>Find your client in My Clients.</li>
+            <li>Click Add Fathom Session.</li>
+            <li>Paste the transcript text.</li>
+            <li>Click Extract.</li>
+            <li>The session appears on the client card.</li>
+          </ol>
+        </section>
 
         <section style={{ ...cardShell, marginTop: 8 }}>
           <h2 className="mb-3 font-bold" style={{ color: HEADER, fontSize: 16 }}>
