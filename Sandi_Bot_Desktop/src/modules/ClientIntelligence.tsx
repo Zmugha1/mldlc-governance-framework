@@ -2885,61 +2885,6 @@ function ClientDetailModal({
     }
   };
 
-  const runSafeVisionOllamaGenerate = async (): Promise<string> => {
-    if (!client?.id) throw new Error('No client');
-    const you2Text = (you2Vision.trim() || persistedVisionText || '').trim();
-    const discText =
-      discStyleLabel === '—' ? '' : discStyleLabel.trim();
-    const dangersText = (you2Details?.dangers ?? []).join(', ');
-    const sessionText = latestSessionNotesPlain || '';
-    const clientNameText = client.name || '';
-
-    if (!you2Text && !discText && !dangersText) {
-      throw new Error(
-        'No client data available. ' +
-          'Upload You 2.0 and DISC first.'
-      );
-    }
-
-    const prompt =
-      `You are a franchise career coach.
-Write a personal vision statement
-for ${clientNameText}.
-
-Base it entirely on this information:
-
-DISC Style: ${discText}
-One Year Vision: ${you2Text}
-Key Concerns: ${dangersText}
-Recent Session: ${sessionText}
-
-Write 2-3 paragraphs.
-First person voice as if
-${clientNameText} is speaking.
-Specific to their goals and situation.
-Warm encouraging and forward-looking.
-Do not mention DISC or assessments.
-Do not use coaching jargon.
-Sound like a person not a report.`;
-
-    const raw = await invoke<string>('ollama_generate', {
-      model: 'qwen2.5:7b',
-      prompt,
-      system: '',
-    });
-
-    const generated = raw.trim();
-
-    if (!generated || generated.length < 20) {
-      throw new Error(
-        'Ollama returned empty response. ' +
-          'Is Ollama running?'
-      );
-    }
-
-    return generated;
-  };
-
   const handleGenerateBestNextQuestions = async () => {
     if (!client?.id) return;
     setCouncilLoading(true);
@@ -3005,7 +2950,63 @@ Sound like a person not a report.`;
       setVisionGenError(null);
       setVisionApproveMsg(null);
 
-      const generated = await runSafeVisionOllamaGenerate();
+      const you2Text = you2Vision || '';
+      const discText =
+        discStyleLabel === '—' ? '' : discStyleLabel;
+      const dangersText = (you2Details?.dangers ?? []).join(', ');
+      const sessionText = latestSessionNotesPlain || '';
+      const clientNameText = client?.name || '';
+
+      if (!you2Text && !discText && !dangersText) {
+        throw new Error(
+          'No client data available. ' +
+            'Upload You 2.0 and DISC first.'
+        );
+      }
+
+      const prompt =
+        `You are a franchise career coach.
+Write a personal vision statement
+for ${clientNameText}.
+
+Base it entirely on this information:
+
+DISC Style: ${discText}
+One Year Vision: ${you2Text}
+Key Concerns: ${dangersText}
+Recent Session: ${sessionText}
+
+Write 2-3 paragraphs.
+First person voice as if
+${clientNameText} is speaking.
+Specific to their goals and situation.
+Warm encouraging and forward-looking.
+Do not mention DISC or assessments.
+Do not use coaching jargon.
+Sound like a person not a report.`;
+
+      const result = await invoke<any>('ollama_generate', {
+        model: 'qwen2.5:7b',
+        prompt,
+        system: '',
+        stream: false,
+      });
+
+      const generated =
+        typeof result === 'string'
+          ? result.trim()
+          : String(
+              result?.response ??
+                result?.message?.content ??
+                ''
+            ).trim();
+
+      if (!generated || generated.length < 20) {
+        throw new Error(
+          'Ollama returned empty response. ' +
+            'Is Ollama running?'
+        );
+      }
 
       await dbExecute(
         `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
@@ -3031,35 +3032,9 @@ Sound like a person not a report.`;
 
   const handleRegenerateVision = async () => {
     if (!client?.id) return;
-    try {
-      setVisionGenerating(true);
-      setVisionGenError(null);
-      setVisionApproveMsg(null);
-      setVisionEditText('');
-      setVisionGeneratedBaseline(null);
-
-      const generated = await runSafeVisionOllamaGenerate();
-
-      setVisionGeneratedBaseline(generated);
-      setVisionEditText(generated);
-      await dbExecute(
-        `UPDATE clients SET vision_statement = $1, vision_approved = 0, vision_approved_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [generated, client.id]
-      );
-      setVisionApproveFeedback(null);
-      setVisionDraftMode(true);
-      onVisionUpdated?.();
-      setVisionGenerating(false);
-    } catch (error) {
-      console.error('Vision generation failed:', error);
-      setVisionGenerating(false);
-      setVisionGenError(
-        String(error).includes('Ollama')
-          ? 'Could not generate. ' +
-              'Make sure Ollama is running.'
-          : String(error)
-      );
-    }
+    setVisionEditText('');
+    setVisionGeneratedBaseline(null);
+    await handleGenerateVision();
   };
 
   const handleApproveVision = async () => {
