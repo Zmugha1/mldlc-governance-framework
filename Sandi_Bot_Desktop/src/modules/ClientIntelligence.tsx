@@ -24,8 +24,6 @@ import {
   Calendar,
   Loader2,
   Users,
-  FileDown,
-  FileText,
   MessageSquare,
   UserPlus,
   X,
@@ -38,7 +36,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Tooltip,
   TooltipContent,
@@ -623,12 +620,6 @@ const GOLDEN_RULES_TEXTAREA_PLACEHOLDER =
 
 // TODO Migration 54: add territory_check_notes column to clients table and replace
 // localStorage with DB persistence
-function territoryCheckStorageKey(clientId: string): string {
-  return `territory_check_${clientId}`;
-}
-
-const TERRITORY_CHECK_TEXTAREA_PLACEHOLDER =
-  'Paste your territory check results here. This information will be included when generating the vision statement PowerPoint.';
 
 type StoredFranchiseRec = {
   name: string;
@@ -749,23 +740,6 @@ function sanitizeText(text: string): string {
     .replace(/, ,/g, ',')
     .replace(/,,/g, ',')
     .trim();
-}
-
-function formatCommunicationDosForPrompt(raw: string | null | undefined): string {
-  const t = (raw ?? '').trim();
-  if (!t) return '—';
-  try {
-    const p = JSON.parse(t) as unknown;
-    if (Array.isArray(p)) {
-      return p
-        .map((x) => String(x).trim())
-        .filter(Boolean)
-        .join('; ');
-    }
-  } catch {
-    /* use raw */
-  }
-  return t;
 }
 
 function formatLastContactDisplay(raw: string): string {
@@ -924,42 +898,6 @@ function safeParseJson(value: string | null | undefined): unknown {
   } catch {
     return null;
   }
-}
-
-function coachingSessionNotesPlain(notes: string | null | undefined): string {
-  const parsed = safeParseJson(notes ?? '');
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    const sum = String((parsed as { summary?: unknown }).summary ?? '').trim();
-    if (sum) return sum;
-  }
-  const raw = (notes ?? '').trim();
-  if (!raw || raw === '{}') return '';
-  return raw;
-}
-
-function discCoachingPostureFromNaturalScores(
-  d: number,
-  i: number,
-  s: number,
-  c: number
-): string {
-  const ranked: Array<{ letter: 'I' | 'D' | 'C' | 'S'; v: number }> = [
-    { letter: 'I', v: i },
-    { letter: 'D', v: d },
-    { letter: 'C', v: c },
-    { letter: 'S', v: s },
-  ];
-  let top = ranked[0]!;
-  for (const x of ranked.slice(1)) {
-    if (x.v > top.v) top = x;
-  }
-  const text: Record<(typeof ranked)[number]['letter'], string> = {
-    I: 'Pull emotion first. Connect to impact and vision. Use stories and feelings.',
-    D: 'Direct and decisive. Challenge assumptions. Push toward decisions.',
-    C: 'Provide structure and logic. Reduce perceived risk. Show the bridge.',
-    S: 'Build safety first. Go slowly. Never pressure. Honor their loyalty.',
-  };
-  return text[top.letter];
 }
 
 function chairmanQuestionLensBadge(
@@ -1423,7 +1361,7 @@ function VisionRubric({
 function ClientDetailModal({
   client,
   onInactivate,
-  onVisionUpdated,
+  onVisionUpdated: _onVisionUpdated,
   onStageMoved,
   onStageMoveToast,
   onStageMoveUndoOffer,
@@ -1611,8 +1549,6 @@ function ClientDetailModal({
     | 'clear_trigger'
     | 'clear_purchase'
   >(null);
-  const [territoryCheckDraft, setTerritoryCheckDraft] = useState('');
-  const [territoryCheckSavedMsg, setTerritoryCheckSavedMsg] = useState(false);
   const [franchiseRecs, setFranchiseRecs] = useState<StoredFranchiseRec[]>([]);
   const [franchiseFormOpen, setFranchiseFormOpen] = useState(false);
   const [franchiseEditIndex, setFranchiseEditIndex] = useState<number | null>(
@@ -2218,7 +2154,6 @@ function ClientDetailModal({
     resolvePipelineStageCode(effectiveInferredStageRaw);
   const stageDisplay = getStageDisplay(effectiveInferredStageRaw ?? null);
   const stageHeaderBadgeText = `${stageDisplay.code} · ${stageDisplay.label}`;
-  const stageLabel = stageDisplay.label;
   const stageCompartmentSubtitle =
     stageCardCompartmentSubtitle(resolvedPipelineCode);
 
@@ -2398,33 +2333,6 @@ function ClientDetailModal({
     }
     return sanitizeSessionNotes(n);
   }, [fathomSessions]);
-
-  const bestNextQuestionsChecklist = useMemo(() => {
-    const hasDisc =
-      discScores != null &&
-      discScores.d + discScores.i + discScores.s + discScores.c > 0;
-    const discLabel = hasDisc ? discStyleLabel : null;
-    const dangerCount = you2Details?.dangers?.length ?? 0;
-    let lastOk = false;
-    for (const s of fathomSessions) {
-      if (coachingSessionNotesPlain(s.notes).trim().length > 20) {
-        lastOk = true;
-        break;
-      }
-    }
-    const activePink = filterPinkFlagsByKnownNetWorth(
-      splitPinkFlags(parseClientPinkFlagsJson(localPinkFlagsJson)).activeFlags,
-      clientMergedFinancials.netWorth
-    ).length;
-    return { hasDisc, discLabel, dangerCount, lastOk, activePink };
-  }, [
-    discScores,
-    discStyleLabel,
-    you2Details,
-    fathomSessions,
-    localPinkFlagsJson,
-    clientMergedFinancials.netWorth,
-  ]);
 
   const allPinkParsed = parseClientPinkFlagsJson(localPinkFlagsJson);
   const { resolvedFlags: resolvedPinkFlags } = splitPinkFlags(allPinkParsed);
@@ -3144,19 +3052,6 @@ function ClientDetailModal({
       console.error('placement purchase clear failed:', e);
     } finally {
       setPlacementMilestoneSaving(null);
-    }
-  };
-
-  const handleSaveTerritoryCheck = () => {
-    if (!client) return;
-    try {
-      localStorage.setItem(
-        territoryCheckStorageKey(client.id),
-        territoryCheckDraft
-      );
-      setTerritoryCheckSavedMsg(true);
-    } catch (e) {
-      console.error('territory check localStorage save failed:', e);
     }
   };
 

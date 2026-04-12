@@ -1317,14 +1317,6 @@ export default function MyPractice() {
 
   const totalSessions = Math.round(Number(clearAgg?.total_sessions ?? 0));
 
-  const dimAvgs = clearDims.map(({ key }) => {
-    const raw = clearAgg?.[key];
-    return raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
-  });
-  const finiteDims = dimAvgs.filter((x): x is number => x != null);
-  const avgClear =
-    finiteDims.length > 0 ? finiteDims.reduce((a, b) => a + b, 0) / finiteDims.length : null;
-
   const weeksSince = weeksSinceInstallRounded(refNow, installDate);
   const timeSavedHours = Math.round(weeksSince * weeklyHoursSaved * 10) / 10;
   const timeSavedDollars = Math.round(timeSavedHours * hourlyRate);

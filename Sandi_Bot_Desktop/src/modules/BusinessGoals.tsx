@@ -436,11 +436,6 @@ export default function BusinessGoals() {
     },
   ];
 
-  const businessGoalsDataCompleteness =
-    gapRows.length === 0
-      ? 100
-      : Math.round((gapRows.filter((r) => r.actual != null).length / gapRows.length) * 100);
-
   if (loading) {
     return (
       <div className="p-6 text-sm" style={{ color: '#7A8F95' }}>

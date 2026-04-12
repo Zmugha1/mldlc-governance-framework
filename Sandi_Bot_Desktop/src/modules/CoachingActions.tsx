@@ -425,7 +425,7 @@ export default function CoachingActions() {
   const [converted, setConverted] = useState<ConvertedRow[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [goldenDrafts, setGoldenDrafts] = useState<Record<string, string>>({});
-  const [signalsProfileCompletenessPct, setSignalsProfileCompletenessPct] = useState(100);
+  const [, setSignalsProfileCompletenessPct] = useState(100);
   const [dropdownValue, setDropdownValue] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [loggedId, setLoggedId] = useState<string | null>(null);

@@ -287,7 +287,7 @@ export async function checkAndReconnect(
 
 export async function logPrivacyAudit(
   action: string,
-  toolId: string,
+  _toolId: string,
   dataType: string
 ): Promise<void> {
   try {

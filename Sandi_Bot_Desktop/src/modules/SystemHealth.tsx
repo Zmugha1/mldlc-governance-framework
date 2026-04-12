@@ -388,7 +388,7 @@ export default function SystemHealth({
           </div>
         ) : (
           <div className="space-y-2">
-            {stats.weekly_trend.map((w) => (
+            {(stats?.weekly_trend ?? []).map((w) => (
               <div key={w.week} className="flex items-center gap-2">
                 <span className="shrink-0" style={{ width: 80, color: '#7A8F95', fontSize: 10 }}>
                   {weekDisplayLabel(w.week)}

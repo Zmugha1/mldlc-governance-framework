@@ -498,7 +498,7 @@ export async function runCoachingCouncil(
   await logCorrection({
     clientId: input.clientId,
     fieldName: 'coaching_council',
-    originalValue: null,
+    originalValue: undefined,
     correctedValue: JSON.stringify({
       overallConfidence,
       recommendedQuestionCount: synthesis.recommendedQuestions.length,

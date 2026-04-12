@@ -724,7 +724,7 @@ export default function ExecutiveDashboard() {
   const [postCallClient, setPostCallClient] = useState<TodaysCall | null>(null);
   const [showPostCallToast, setShowPostCallToast] = useState(false);
   const [briefCallsExpanded, setBriefCallsExpanded] = useState(false);
-  const [you2ClientIdSet, setYou2ClientIdSet] = useState<Set<string>>(() => new Set());
+  const [, setYou2ClientIdSet] = useState<Set<string>>(() => new Set());
   const todaysCallsRef = useRef<TodaysCall[]>([]);
   const postCallPromptedRef = useRef<Set<string>>(new Set());
 
