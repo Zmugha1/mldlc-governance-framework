@@ -736,12 +736,17 @@ async function visionWriteBytesToDownloads(
 
 // ADR: em dashes never allowed in user-visible or AI-generated content per
 // CLAUDE.md rule. LLMs ignore prompt rules for style so must post-process.
-function sanitizeVisionEmDashes(raw: string): string {
-  return raw
+function sanitizeText(text: string): string {
+  return text
     .replace(/\u2014/g, ',')
     .replace(/\u2013/g, ',')
+    .replace(/\u2012/g, ',')
+    .replace(/\u2015/g, ',')
     .replace(/--/g, ',')
+    .replace(/&mdash;/g, ',')
+    .replace(/&ndash;/g, ',')
     .replace(/ , /g, ', ')
+    .replace(/, ,/g, ',')
     .replace(/,,/g, ',')
     .trim();
 }
@@ -1564,12 +1569,9 @@ function ClientDetailModal({
   const [ahaTextError, setAhaTextError] = useState(false);
   const [ahaSaving, setAhaSaving] = useState(false);
   const [ahaToast, setAhaToast] = useState<string | null>(null);
-  const [addSessionMode, setAddSessionMode] = useState<'fathom' | 'manual'>('fathom');
   const [addSessionStage, setAddSessionStage] = useState<string>('IC');
   const [addSessionDate, setAddSessionDate] = useState(() => localCalendarDateYyyyMmDd());
   const [addSessionDuration, setAddSessionDuration] = useState('');
-  const [addSessionManualNotes, setAddSessionManualNotes] = useState('');
-  const [addSessionManualSaving, setAddSessionManualSaving] = useState(false);
   const [fathomNotesExpanded, setFathomNotesExpanded] = useState<Record<number, boolean>>(
     {}
   );
@@ -1830,9 +1832,7 @@ function ClientDetailModal({
   useEffect(() => {
     if (!client) return;
     setAddSessionDate(localCalendarDateYyyyMmDd());
-    setAddSessionManualNotes('');
     setAddSessionDuration('');
-    setAddSessionMode('fathom');
     setFathomPasteText('');
     setFathomNotesExpanded({});
     setEditingNotesId(null);
@@ -2780,65 +2780,6 @@ function ClientDetailModal({
     }
   };
 
-  const handleAddUnifiedManualSession = async () => {
-    if (!client) return;
-    const dateStr = addSessionDate.trim();
-    if (!dateStr) return;
-    setAddSessionManualSaving(true);
-    setFathomUploadError(null);
-    try {
-      const countRows = await dbSelect<{ c: number }>(
-        `SELECT COUNT(*) as c FROM coaching_sessions WHERE client_id = ?`,
-        [client.id]
-      );
-      const nextSessionNumber = Number(countRows[0]?.c ?? 0) + 1;
-      const stageCode = addSessionStage as PipelineStageCode;
-      const notesVal = addSessionManualNotes.trim() || null;
-      const durationVal = addSessionDuration.trim() || null;
-      const now = new Date().toISOString();
-      await dbExecute(
-        `INSERT INTO coaching_sessions
-         (client_id, session_date, session_number, stage, notes, next_actions, updated_at, session_scheduled, call_duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          client.id,
-          dateStr,
-          nextSessionNumber,
-          stageCode,
-          notesVal,
-          null,
-          now,
-          1,
-          durationVal,
-        ]
-      );
-      await dbExecute(
-        `UPDATE clients SET last_contact_date = ?, updated_at = ? WHERE id = ?`,
-        [dateStr, now, client.id]
-      );
-      setLastContactDateDb(dateStr);
-      await logEntry(
-        'manual_session_added',
-        client.id,
-        null,
-        dateStr,
-        null,
-        'deterministic'
-      );
-      await loadFathomSessions();
-      setAddSessionDate(localCalendarDateYyyyMmDd());
-      setAddSessionManualNotes('');
-      setAddSessionDuration('');
-      setFathomUploadSuccess('Session saved. Last contacted date updated.');
-      setTimeout(() => setFathomUploadSuccess(null), 3000);
-    } catch (e) {
-      console.error('manual session add failed:', e);
-      setFathomUploadError('Could not save session.');
-    } finally {
-      setAddSessionManualSaving(false);
-    }
-  };
-
   const handleGoneQuietResponseChange = async (
     event: ChangeEvent<HTMLSelectElement>
   ) => {
@@ -3398,8 +3339,7 @@ not generic statements.${feedbackSection}`;
         );
       }
 
-      const sanitized =
-        sanitizeVisionEmDashes(generated);
+      const sanitized = sanitizeText(generated);
       setVisionText(sanitized);
       setVisionGenerating(false);
     } catch (err) {
@@ -3419,9 +3359,7 @@ not generic statements.${feedbackSection}`;
     async (): Promise<void> => {
       if (!client?.id) return;
       try {
-        const text = sanitizeVisionEmDashes(
-          visionText
-        );
+        const text = sanitizeText(visionText.trim());
         if (!text) return;
 
         const PptxGenJS =
@@ -6389,102 +6327,36 @@ not generic statements.${feedbackSection}`;
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => setAddSessionMode('fathom')}
+                <div>
+                  <p
                     style={{
-                      background: addSessionMode === 'fathom' ? '#3BBFBF' : 'white',
-                      color: addSessionMode === 'fathom' ? 'white' : '#7A8F95',
-                      border: '1px solid #C8E8E5',
-                      borderRadius: 6,
-                      padding: '5px 14px',
-                      fontSize: 12,
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
+                      color: '#7A8F95',
+                      fontSize: 11,
+                      margin: '0 0 6px',
+                      fontStyle: 'italic',
                     }}
                   >
-                    Fathom Transcript
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddSessionMode('manual')}
+                    Copy your Fathom transcript and paste below. Coach Bot extracts the 9-block analysis. For your own
+                    observations on a session, use Sandi&apos;s Notes under Show 9-block analysis.
+                  </p>
+                  <textarea
+                    value={fathomPasteText}
+                    onChange={(e) => setFathomPasteText(e.target.value)}
+                    placeholder="Paste Fathom transcript here..."
                     style={{
-                      background: addSessionMode === 'manual' ? '#3BBFBF' : 'white',
-                      color: addSessionMode === 'manual' ? 'white' : '#7A8F95',
-                      border: '1px solid #C8E8E5',
-                      borderRadius: 6,
-                      padding: '5px 14px',
+                      width: '100%',
+                      minHeight: 120,
+                      border: '2px solid #3BBFBF',
+                      borderRadius: 8,
+                      padding: '10px 12px',
                       fontSize: 12,
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
+                      color: '#2D4459',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                      boxSizing: 'border-box',
                     }}
-                  >
-                    My Notes
-                  </button>
+                  />
                 </div>
-
-                {addSessionMode === 'fathom' ? (
-                  <div>
-                    <p
-                      style={{
-                        color: '#7A8F95',
-                        fontSize: 11,
-                        margin: '0 0 6px',
-                        fontStyle: 'italic',
-                      }}
-                    >
-                      Copy your Fathom transcript and paste below. Coach Bot extracts the 9-block analysis.
-                    </p>
-                    <textarea
-                      value={fathomPasteText}
-                      onChange={(e) => setFathomPasteText(e.target.value)}
-                      placeholder="Paste Fathom transcript here..."
-                      style={{
-                        width: '100%',
-                        minHeight: 120,
-                        border: '2px solid #3BBFBF',
-                        borderRadius: 8,
-                        padding: '10px 12px',
-                        fontSize: 12,
-                        color: '#2D4459',
-                        resize: 'vertical',
-                        fontFamily: 'inherit',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <p
-                      style={{
-                        color: '#7A8F95',
-                        fontSize: 11,
-                        margin: '0 0 6px',
-                        fontStyle: 'italic',
-                      }}
-                    >
-                      Add your own session notes. Saved as-is without extraction.
-                    </p>
-                    <textarea
-                      value={addSessionManualNotes}
-                      onChange={(e) => setAddSessionManualNotes(e.target.value)}
-                      placeholder="What happened in this session? Key insights, decisions made, next steps..."
-                      style={{
-                        width: '100%',
-                        minHeight: 120,
-                        border: '1px solid #C8E8E5',
-                        borderRadius: 8,
-                        padding: '10px 12px',
-                        fontSize: 12,
-                        color: '#2D4459',
-                        resize: 'vertical',
-                        fontFamily: 'inherit',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                )}
 
                 {fathomUploading ? (
                   <div style={{ marginTop: 10 }}>
@@ -6572,105 +6444,76 @@ not generic statements.${feedbackSection}`;
                 ) : null}
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  {addSessionMode === 'fathom' ? (
-                    <button
-                      type="button"
-                      disabled={fathomUploading || !fathomPasteText.trim()}
-                      onClick={async () => {
-                        if (!fathomPasteText.trim() || !client) return;
-                        try {
-                          setFathomUploading(true);
-                          setFathomProgress(10);
-                          setFathomUploadError(null);
-                          setFathomUploadSuccess(null);
-                          setFathomProgress(40);
-                          const result = await extractFathomSession(
-                            client.id,
-                            fathomPasteText.trim(),
-                            'fathom_transcript.txt',
-                            ''
-                          );
-                          setFathomProgress(80);
-                          if (!result.success) {
-                            throw new Error(result.error ?? 'Extraction failed');
-                          }
-                          const now = new Date().toISOString();
-                          const contactDay = addSessionDate.trim();
-                          if (contactDay) {
-                            await dbExecute(
-                              `UPDATE clients SET last_contact_date = ?, updated_at = ? WHERE id = ?`,
-                              [contactDay, now, client.id]
-                            );
-                            setLastContactDateDb(contactDay);
-                          }
-                          await loadFathomSessions();
-                          setFathomProgress(100);
-                          setFathomUploading(false);
-                          setFathomPasteText('');
-                          setFathomUploadSuccess(
-                            'Session extracted. Last contacted date updated.'
-                          );
-                          setTimeout(() => {
-                            setFathomUploadSuccess(null);
-                            setFathomProgress(0);
-                          }, 3000);
-                        } catch (err) {
-                          console.error('Fathom extract error:', err);
-                          setFathomUploading(false);
-                          setFathomProgress(0);
-                          setFathomUploadError(
-                            'Could not extract. Make sure Ollama is running.'
-                          );
+                  <button
+                    type="button"
+                    disabled={fathomUploading || !fathomPasteText.trim()}
+                    onClick={async () => {
+                      if (!fathomPasteText.trim() || !client) return;
+                      try {
+                        setFathomUploading(true);
+                        setFathomProgress(10);
+                        setFathomUploadError(null);
+                        setFathomUploadSuccess(null);
+                        setFathomProgress(40);
+                        const result = await extractFathomSession(
+                          client.id,
+                          fathomPasteText.trim(),
+                          'fathom_transcript.txt',
+                          ''
+                        );
+                        setFathomProgress(80);
+                        if (!result.success) {
+                          throw new Error(result.error ?? 'Extraction failed');
                         }
-                      }}
-                      style={{
-                        background:
-                          fathomUploading || !fathomPasteText.trim() ? '#C8E8E5' : '#3BBFBF',
-                        color: 'white',
-                        borderRadius: 8,
-                        padding: '8px 18px',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        border: 'none',
-                        cursor:
-                          fathomUploading || !fathomPasteText.trim() ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {fathomUploading ? 'Extracting...' : 'Extract Session'}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={addSessionManualSaving || !addSessionManualNotes.trim()}
-                      onClick={() => {
-                        void handleAddUnifiedManualSession();
-                      }}
-                      style={{
-                        background:
-                          !addSessionManualNotes.trim() || addSessionManualSaving
-                            ? '#C8E8E5'
-                            : '#2D4459',
-                        color: 'white',
-                        borderRadius: 8,
-                        padding: '8px 18px',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        border: 'none',
-                        cursor:
-                          !addSessionManualNotes.trim() || addSessionManualSaving
-                            ? 'not-allowed'
-                            : 'pointer',
-                      }}
-                    >
-                      {addSessionManualSaving ? 'Saving…' : 'Save Session'}
-                    </button>
-                  )}
+                        const now = new Date().toISOString();
+                        const contactDay = addSessionDate.trim();
+                        if (contactDay) {
+                          await dbExecute(
+                            `UPDATE clients SET last_contact_date = ?, updated_at = ? WHERE id = ?`,
+                            [contactDay, now, client.id]
+                          );
+                          setLastContactDateDb(contactDay);
+                        }
+                        await loadFathomSessions();
+                        setFathomProgress(100);
+                        setFathomUploading(false);
+                        setFathomPasteText('');
+                        setFathomUploadSuccess(
+                          'Session extracted. Last contacted date updated.'
+                        );
+                        setTimeout(() => {
+                          setFathomUploadSuccess(null);
+                          setFathomProgress(0);
+                        }, 3000);
+                      } catch (err) {
+                        console.error('Fathom extract error:', err);
+                        setFathomUploading(false);
+                        setFathomProgress(0);
+                        setFathomUploadError(
+                          'Could not extract. Make sure Ollama is running.'
+                        );
+                      }
+                    }}
+                    style={{
+                      background:
+                        fathomUploading || !fathomPasteText.trim() ? '#C8E8E5' : '#3BBFBF',
+                      color: 'white',
+                      borderRadius: 8,
+                      padding: '8px 18px',
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      border: 'none',
+                      cursor:
+                        fathomUploading || !fathomPasteText.trim() ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {fathomUploading ? 'Extracting...' : 'Extract Session'}
+                  </button>
 
                   <button
                     type="button"
                     onClick={() => {
                       setFathomPasteText('');
-                      setAddSessionManualNotes('');
                       setFathomUploadError(null);
                       setFathomUploadSuccess(null);
                     }}
@@ -6699,7 +6542,7 @@ not generic statements.${feedbackSection}`;
                     No sessions yet.
                   </p>
                   <p className="mt-2 max-w-sm px-4 text-center whitespace-pre-line" style={{ color: '#7A8F95', fontSize: 13 }}>
-                    {`Use Add Session above (Fathom transcript or My Notes),\nor use The Capture → My Clients.`}
+                    {`Use Add Session above to paste a Fathom transcript,\nor use The Capture → My Clients for other uploads.`}
                   </p>
                 </div>
               ) : (
