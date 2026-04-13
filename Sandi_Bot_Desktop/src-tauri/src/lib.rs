@@ -14,17 +14,15 @@ use std::net::TcpListener;
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
-/// OAuth client id from Google Cloud Console (set `GOOGLE_CLIENT_ID` in the environment).
-fn google_client_id() -> Result<String, String> {
-    std::env::var("GOOGLE_CLIENT_ID")
-        .map_err(|_| "GOOGLE_CLIENT_ID is not set".to_string())
-}
+/// OAuth client id from Google Cloud Console. Baked at compile time with
+/// `env!("GOOGLE_CLIENT_ID")`. Set `GOOGLE_CLIENT_ID` in the environment
+/// when running `cargo check`, `cargo build`, or `npm run tauri:build`.
+const GOOGLE_CLIENT_ID: &str = env!("GOOGLE_CLIENT_ID");
 
-/// OAuth client secret (set `GOOGLE_CLIENT_SECRET` in the environment; never commit real values).
-fn google_client_secret() -> Result<String, String> {
-    std::env::var("GOOGLE_CLIENT_SECRET")
-        .map_err(|_| "GOOGLE_CLIENT_SECRET is not set".to_string())
-}
+/// OAuth client secret. Baked at compile time with `env!("GOOGLE_CLIENT_SECRET")`.
+/// Set `GOOGLE_CLIENT_SECRET` in the environment when building. Do not put
+/// real secret values in source code.
+const GOOGLE_CLIENT_SECRET: &str = env!("GOOGLE_CLIENT_SECRET");
 
 const GOOGLE_AUTH_URI: &str = "https://accounts.google.com/o/oauth2/auth";
 
@@ -421,11 +419,10 @@ async fn ollama_embed(
 
 #[tauri::command]
 async fn google_auth_url() -> Result<String, String> {
-    let client_id = google_client_id()?;
     let url = format!(
         "{}?client_id={}&redirect_uri={}&response_type=code&scope={}&access_type=offline&prompt=consent",
         GOOGLE_AUTH_URI,
-        urlencoding::encode(client_id.as_str()),
+        urlencoding::encode(GOOGLE_CLIENT_ID),
         urlencoding::encode(GOOGLE_REDIRECT_URI),
         urlencoding::encode(GOOGLE_SCOPES)
     );
@@ -435,13 +432,11 @@ async fn google_auth_url() -> Result<String, String> {
 #[tauri::command]
 async fn google_exchange_code(code: String) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
-    let client_id = google_client_id()?;
-    let client_secret = google_client_secret()?;
 
     let mut params = HashMap::new();
     params.insert("code", code.as_str());
-    params.insert("client_id", client_id.as_str());
-    params.insert("client_secret", client_secret.as_str());
+    params.insert("client_id", GOOGLE_CLIENT_ID);
+    params.insert("client_secret", GOOGLE_CLIENT_SECRET);
     params.insert("redirect_uri", GOOGLE_REDIRECT_URI);
     params.insert("grant_type", "authorization_code");
 
@@ -463,13 +458,11 @@ async fn google_exchange_code(code: String) -> Result<serde_json::Value, String>
 #[tauri::command]
 async fn google_refresh_token(refresh_token: String) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
-    let client_id = google_client_id()?;
-    let client_secret = google_client_secret()?;
 
     let mut params = HashMap::new();
     params.insert("refresh_token", refresh_token.as_str());
-    params.insert("client_id", client_id.as_str());
-    params.insert("client_secret", client_secret.as_str());
+    params.insert("client_id", GOOGLE_CLIENT_ID);
+    params.insert("client_secret", GOOGLE_CLIENT_SECRET);
     params.insert("grant_type", "refresh_token");
 
     let response = client
