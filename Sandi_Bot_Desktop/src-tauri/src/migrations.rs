@@ -341,3 +341,15 @@ pub fn migration_69() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 70: `relocation_interest` and `funding_contact` on `clients`
+/// (Sandi UAT, Client Intelligence: relocation context and funding RFC contact).
+pub fn migration_70() -> Migration {
+    Migration {
+        version: 70,
+        description: "clients_relocation_interest_funding_contact",
+        sql: "ALTER TABLE clients ADD COLUMN relocation_interest TEXT;
+              ALTER TABLE clients ADD COLUMN funding_contact TEXT;",
+        kind: MigrationKind::Up,
+    }
+}
