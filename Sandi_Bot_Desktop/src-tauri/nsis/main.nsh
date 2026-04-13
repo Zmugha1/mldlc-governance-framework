@@ -20,4 +20,12 @@
 !macro NSIS_HOOK_POSTINSTALL
   CreateDirectory \
     "$APPDATA\com.sandibot.desktop"
+  ; Desktop shortcut: Tauri only auto-calls
+  ; CreateOrUpdateDesktopShortcut for silent
+  ; or passive installs. GUI installs skip
+  ; that path, so Sandi had no desktop link.
+  ; Start menu shortcut is already created
+  ; in the main installer section before
+  ; this hook runs.
+  Call CreateOrUpdateDesktopShortcut
 !macroend
