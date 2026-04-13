@@ -3207,12 +3207,24 @@ about their real life.
 Be specific use their actual goals
 not generic statements.${feedbackSection}`;
 
+      const visionFutureTenseSystem = `Write entirely in future-focused
+present tense and forward-looking
+language. Use 'you are' not
+'you have been'. Use 'you will'
+not 'you were'. Use 'your future'
+not 'your past'. Never use 'I've',
+'I have been', 'I was', or any
+past tense construction. This is a
+vision statement. It describes
+who this person is becoming,
+not who they have been.`;
+
       const result = await invoke<any>(
         'ollama_generate',
         {
           model: 'qwen2.5:7b',
           prompt: prompt,
-          system: '',
+          system: visionFutureTenseSystem,
           stream: false,
         }
       );
@@ -3234,7 +3246,31 @@ not generic statements.${feedbackSection}`;
         );
       }
 
-      const sanitized = sanitizeText(generated);
+      const postProcessVisionFutureTense = (
+        raw: string
+      ): string => {
+        let t = raw;
+        const pairs: Array<[RegExp, string]> = [
+          [/I've been/gi, 'I am'],
+          [/I\u2019ve been/gi, 'I am'],
+          [/I have been/gi, 'I am'],
+          [/I was\b/gi, 'I am'],
+          [/you've been/gi, 'you are'],
+          [/you\u2019ve been/gi, 'you are'],
+          [/you have been/gi, 'you are'],
+          [/you were\b/gi, 'you are'],
+          [/\bI've\b/gi, 'I'],
+          [/\bI\u2019ve\b/gi, 'I'],
+        ];
+        for (const [re, rep] of pairs) {
+          t = t.replace(re, rep);
+        }
+        return t;
+      };
+
+      const tenseAdjusted =
+        postProcessVisionFutureTense(generated);
+      const sanitized = sanitizeText(tenseAdjusted);
       setVisionText(sanitized);
       setVisionGenerating(false);
     } catch (err) {
