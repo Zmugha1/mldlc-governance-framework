@@ -492,3 +492,72 @@ Prevention rule: check UX label and
   SQL operation before assuming append
   vs new row
 Layer: Product
+
+## INC-036
+Date: 2026-04-14
+What broke: Google credentials not set
+  on Sandi's machine at delivery
+Root cause: credentials read from
+  environment variables at runtime
+  but installer does not set them
+Fix applied: set User environment variables
+  manually via PowerShell during
+  Monday session
+Prevention rule: bake into build
+  at compile time — never env vars
+  in production for OAuth secrets
+Layer: Release / Security
+
+## INC-037
+Date: 2026-04-14
+What broke: Ollama instability mid-session
+Root cause: model busy or timed out
+  after multiple operations;
+  Vision worked then Council failed
+  then extraction failed
+Fix applied: health check before every
+  AI operation with retry logic
+  (to be implemented fully)
+Prevention rule: never assume Ollama
+  is ready between operations
+Layer: Tech
+
+## INC-038
+Date: 2026-04-14
+What broke: Vision statement past tense
+Root cause: prompt not enforcing
+  future tense explicitly;
+  LLM defaulted to past/present mix;
+  Sandi caught I have been thinking
+Fix applied: update system prompt with
+  explicit future tense rules
+Prevention rule: always specify tense
+  in vision generation prompt;
+  post-process if needed
+Layer: Product
+
+## INC-039
+Date: 2026-04-14
+What broke: Desktop shortcut missing
+Root cause: NSIS config did not
+  include shortcut creation
+  Sandi could not find Coach Bot
+  after closing it
+Fix applied: add to NSIS installer config
+  (to be completed in next build)
+Prevention rule: always create desktop
+  shortcut in every installer build;
+  document in docs/INSTALLER_RULES.md
+Layer: Installer / UX
+
+## INC-040
+Date: 2026-04-14
+What broke: Gmail OAuth failed on
+  second connection attempt
+Root cause: token storage after
+  OAuth flow not verified
+Fix applied: debug tool_connections table
+  after OAuth flow completes
+Prevention rule: always verify token
+  saved correctly after OAuth
+Layer: Integrations

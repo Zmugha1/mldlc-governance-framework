@@ -759,3 +759,114 @@ Consequence: Inline paste UI replaces
   openCapturePicker for Fathom only
 Never do: File-picker-first Fathom
   path in The Capture grid
+
+## ADR-051
+Date: 2026-04-14
+Decision: Google credentials must be
+  baked into build at compile time
+  Never read from environment variables
+  at runtime in production builds
+  Environment variables only work
+  in dev mode
+  Use build-time Rust constants
+  for all OAuth credentials
+Layer: Tech / Release
+Context: Production installer does not
+  set user env vars; runtime env reads
+  fail at client delivery
+Consequence: Production builds embed
+  OAuth client id/secret via compile-time
+  constants; dev continues to use env
+Never do: Rely on process env vars
+  for Google OAuth in shipped binaries
+
+## ADR-052
+Date: 2026-04-14
+Decision: Desktop shortcut required
+  in every installer build
+Layer: Product / Installer
+Context: Sandi could not find Coach Bot
+  after closing it without a shortcut
+Consequence: NSIS (and any Windows bundle)
+  must create a desktop shortcut
+  automatically on every install
+Never do: Ship an installer build without
+  desktop shortcut creation documented
+  and verified
+Permanent doc: Also recorded in
+  docs/INSTALLER_RULES.md
+
+## ADR-053
+Date: 2026-04-14
+Decision: Ollama health check required
+  before every AI operation
+Layer: Tech
+Context: Council and extraction failed
+  mid-session with generic errors when
+  model was busy or timed out
+Consequence: Every invoke('ollama_generate')
+  path must be preceded by a health check;
+  failures surface clear user-facing
+  messages not generic could not generate
+Never do: Assume Ollama is ready between
+  successive AI operations without checking
+
+## ADR-054
+Date: 2026-04-14
+Decision: Vision statement must use
+  future tense throughout
+Layer: Product / Prompting
+Context: Past or present phrasing
+  (e.g. I have been thinking) is wrong
+  for forward-looking vision copy
+Consequence: System prompt enforces
+  forward-looking language only
+  (You are not You have been;
+  You will not You were)
+  Post-process to catch tense drift
+Never do: Ship vision generation without
+  explicit future-tense rules in prompt
+
+## ADR-055
+Date: 2026-04-14
+Decision: Vision PowerPoint uses
+  DISC-based image selection
+Layer: Product / Branding
+Context: Two images from Sandi —
+  Fear vs Dreams for high D and I;
+  Road picture for high S and C;
+  footer shows Sandi's name not
+  Dr. Data branding
+Consequence: PPT asset selection keys off
+  DISC profile; footer attribution follows
+  Sandi-first branding rules
+Never do: Default PPT footer to generic
+  Dr. Data branding when Sandi assets apply
+
+## ADR-056
+Date: 2026-04-14
+Decision: Smart installer checks
+  four conditions on install
+Layer: Installer
+Context: Reliable first run without
+  PowerShell or terminal for the user
+Consequence: Install flow must verify or
+  guide (without visible shells): Ollama
+  installed; qwen2.5:7b pulled if missing;
+  DB exists — never overwrite existing;
+  previous version — uninstall first when
+  required by upgrade policy
+Never do: Overwrite existing DB or show
+  PowerShell/cmd to Sandi during install
+
+## ADR-057
+Date: 2026-04-14
+Decision: DB trust rule with clients
+Layer: Product / Ethics
+Context: Coaching data must never be
+  silently replaced
+Consequence: Never replace client DB
+  without explicit warning and consent;
+  if client edited data in current version
+  those edits must be preserved or migrated
+Never do: Silent overwrite of coaching data

@@ -120,3 +120,39 @@ Sandi must not copy `sandi_bot.db`, DLLs, or folders by hand. The installer and 
 | Date       | Change |
 | ---------- | ------ |
 | 2026-04-11 | Initial rules file: Windows one-click goals, DB never overwrite, no PowerShell, launch when done. |
+| 2026-04-14 | Session capture: desktop shortcut mandatory; Google creds compile-time; smart install checklist; delivery package contents (see rules below). |
+
+---
+
+## Mandatory rules supplement (session April 13–14 2026)
+
+These rules **add** to everything above. Never delete prior requirements.
+
+### RULE — Always create desktop shortcut
+
+Every NSIS installer build must create a **desktop shortcut**. Sandi could not find the app without it after closing Coach Bot. **Never** ship an installer build without desktop shortcut creation verified.
+
+### RULE — Google credentials must be baked into build
+
+**Never** rely on environment variables at runtime in production for Google OAuth. Use **build-time Rust constants** compiled into the binary. The `GOOGLE_CLIENT_ID` (and related) values may be supplied at **compile time** via the build environment, but the shipped app must not depend on the client's machine having those vars set.
+
+### RULE — Smart install checklist
+
+Installer or first-run orchestration must account for this checklist (without showing PowerShell or terminal to Sandi):
+
+- Check **Ollama** installed; if missing, documented headless or guided path per future ADR (never raw shell to user).
+- Check **qwen2.5:7b** pulled; if missing, pull or document.
+- Check **DB exists** — **never overwrite** existing `sandi_bot.db`.
+- Check **previous version** — uninstall first when upgrade policy requires it.
+- **Create desktop shortcut**.
+- **Launch app** when install completes (existing R4).
+
+### RULE — Delivery package contents
+
+Standard client delivery folder must include at minimum:
+
+1. **Installer EXE** (NSIS or agreed bundle).
+2. **DB backup copy** (`sandi_bot.db` or agreed backup name).
+3. **Setup Instructions PDF**.
+
+All three live in a **Google Drive** folder shared with the client **before** the installation call.

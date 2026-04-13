@@ -691,3 +691,42 @@ Calendar and Gmail always use
 same strict full-name filter.
 Apply filter changes to both
 at the same time.
+
+## Rules added April 14 2026
+
+Google credentials must be baked
+into the build at compile time.
+Never read from environment variables
+at runtime in production builds.
+This caused failure at Sandi's
+Monday delivery.
+
+Every installer must create a
+desktop shortcut automatically.
+Sandi could not find Coach Bot
+after closing it.
+Add to NSIS config every time.
+
+Ollama health check required before
+every AI operation.
+Council and extraction failed
+mid-session without it.
+Never assume Ollama is ready
+between operations.
+
+Vision statement must enforce
+future tense throughout.
+Sandi caught past tense immediately.
+Always specify tense explicitly
+in vision generation prompt.
+Post-process if needed.
+
+Never replace client DB without
+explicit warning.
+Client edits must be preserved
+or migrated never silently lost.
+
+DB trust rule is permanent:
+If client has used the system
+their data is sacred.
+Communicate before any DB change.

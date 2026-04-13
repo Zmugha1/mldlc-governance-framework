@@ -421,3 +421,60 @@ Expected output: notes appear under
   Coach Assessment
 Watch out for: this updates
   existing session not creates new
+
+## RUN-023
+Task: Pre-delivery checklist
+Trigger: before any installer
+  is delivered to any client
+Steps:
+  1. Test all five pages load
+  2. Test Council generates
+  3. Test Vision generates
+  4. Test Fathom paste extracts
+  5. Test My Practice score shows
+  6. Test System Health loads
+  7. Confirm AI Ready shows green
+  8. Confirm desktop shortcut created
+  9. Confirm DB preserved on upgrade
+  10. Confirm Google credentials
+      baked into build
+Expected output: all ten checks pass
+Watch out for: Ollama not running
+  during test gives false failures
+
+## RUN-024
+Task: Client delivery package
+Trigger: preparing files for
+  any client installation
+Steps:
+  1. Build installer npm run tauri:build
+  2. Copy EXE to delivery folder
+  3. Copy sandi_bot.db as backup
+  4. Generate Setup Instructions PDF
+  5. Upload all three to Google Drive
+  6. Share folder with client
+  7. Send delivery email
+  8. Schedule installation call
+Expected output: client can install
+  with one double-click
+Watch out for: Google credentials
+  must be baked into build
+  not set as env vars on client machine
+
+## RUN-025
+Task: Ollama troubleshoot on
+  client machine
+Trigger: AI Offline showing or
+  AI operations failing
+Steps:
+  1. Open PowerShell
+  2. Run: Get-Process -Name ollama
+  3. If no process found run:
+     ollama serve
+  4. Leave window open
+  5. Restart Coach Bot
+  6. AI Ready should turn green
+Expected output: green AI Ready indicator
+Watch out for: model not pulled —
+  run ollama list to verify
+  qwen2.5:7b is present

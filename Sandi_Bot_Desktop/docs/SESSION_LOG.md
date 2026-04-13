@@ -195,3 +195,56 @@ Next session must start with:
 Blockers:
   Installer not built yet
   Monday delivery target
+
+## Session April 13-14 2026
+
+Commits this session:
+  753dec5  v3.0.0 NSIS installer config
+  dcb5f08  strict TypeScript fix
+  900c82b  remove My Notes tab
+           remove Fathom from Capture
+           stronger em dash removal
+  437ac88  spec capture April 11 part 2
+  7202063  INSTALLER_RULES.md created
+
+ADRs added: 7
+Incidents resolved: 5
+Runbooks added: 3
+Installer rules added: 4
+
+Monday April 14 delivery outcomes:
+  Ollama running on Sandi's machine
+  Vision statement generated
+  PowerPoint download working
+  Council running
+  Google credentials set manually
+  Gmail OAuth partial — debug needed
+  Sandi excited and engaged
+
+Sandi feedback received:
+  Vision past tense wrong
+  Desktop shortcut missing
+  Ollama instability mid-session
+  Gmail not connecting fully
+  Wants her branding on PPT
+  Two DISC-based images coming
+
+Next session must start with:
+  Fix 1 — Vision future tense
+  Fix 2 — Desktop shortcut in NSIS
+  Fix 3 — Ollama health check
+  Fix 4 — Bake Google credentials
+  Fix 5 — Gmail OAuth debug
+  Fix 6 — Vision PPT branding
+    waiting on Sandi's images
+
+Friday delivery target:
+  New installer with all fixes
+  Her documents loaded in DB
+  Gmail working or honest ETA
+
+Blockers:
+  Sandi's identity and knowledge
+    documents not received yet
+  Two vision images not received yet
+  Gmail OAuth root cause unknown
