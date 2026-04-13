@@ -23,6 +23,7 @@ import {
   Clock,
   Calendar,
   Loader2,
+  Pencil,
   Users,
   MessageSquare,
   UserPlus,
@@ -1424,6 +1425,20 @@ function ClientDetailModal({
     company: '',
   });
   const [isSavingContact, setIsSavingContact] = useState(false);
+  const [relocationInterestStored, setRelocationInterestStored] = useState<
+    string | null
+  >(null);
+  const [fundingContactStored, setFundingContactStored] = useState<
+    string | null
+  >(null);
+  const [editingRelocationInterest, setEditingRelocationInterest] =
+    useState(false);
+  const [editingFundingContact, setEditingFundingContact] = useState(false);
+  const [relocationInterestDraft, setRelocationInterestDraft] = useState('');
+  const [fundingContactDraft, setFundingContactDraft] = useState('');
+  const [savingRelocationInterest, setSavingRelocationInterest] =
+    useState(false);
+  const [savingFundingContact, setSavingFundingContact] = useState(false);
   const [lastContactDateDb, setLastContactDateDb] = useState<string | null>(
     null
   );
@@ -1853,8 +1868,12 @@ function ClientDetailModal({
         phone: string | null;
         company: string | null;
         last_contact_date: string | null;
+        relocation_interest: string | null;
+        funding_contact: string | null;
       }>(
-        `SELECT email, phone, company, last_contact_date FROM clients
+        `SELECT email, phone, company, last_contact_date,
+                relocation_interest, funding_contact
+         FROM clients
          WHERE id = ?`,
         [client.id]
       )
@@ -1870,11 +1889,25 @@ function ClientDetailModal({
             company: rows[0]?.company ?? '',
           });
           setLastContactDateDb(rows[0]?.last_contact_date ?? null);
+          setRelocationInterestStored(rows[0]?.relocation_interest ?? null);
+          setFundingContactStored(rows[0]?.funding_contact ?? null);
+          setRelocationInterestDraft(
+            (rows[0]?.relocation_interest ?? '').trim()
+          );
+          setFundingContactDraft((rows[0]?.funding_contact ?? '').trim());
+          setEditingRelocationInterest(false);
+          setEditingFundingContact(false);
         })
         .catch(() => {
           setContact({ email: null, phone: null, company: null });
           setContactDraft({ email: '', phone: '', company: '' });
           setLastContactDateDb(null);
+          setRelocationInterestStored(null);
+          setFundingContactStored(null);
+          setRelocationInterestDraft('');
+          setFundingContactDraft('');
+          setEditingRelocationInterest(false);
+          setEditingFundingContact(false);
         });
       dbSelect<{
         natural_d: number | null;
@@ -2085,6 +2118,12 @@ function ClientDetailModal({
       });
       setContact({ email: null, phone: null, company: null });
       setContactDraft({ email: '', phone: '', company: '' });
+      setRelocationInterestStored(null);
+      setFundingContactStored(null);
+      setRelocationInterestDraft('');
+      setFundingContactDraft('');
+      setEditingRelocationInterest(false);
+      setEditingFundingContact(false);
       setDiscStyleLabel('—');
       setModalDiscStyle('I');
       setDiscScores(null);
@@ -2663,6 +2702,42 @@ function ClientDetailModal({
       setIsEditingContact(false);
     } finally {
       setIsSavingContact(false);
+    }
+  };
+
+  const handleSaveRelocationInterest = async () => {
+    setSavingRelocationInterest(true);
+    try {
+      const trimmed = relocationInterestDraft.trim();
+      const value = trimmed.length > 0 ? trimmed : null;
+      const db = await getDb();
+      await db.execute(
+        `UPDATE clients SET relocation_interest = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [value, client.id]
+      );
+      setRelocationInterestStored(value);
+      setRelocationInterestDraft(trimmed);
+      setEditingRelocationInterest(false);
+    } finally {
+      setSavingRelocationInterest(false);
+    }
+  };
+
+  const handleSaveFundingContact = async () => {
+    setSavingFundingContact(true);
+    try {
+      const trimmed = fundingContactDraft.trim();
+      const value = trimmed.length > 0 ? trimmed : null;
+      const db = await getDb();
+      await db.execute(
+        `UPDATE clients SET funding_contact = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [value, client.id]
+      );
+      setFundingContactStored(value);
+      setFundingContactDraft(trimmed);
+      setEditingFundingContact(false);
+    } finally {
+      setSavingFundingContact(false);
     }
   };
 
@@ -3852,8 +3927,190 @@ not who they have been.`;
 
   const discUi = CI_DISC_STYLE[client.disc.style];
 
+  const aiWorking =
+    visionGenerating || councilLoading || fathomUploading;
+
+  const tumayRelocationFundingFields = (
+    <>
+      <div className="md:col-span-1">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <span
+            className="font-medium shrink-0"
+            style={{ color: '#2D4459', fontSize: 13 }}
+          >
+            Considering Relocating To
+          </span>
+          {!editingRelocationInterest ? (
+            <button
+              type="button"
+              className="shrink-0 rounded p-1 text-[#3BBFBF] transition-opacity hover:opacity-80"
+              title="Edit"
+              aria-label="Edit considering relocating to"
+              onClick={() => {
+                setRelocationInterestDraft(
+                  (relocationInterestStored ?? '').trim()
+                );
+                setEditingRelocationInterest(true);
+              }}
+            >
+              <Pencil className="h-4 w-4" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+        {editingRelocationInterest ? (
+          <div className="mt-1 space-y-2">
+            <Input
+              value={relocationInterestDraft}
+              onChange={(e) =>
+                setRelocationInterestDraft(e.target.value)
+              }
+              placeholder="City, State"
+              className="text-[14px]"
+              style={{
+                borderColor: '#3BBFBF',
+                color: '#2D4459',
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="font-semibold text-white"
+                style={{ background: '#3BBFBF' }}
+                disabled={savingRelocationInterest}
+                onClick={() => void handleSaveRelocationInterest()}
+              >
+                {savingRelocationInterest ? 'Saving…' : 'Save'}
+              </Button>
+              <button
+                type="button"
+                className="text-sm font-semibold underline-offset-2 hover:underline"
+                style={{ color: '#3BBFBF' }}
+                disabled={savingRelocationInterest}
+                onClick={() => {
+                  setRelocationInterestDraft(
+                    (relocationInterestStored ?? '').trim()
+                  );
+                  setEditingRelocationInterest(false);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="mt-0.5 w-full text-left text-[14px] leading-snug"
+            style={{ color: '#2D4459' }}
+            onClick={() => {
+              setRelocationInterestDraft(
+                (relocationInterestStored ?? '').trim()
+              );
+              setEditingRelocationInterest(true);
+            }}
+          >
+            {toDisplayValue(relocationInterestStored)}
+          </button>
+        )}
+      </div>
+      <div className="md:col-span-1">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <span
+            className="font-medium shrink-0"
+            style={{ color: '#2D4459', fontSize: 13 }}
+          >
+            Funding Contact
+          </span>
+          {!editingFundingContact ? (
+            <button
+              type="button"
+              className="shrink-0 rounded p-1 text-[#3BBFBF] transition-opacity hover:opacity-80"
+              title="Edit"
+              aria-label="Edit funding contact"
+              onClick={() => {
+                setFundingContactDraft((fundingContactStored ?? '').trim());
+                setEditingFundingContact(true);
+              }}
+            >
+              <Pencil className="h-4 w-4" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+        {editingFundingContact ? (
+          <div className="mt-1 space-y-2">
+            <Input
+              value={fundingContactDraft}
+              onChange={(e) => setFundingContactDraft(e.target.value)}
+              placeholder="Name — Company"
+              className="text-[14px]"
+              style={{
+                borderColor: '#3BBFBF',
+                color: '#2D4459',
+              }}
+            />
+            <p
+              className="text-[12px] italic"
+              style={{ color: '#7A8F95' }}
+            >
+              Example: Sarah — Benetrends
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="font-semibold text-white"
+                style={{ background: '#3BBFBF' }}
+                disabled={savingFundingContact}
+                onClick={() => void handleSaveFundingContact()}
+              >
+                {savingFundingContact ? 'Saving…' : 'Save'}
+              </Button>
+              <button
+                type="button"
+                className="text-sm font-semibold underline-offset-2 hover:underline"
+                style={{ color: '#3BBFBF' }}
+                disabled={savingFundingContact}
+                onClick={() => {
+                  setFundingContactDraft(
+                    (fundingContactStored ?? '').trim()
+                  );
+                  setEditingFundingContact(false);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="mt-0.5 w-full text-left text-[14px] leading-snug"
+            style={{ color: '#2D4459' }}
+            onClick={() => {
+              setFundingContactDraft((fundingContactStored ?? '').trim());
+              setEditingFundingContact(true);
+            }}
+          >
+            {toDisplayValue(fundingContactStored)}
+          </button>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {aiWorking ? (
+        <div
+          className="mb-3 shrink-0 rounded-lg px-4 py-3 text-center text-sm font-semibold shadow-sm"
+          style={{ background: '#3BBFBF', color: 'white' }}
+          role="status"
+          aria-live="polite"
+        >
+          AI is working — please stay on this page until complete
+        </div>
+      ) : null}
       {showInactivateConfirm ? (
         <div
           className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3"
@@ -5758,7 +6015,9 @@ not who they have been.`;
                         <div><span className="font-medium">Contact Name:</span> {toDisplayValue(tumayData.contact_name ?? client.name)}</div>
                         <div><span className="font-medium">Email:</span> {toDisplayValue(tumayData.email ?? contact.email)}</div>
                         <div><span className="font-medium">Phone:</span> {toDisplayValue(tumayData.phone ?? contact.phone)}</div>
-                        <div><span className="font-medium">City + State:</span> {toDisplayValue([tumayData.city, tumayData.state].filter(Boolean).join(', '))}</div>
+                        <div><span className="font-medium">City:</span> {toDisplayValue(tumayData.city)}</div>
+                        <div><span className="font-medium">State:</span> {toDisplayValue(tumayData.state)}</div>
+                        {tumayRelocationFundingFields}
                         <div><span className="font-medium">Timeline:</span> {toDisplayValue(tumayData.launch_timeline)}</div>
                         <div>
                           <span className="font-medium">Time Commitment:</span>{' '}
@@ -5832,6 +6091,11 @@ not who they have been.`;
                 ) : (
                   <p className="text-slate-600">No TUMAY data yet.</p>
                 )}
+                {!tumayData ? (
+                  <div className="mt-5 grid grid-cols-1 gap-4 border-t border-slate-100 pt-5 md:grid-cols-3">
+                    {tumayRelocationFundingFields}
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
             </div>
