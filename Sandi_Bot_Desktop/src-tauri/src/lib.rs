@@ -10,6 +10,7 @@ mod migrations;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::path::PathBuf;
 
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -33,6 +34,164 @@ const GOOGLE_REDIRECT_URI: &str = "http://localhost:9879";
 const GOOGLE_SCOPES: &str = "https://www.googleapis.com/auth/gmail.readonly \
      https://www.googleapis.com/auth/calendar.readonly \
      https://www.googleapis.com/auth/userinfo.email";
+
+/// Must match `tool_connections.tool_id` for Calendar rows updated with Gmail tokens.
+const GOOGLE_CALENDAR_TOOL_ID: &str = "google-calendar";
+
+fn sandi_sqlite_db_path<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<PathBuf, String> {
+    let app_path = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(app_path.join("sandi_bot.db"))
+}
+
+/// Shared HTTP refresh used by `google_refresh_token` and `verify_gmail_connection`.
+async fn perform_google_refresh(
+    refresh_token: &str,
+) -> Result<serde_json::Value, String> {
+    println!("Step 3b (refresh): Exchanging refresh token");
+    let client = reqwest::Client::new();
+    let mut params = HashMap::new();
+    params.insert("refresh_token", refresh_token);
+    params.insert("client_id", GOOGLE_CLIENT_ID);
+    params.insert("client_secret", GOOGLE_CLIENT_SECRET);
+    params.insert("grant_type", "refresh_token");
+
+    let response = client
+        .post(GOOGLE_TOKEN_URI)
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    println!(
+        "Step 4b (refresh): HTTP {} body len {}",
+        status,
+        body.len()
+    );
+
+    if !status.is_success() {
+        let head: String = body.chars().take(400).collect();
+        eprintln!("Step 4b (refresh): error body (truncated): {}", head);
+        return Err(format!(
+            "Refresh token exchange failed: HTTP {}",
+            status
+        ));
+    }
+
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| e.to_string())?;
+
+    if json.get("error").is_some() {
+        eprintln!(
+            "Step 4b (refresh): OAuth error in JSON: {:?}",
+            json.get("error")
+        );
+        return Err("Refresh response contained OAuth error".to_string());
+    }
+
+    if let Some(sec) = json.get("expires_in").and_then(|v| v.as_u64()) {
+        println!(
+            "Step 4b (refresh): Token received — expires in {} s",
+            sec
+        );
+    } else {
+        println!(
+            "Step 4b (refresh): Token received (expires_in missing)"
+        );
+    }
+
+    Ok(json)
+}
+
+async fn gmail_profile_http_status(
+    access_token: &str,
+) -> Result<u16, String> {
+    let client = reqwest::Client::new();
+    let r = client
+        .get("https://gmail.googleapis.com/gmail/v1/users/me/profile")
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(r.status().as_u16())
+}
+
+async fn persist_refreshed_google_tokens(
+    db_path: &std::path::Path,
+    new_access: &str,
+    json: &serde_json::Value,
+) -> Result<(), String> {
+    let expires_in = json
+        .get("expires_in")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3600);
+    let exp_iso = (chrono::Utc::now()
+        + chrono::Duration::seconds(expires_in as i64))
+    .to_rfc3339();
+
+    let path_update = db_path.to_path_buf();
+    let path_verify = db_path.to_path_buf();
+    let new_access = new_access.to_string();
+
+    tokio::task::spawn_blocking(move || {
+        let conn = rusqlite::Connection::open(&path_update)
+            .map_err(|e| e.to_string())?;
+        let n = conn
+            .execute(
+                "UPDATE tool_connections SET auth_token = ?, token_expires_at = ? \
+                 WHERE (tool_id = 'gmail' OR tool_id = ?) AND is_connected = 1",
+                rusqlite::params![
+                    new_access.as_str(),
+                    exp_iso.as_str(),
+                    GOOGLE_CALENDAR_TOOL_ID
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        println!(
+            "Step 5 (Rust path): Updated tool_connections rows affected: {}",
+            n
+        );
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let len: i64 = tokio::task::spawn_blocking(move || {
+        let conn = rusqlite::Connection::open(&path_verify)
+            .map_err(|e| e.to_string())?;
+        let len: i64 = conn
+            .query_row(
+                "SELECT length(COALESCE(auth_token,'')) \
+                 FROM tool_connections WHERE tool_id = 'gmail' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok::<i64, String>(len)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    if len > 0 {
+        println!(
+            "Step 6: Verified — token exists in DB (auth_token chars: {})",
+            len
+        );
+    } else {
+        eprintln!(
+            "ERROR — token not found after save attempt (gmail auth_token empty)"
+        );
+    }
+
+    Ok(())
+}
 
 #[tauri::command]
 fn greet(name: String) -> String {
@@ -426,11 +585,13 @@ async fn google_auth_url() -> Result<String, String> {
         urlencoding::encode(GOOGLE_REDIRECT_URI),
         urlencoding::encode(GOOGLE_SCOPES)
     );
+    println!("Step 1: OAuth URL generated");
     Ok(url)
 }
 
 #[tauri::command]
 async fn google_exchange_code(code: String) -> Result<serde_json::Value, String> {
+    println!("Step 3: Exchanging code for token");
     let client = reqwest::Client::new();
 
     let mut params = HashMap::new();
@@ -447,37 +608,52 @@ async fn google_exchange_code(code: String) -> Result<serde_json::Value, String>
         .await
         .map_err(|e| e.to_string())?;
 
-    let json: serde_json::Value = response
-        .json()
+    let status = response.status();
+    let body = response
+        .text()
         .await
         .map_err(|e| e.to_string())?;
+
+    println!("Step 4: token exchange HTTP status {}", status);
+
+    if !status.is_success() {
+        let head: String = body.chars().take(400).collect();
+        eprintln!("Step 4: exchange error body (truncated): {}", head);
+        return Err(format!(
+            "Token exchange failed: HTTP {}",
+            status
+        ));
+    }
+
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| e.to_string())?;
+
+    if json.get("error").is_some() {
+        eprintln!(
+            "Step 4: OAuth error in JSON: {:?}",
+            json.get("error")
+        );
+        return Err("OAuth token error in response".to_string());
+    }
+
+    if let Some(sec) = json.get("expires_in").and_then(|v| v.as_u64()) {
+        println!("Step 4: Token received — expires in {} s", sec);
+    } else {
+        println!("Step 4: Token received (expires_in missing)");
+    }
+
+    println!(
+        "Step 5: Token bundle returned to client (persist to tool_connections in app layer)"
+    );
 
     Ok(json)
 }
 
 #[tauri::command]
-async fn google_refresh_token(refresh_token: String) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-
-    let mut params = HashMap::new();
-    params.insert("refresh_token", refresh_token.as_str());
-    params.insert("client_id", GOOGLE_CLIENT_ID);
-    params.insert("client_secret", GOOGLE_CLIENT_SECRET);
-    params.insert("grant_type", "refresh_token");
-
-    let response = client
-        .post(GOOGLE_TOKEN_URI)
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(json)
+async fn google_refresh_token(
+    refresh_token: String,
+) -> Result<serde_json::Value, String> {
+    perform_google_refresh(refresh_token.as_str()).await
 }
 
 #[tauri::command]
@@ -520,6 +696,12 @@ async fn google_start_local_server() -> Result<String, String> {
         let n = stream.read(&mut buf).map_err(|e| e.to_string())?;
         let request = String::from_utf8_lossy(&buf[..n]);
         let code = extract_oauth_code_from_http_request(&request)?;
+        let preview: String = code.chars().take(8).collect();
+        println!(
+            "Step 2: Auth code received: {} ({} chars)",
+            preview,
+            code.len()
+        );
         let response = "HTTP/1.1 200 OK\r\n\
 Content-Type: text/html; charset=utf-8\r\n\
 Connection: close\r\n\
@@ -533,6 +715,163 @@ Connection: close\r\n\
     })
     .await
     .map_err(|e| format!("OAuth server task failed: {}", e))?
+}
+
+/// Debug / health: read Gmail row from `tool_connections`, probe Gmail profile,
+/// and attempt refresh when the access token is missing or rejected.
+#[tauri::command]
+async fn verify_gmail_connection(
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    println!("[GMAIL VERIFY] verify_gmail_connection starting");
+
+    let db_path = sandi_sqlite_db_path(&app)?;
+    if !db_path.exists() {
+        return Ok(serde_json::json!({
+            "status": "not_found",
+            "detail": "sandi_bot.db not on disk"
+        }));
+    }
+
+    let db_path_read = db_path.clone();
+    let row_opt: Option<(
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+    )> = tokio::task::spawn_blocking(move || {
+        let conn = rusqlite::Connection::open(&db_path_read)
+            .map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT auth_token, refresh_token, token_expires_at, is_connected \
+                 FROM tool_connections WHERE tool_id = 'gmail' LIMIT 1",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, Option<i64>>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.next()
+            .transpose()
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let (auth_opt, refresh_opt, _exp, is_conn) = match row_opt {
+        Some(t) => t,
+        None => {
+            println!("[GMAIL VERIFY] No gmail row in tool_connections");
+            return Ok(serde_json::json!({
+                "status": "not_found",
+                "detail": "no gmail row"
+            }));
+        }
+    };
+
+    let at = auth_opt.unwrap_or_default();
+    let rt = refresh_opt.unwrap_or_default();
+    println!(
+        "[GMAIL VERIFY] Row is_connected={:?} auth_len={} refresh_len={}",
+        is_conn,
+        at.len(),
+        rt.len()
+    );
+
+    if at.is_empty() && rt.is_empty() {
+        return Ok(serde_json::json!({
+            "status": "not_found",
+            "detail": "no tokens stored"
+        }));
+    }
+
+    let mut access = at.clone();
+
+    if access.is_empty() && !rt.is_empty() {
+        println!(
+            "[GMAIL VERIFY] Missing access token; refreshing before probe"
+        );
+        let json = perform_google_refresh(rt.as_str()).await?;
+        let new_at = json["access_token"].as_str().unwrap_or("");
+        if new_at.is_empty() {
+            return Ok(serde_json::json!({
+                "status": "expired",
+                "detail": "refresh returned no access_token"
+            }));
+        }
+        access = new_at.to_string();
+        persist_refreshed_google_tokens(&db_path, &access, &json)
+            .await?;
+    }
+
+    let mut http_status =
+        gmail_profile_http_status(access.as_str()).await?;
+    println!(
+        "[GMAIL VERIFY] Gmail profile probe HTTP {}",
+        http_status
+    );
+
+    if (http_status == 401 || http_status == 403) && !rt.is_empty() {
+        println!(
+            "[GMAIL VERIFY] Probe {} — attempting refresh",
+            http_status
+        );
+        match perform_google_refresh(rt.as_str()).await {
+            Ok(json) => {
+                let new_at = json["access_token"].as_str().unwrap_or("");
+                if new_at.is_empty() {
+                    return Ok(serde_json::json!({
+                        "status": "expired",
+                        "detail": "refresh missing access_token"
+                    }));
+                }
+                access = new_at.to_string();
+                persist_refreshed_google_tokens(
+                    &db_path,
+                    &access,
+                    &json,
+                )
+                .await?;
+                http_status =
+                    gmail_profile_http_status(access.as_str()).await?;
+                println!(
+                    "[GMAIL VERIFY] Profile after refresh HTTP {}",
+                    http_status
+                );
+            }
+            Err(e) => {
+                return Ok(serde_json::json!({
+                    "status": "expired",
+                    "detail": e
+                }));
+            }
+        }
+    }
+
+    if http_status == 200 {
+        Ok(serde_json::json!({
+            "status": "connected",
+            "httpStatus": http_status
+        }))
+    } else if http_status == 401 || http_status == 403 {
+        Ok(serde_json::json!({
+            "status": "expired",
+            "httpStatus": http_status
+        }))
+    } else {
+        Ok(serde_json::json!({
+            "status": "expired",
+            "httpStatus": http_status,
+            "detail": "unexpected Gmail profile status"
+        }))
+    }
 }
 
 #[tauri::command]
@@ -1514,6 +1853,7 @@ pub fn run() {
             google_refresh_token,
             google_get_user_info,
             google_start_local_server,
+            verify_gmail_connection,
             gmail_get_messages,
             gmail_get_message,
             gmail_get_thread,
