@@ -80,6 +80,10 @@ import {
 } from '../services/coachingCouncil';
 import { logCorrection } from '../services/correctionService';
 import { extractFathomSession } from '@/services/documentExtractionService';
+import {
+  withOllamaCheck,
+  OLLAMA_NOT_READY_USER_MESSAGE,
+} from '@/services/ollamaService';
 
 /**
  * v1.4: Disable Quick Reflection (App.tsx). It treats `reflection_last_shown`
@@ -3095,8 +3099,16 @@ function ClientDetailModal({
         coachPhilosophy: (coachProfileRow?.coaching_philosophy ?? '').trim(),
       };
 
-      const output = await runCoachingCouncil(input);
-      setCouncilOutput(output);
+      const output = await withOllamaCheck(
+        () => runCoachingCouncil(input),
+        () =>
+          setCouncilError(
+            OLLAMA_NOT_READY_USER_MESSAGE
+          )
+      );
+      if (output != null) {
+        setCouncilOutput(output);
+      }
     } catch (e) {
       console.error(e);
       setCouncilError(
@@ -3219,31 +3231,42 @@ vision statement. It describes
 who this person is becoming,
 not who they have been.`;
 
-      const result = await invoke<any>(
-        'ollama_generate',
-        {
-          model: 'qwen2.5:7b',
-          prompt: prompt,
-          system: visionFutureTenseSystem,
-          stream: false,
+      const generated = await withOllamaCheck(
+        async () => {
+          const result = await invoke<any>(
+            'ollama_generate',
+            {
+              model: 'qwen2.5:7b',
+              prompt: prompt,
+              system: visionFutureTenseSystem,
+              stream: false,
+            }
+          );
+
+          const text =
+            typeof result === 'string'
+              ? result.trim()
+              : String(
+                  result?.response ||
+                    result?.message?.content ||
+                    ''
+                ).trim();
+
+          if (!text || text.length < 20) {
+            throw new Error('vision_empty');
+          }
+          return text;
+        },
+        () => {
+          setVisionError(
+            OLLAMA_NOT_READY_USER_MESSAGE
+          );
+          setVisionGenerating(false);
         }
       );
 
-      const generated =
-        typeof result === 'string'
-          ? result.trim()
-          : String(
-              result?.response ||
-                result?.message?.content ||
-                ''
-            ).trim();
-
-      if (!generated ||
-          generated.length < 20) {
-        throw new Error(
-          'No response from Ollama. ' +
-            'Is it running?'
-        );
+      if (generated == null) {
+        return;
       }
 
       const postProcessVisionFutureTense = (
@@ -3269,7 +3292,9 @@ not who they have been.`;
       };
 
       const tenseAdjusted =
-        postProcessVisionFutureTense(generated);
+        postProcessVisionFutureTense(
+          generated
+        );
       const sanitized = sanitizeText(tenseAdjusted);
       setVisionText(sanitized);
       setVisionGenerating(false);
@@ -6386,15 +6411,47 @@ not who they have been.`;
                         setFathomUploadError(null);
                         setFathomUploadSuccess(null);
                         setFathomProgress(40);
-                        const result = await extractFathomSession(
-                          client.id,
-                          fathomPasteText.trim(),
-                          'fathom_transcript.txt',
-                          ''
-                        );
+                        const result =
+                          await withOllamaCheck(
+                            () =>
+                              extractFathomSession(
+                                client.id,
+                                fathomPasteText.trim(),
+                                'fathom_transcript.txt',
+                                ''
+                              ),
+                            () => {
+                              setFathomUploadError(
+                                OLLAMA_NOT_READY_USER_MESSAGE
+                              );
+                              setFathomUploading(false);
+                              setFathomProgress(0);
+                            }
+                          );
+                        if (result == null) {
+                          return;
+                        }
                         setFathomProgress(80);
                         if (!result.success) {
-                          throw new Error(result.error ?? 'Extraction failed');
+                          const er = (
+                            result.error ?? ''
+                          ).toLowerCase();
+                          const ollamaLike =
+                            er.includes('ollama') ||
+                            er.includes(
+                              'connection'
+                            ) ||
+                            er.includes('timeout') ||
+                            er.includes('11434');
+                          setFathomUploading(false);
+                          setFathomProgress(0);
+                          setFathomUploadError(
+                            ollamaLike
+                              ? OLLAMA_NOT_READY_USER_MESSAGE
+                              : result.error ??
+                                  'Could not extract. Make sure Ollama is running.'
+                          );
+                          return;
                         }
                         const now = new Date().toISOString();
                         const contactDay = addSessionDate.trim();
@@ -6421,7 +6478,11 @@ not who they have been.`;
                         setFathomUploading(false);
                         setFathomProgress(0);
                         setFathomUploadError(
-                          'Could not extract. Make sure Ollama is running.'
+                          err instanceof Error &&
+                            err.message ===
+                              OLLAMA_NOT_READY_USER_MESSAGE
+                            ? err.message
+                            : 'Could not extract. Make sure Ollama is running.'
                         );
                       }
                     }}
