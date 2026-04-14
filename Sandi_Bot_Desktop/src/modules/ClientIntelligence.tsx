@@ -893,6 +893,112 @@ function deriveStyleLetter(
     .sort((a, b) => b[1] - a[1])[0][0] as 'D' | 'I' | 'S' | 'C';
 }
 
+/** Post-Fathom Ollama JSON for Session Intelligence panel */
+type FathomSessionIntelResult = {
+  grade: string;
+  grade_summary: string;
+  ready: boolean;
+  confidence: number;
+  ready_reasons: string[];
+  gaps: string[];
+  next_questions: string[];
+  session_highlights: string[];
+};
+
+function stripEmDashSessionIntel(s: string): string {
+  return s.replace(/\u2014/g, ',').replace(/\u2013/g, '-');
+}
+
+function sanitizeFathomSessionIntel(
+  obj: Record<string, unknown>
+): FathomSessionIntelResult {
+  const g = String(obj.grade ?? 'C').trim().toUpperCase().slice(0, 1);
+  const grade = ['A', 'B', 'C', 'D'].includes(g) ? g : 'C';
+  const toStrArr = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.map((x) => stripEmDashSessionIntel(String(x))).filter((x) => x.trim())
+      : [];
+  return {
+    grade,
+    grade_summary: stripEmDashSessionIntel(String(obj.grade_summary ?? '')),
+    ready: Boolean(obj.ready),
+    confidence: Math.min(
+      100,
+      Math.max(0, Number(obj.confidence ?? 0))
+    ),
+    ready_reasons: toStrArr(obj.ready_reasons),
+    gaps: toStrArr(obj.gaps),
+    next_questions: toStrArr(obj.next_questions),
+    session_highlights: toStrArr(obj.session_highlights),
+  };
+}
+
+function parseFathomSessionIntelJson(
+  raw: string
+): FathomSessionIntelResult | null {
+  const clean = raw
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  try {
+    const p = JSON.parse(clean) as Record<string, unknown>;
+    return sanitizeFathomSessionIntel(p);
+  } catch {
+    const m = clean.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    try {
+      const p = JSON.parse(m[0]) as Record<string, unknown>;
+      return sanitizeFathomSessionIntel(p);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function stageReadinessFactorsForSessionIntel(
+  currentCode: PipelineStage
+): string {
+  switch (currentCode) {
+    case 'IC':
+      return `For IC to C1, look for in this transcript:
+- Did they engage genuinely with you?
+- Did they express their own motivation to explore franchising?
+- Did they agree to a clear next step?`;
+    case 'C1':
+      return `For C1 to C2, look for in this transcript:
+- Did DISC come up or get completed as a topic?
+- Did a personal "why now" surface?
+- Did spouse or partner awareness come up?`;
+    case 'C2':
+      return `For C2 to C3, look for in this transcript:
+- Did You 2.0 style topics surface (dangers, strengths, vision)?
+- Did financial picture or constraints come up?
+- Did dangers or fears get acknowledged?
+- Did emotional readiness to explore show?`;
+    case 'C3':
+      return `For C3 to C4, look for in this transcript:
+- Did possibilities or brands get discussed concretely?
+- Did they describe doing their own research?
+- Did discovery day or validation visits come up?
+- Did funding or capital get mentioned?
+- Did language shift toward wanting to move forward?`;
+    case 'C4':
+      return `For C4 to C5, look for in this transcript:
+- Did discovery day or validation experiences happen or get scheduled?
+- Did franchise owners or Zors get talked about?
+- Did a funding source get named or narrowed?
+- Did territory or market come up?
+- Did spouse or partner alignment confirm?`;
+    case 'C5':
+      return `For C5 toward Business Complete, look for in this transcript:
+- Did agreement, franchise award, or close get mentioned?
+- Did launch timeline or onboarding come up?
+- Did funding finalization or wire timing happen?`;
+    default:
+      return 'Assess readiness signals grounded only in this transcript.';
+  }
+}
+
 const VISION_MOTIVATION_ROAD_QUOTE =
   "You don't have to have it all figured out to move forward";
 const VISION_MOTIVATION_CLIFF_QUOTE =
@@ -1642,6 +1748,24 @@ function ClientDetailModal({
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null);
   const [editingNotesId, setEditingNotesId] = useState<number | null>(null);
   const [editingNotesText, setEditingNotesText] = useState('');
+  const [fathomSessionIntelSessionId, setFathomSessionIntelSessionId] =
+    useState<number | null>(null);
+  const [fathomSessionIntelPhase, setFathomSessionIntelPhase] = useState<
+    'idle' | 'countdown' | 'loading' | 'done' | 'error'
+  >('idle');
+  const [fathomSessionIntelCountdown, setFathomSessionIntelCountdown] =
+    useState(15);
+  const [fathomSessionIntelTranscript, setFathomSessionIntelTranscript] =
+    useState('');
+  const [fathomSessionIntelData, setFathomSessionIntelData] =
+    useState<FathomSessionIntelResult | null>(null);
+  const [fathomSessionIntelError, setFathomSessionIntelError] = useState<
+    string | null
+  >(null);
+  const [fathomSessionIntelMoveSaving, setFathomSessionIntelMoveSaving] =
+    useState(false);
+  const fathomSessionIntelRunRef = useRef(false);
+  const fathomSessionIntelPriorCountRef = useRef(0);
   const [placementPocReached, setPlacementPocReached] = useState<string | null>(
     null
   );
@@ -1905,6 +2029,17 @@ function ClientDetailModal({
     setReminderSavedLocallyMsg(false);
     setReminderSetConfirm(false);
     setReminderSaving(false);
+  }, [client?.id]);
+
+  useEffect(() => {
+    setFathomSessionIntelSessionId(null);
+    setFathomSessionIntelPhase('idle');
+    setFathomSessionIntelCountdown(15);
+    setFathomSessionIntelTranscript('');
+    setFathomSessionIntelData(null);
+    setFathomSessionIntelError(null);
+    setFathomSessionIntelMoveSaving(false);
+    fathomSessionIntelRunRef.current = false;
   }, [client?.id]);
 
   const refreshClientReminders = useCallback(async () => {
@@ -3633,6 +3768,140 @@ Use plain conversational language.`;
     setRatedQuestions({});
     await handleGenerateBestNextQuestions();
   };
+
+  const runFathomSessionIntelOllama = useCallback(async () => {
+    if (!client?.id) return;
+    setFathomSessionIntelPhase('loading');
+    setFathomSessionIntelError(null);
+    setFathomSessionIntelData(null);
+    const trans = fathomSessionIntelTranscript.trim();
+    if (!trans) {
+      setFathomSessionIntelError('No transcript available for analysis.');
+      setFathomSessionIntelPhase('error');
+      return;
+    }
+    const currentCode = codeForNav;
+    const nextLabel = nextStageMove
+      ? `${nextStageMove} (${getStageDisplayName(nextStageMove)})`
+      : 'Business Complete (wrap-up after C5)';
+    const discLetter =
+      discScores != null &&
+      discScores.d + discScores.i + discScores.s + discScores.c > 0
+        ? deriveStyleLetter(
+            discScores.d,
+            discScores.i,
+            discScores.s,
+            discScores.c
+          )
+        : 'Unknown';
+    const factors = stageReadinessFactorsForSessionIntel(currentCode);
+    const transcriptSlice = trans.slice(0, 14000);
+    const priorN = fathomSessionIntelPriorCountRef.current;
+
+    const systemPrompt = `You are an expert franchise coaching analyst. You evaluate coaching sessions using the CLEAR framework: Contract, Listen, Explore, Action, Review. You assess seeker readiness using stage-specific criteria. Be specific and grounded in the session content provided. Never use em dashes. Use plain language. Be direct and concise.`;
+
+    const userPrompt = `Client name: ${client.name}
+Recorded CRM pipeline stage (letter code): ${currentCode} (${getStageDisplayName(currentCode)})
+Target next stage for this readiness check: ${nextLabel}
+Coaching sessions already on file for this client before this call (count, not including this transcript as a DB row yet): ${priorN}
+Primary DISC style from profile scores (or Unknown): ${discLetter}
+
+${factors}
+
+Session transcript (grade this session only from this text):
+---
+${transcriptSlice}
+---
+
+From this transcript only, grade coaching quality using CLEAR:
+- Contract clarity surfaced (opening, agenda, agreements)
+- Listening quality (open questions, paraphrase, space)
+- Emotions acknowledged
+- Actions committed (client-owned next steps)
+- Review of prior work or homework
+
+Return ONLY valid JSON with exactly these keys (no markdown fences):
+{
+  "grade": "A",
+  "grade_summary": "one line under 120 characters",
+  "ready": true,
+  "confidence": 0,
+  "ready_reasons": ["reason 1", "reason 2", "reason 3"],
+  "gaps": ["gap 1"],
+  "next_questions": ["question 1", "question 2", "question 3"],
+  "session_highlights": ["positive signal 1", "positive signal 2"]
+}
+
+Rules:
+- grade must be one letter: A, B, C, or D.
+- If ready is true, include exactly 3 concise ready_reasons tied to this session; gaps may be empty.
+- If ready is false, include 2 to 3 gaps, 3 next_questions for the coach next call, 2 to 3 session_highlights for what still went well.
+- confidence is 0 to 100 for how strong your readiness verdict is.`;
+
+    try {
+      const raw = await withOllamaCheck(
+        () =>
+          invoke<string>('ollama_generate', {
+            model: 'qwen2.5:7b',
+            prompt: userPrompt,
+            system: systemPrompt,
+            stream: false,
+          }),
+        () => {
+          setFathomSessionIntelError(OLLAMA_NOT_READY_USER_MESSAGE);
+          setFathomSessionIntelPhase('error');
+        }
+      );
+      if (raw == null) {
+        setFathomSessionIntelPhase('error');
+        return;
+      }
+      const parsed = parseFathomSessionIntelJson(raw);
+      if (!parsed) {
+        setFathomSessionIntelError(
+          'Could not read AI response. Use refresh to try again.'
+        );
+        setFathomSessionIntelPhase('error');
+        return;
+      }
+      setFathomSessionIntelData(parsed);
+      setFathomSessionIntelPhase('done');
+    } catch (e) {
+      console.error('Session intelligence:', e);
+      setFathomSessionIntelError('Could not run session analysis. Try again.');
+      setFathomSessionIntelPhase('error');
+    }
+  }, [
+    client?.id,
+    client?.name,
+    codeForNav,
+    nextStageMove,
+    discScores,
+    fathomSessionIntelTranscript,
+  ]);
+
+  useEffect(() => {
+    if (fathomSessionIntelPhase !== 'countdown') return;
+    if (fathomSessionIntelCountdown <= 0) return;
+    const t = window.setTimeout(() => {
+      setFathomSessionIntelCountdown((c) => (c > 0 ? c - 1 : 0));
+    }, 1000);
+    return () => window.clearTimeout(t);
+  }, [fathomSessionIntelPhase, fathomSessionIntelCountdown]);
+
+  useEffect(() => {
+    if (fathomSessionIntelPhase !== 'countdown') return;
+    if (fathomSessionIntelCountdown > 0) return;
+    if (fathomSessionIntelRunRef.current) return;
+    fathomSessionIntelRunRef.current = true;
+    void runFathomSessionIntelOllama().finally(() => {
+      fathomSessionIntelRunRef.current = false;
+    });
+  }, [
+    fathomSessionIntelPhase,
+    fathomSessionIntelCountdown,
+    runFathomSessionIntelOllama,
+  ]);
 
   const saveVisionToDb = async (text: string): Promise<void> => {
     if (!client?.id) return;
@@ -8482,12 +8751,18 @@ Use reminders for:
                         setFathomUploadError(null);
                         setFathomUploadSuccess(null);
                         setFathomProgress(40);
+                        const countBeforeRows = await dbSelect<{ n: number }>(
+                          `SELECT COUNT(*) as n FROM coaching_sessions WHERE client_id = $1`,
+                          [client.id]
+                        );
+                        const countBefore = Number(countBeforeRows[0]?.n ?? 0);
+                        const transcriptSnapshot = fathomPasteText.trim();
                         const result =
                           await withOllamaCheck(
                             () =>
                               extractFathomSession(
                                 client.id,
-                                fathomPasteText.trim(),
+                                transcriptSnapshot,
                                 'fathom_transcript.txt',
                                 ''
                               ),
@@ -8534,6 +8809,33 @@ Use reminders for:
                           setLastContactDateDb(contactDay);
                         }
                         await loadFathomSessions();
+                        const countAfterRows = await dbSelect<{ n: number }>(
+                          `SELECT COUNT(*) as n FROM coaching_sessions WHERE client_id = $1`,
+                          [client.id]
+                        );
+                        const countAfter = Number(countAfterRows[0]?.n ?? 0);
+                        if (countAfter > countBefore) {
+                          const top = await dbSelect<{ id: number }>(
+                            `SELECT id FROM coaching_sessions WHERE client_id = $1 ORDER BY session_date DESC, id DESC LIMIT 1`,
+                            [client.id]
+                          );
+                          const newId = top[0]?.id;
+                          if (newId != null) {
+                            fathomSessionIntelPriorCountRef.current = countBefore;
+                            setFathomSessionIntelSessionId(newId);
+                            setFathomSessionIntelTranscript(transcriptSnapshot);
+                            setFathomSessionIntelData(null);
+                            setFathomSessionIntelError(null);
+                            fathomSessionIntelRunRef.current = false;
+                            setFathomSessionIntelPhase('countdown');
+                            setFathomSessionIntelCountdown(15);
+                            setExpandedSessions((prev) => {
+                              const next = new Set(prev);
+                              next.add(String(newId));
+                              return next;
+                            });
+                          }
+                        }
                         setFathomProgress(100);
                         setFathomUploading(false);
                         setFathomPasteText('');
@@ -8914,6 +9216,404 @@ Use reminders for:
                                 {blocksExpanded ? (
                                   <div className="mt-2 space-y-2">
                                     {blockDefinitions.map((def) => renderFathomStructuredSection(s, def))}
+                                    {fathomSessionIntelSessionId === s.id ? (
+                                      <div
+                                        className="mt-3 rounded-lg border p-4"
+                                        style={{
+                                          borderColor: '#C8E8E5',
+                                          background: '#FAFCFC',
+                                        }}
+                                      >
+                                        <p
+                                          className="m-0 font-bold"
+                                          style={{ color: '#2D4459', fontSize: 15 }}
+                                        >
+                                          Session Intelligence
+                                        </p>
+                                        <p
+                                          className="m-0 mt-0.5 text-xs"
+                                          style={{ color: '#7A8F95' }}
+                                        >
+                                          Based on this session
+                                        </p>
+                                        {fathomSessionIntelPhase === 'countdown' ? (
+                                          <p
+                                            className="m-0 mt-3 text-sm"
+                                            style={{ color: '#3BBFBF' }}
+                                          >
+                                            Preparing session analysis…{' '}
+                                            {fathomSessionIntelCountdown} second
+                                            {fathomSessionIntelCountdown === 1
+                                              ? ''
+                                              : 's'}
+                                          </p>
+                                        ) : null}
+                                        {fathomSessionIntelPhase === 'loading' ? (
+                                          <div
+                                            className="mt-3 flex items-center gap-2 text-sm"
+                                            style={{ color: '#2D4459' }}
+                                          >
+                                            <Loader2
+                                              className="h-4 w-4 shrink-0 animate-spin"
+                                              style={{ color: '#3BBFBF' }}
+                                              aria-hidden
+                                            />
+                                            Analyzing session with AI…
+                                          </div>
+                                        ) : null}
+                                        {fathomSessionIntelPhase === 'error' &&
+                                        fathomSessionIntelError ? (
+                                          <div className="mt-3 space-y-2">
+                                            <p
+                                              className="m-0 whitespace-pre-line text-sm"
+                                              style={{ color: '#7A8F95' }}
+                                            >
+                                              {fathomSessionIntelError}
+                                            </p>
+                                            <button
+                                              type="button"
+                                              className="font-bold text-white transition-opacity hover:opacity-90"
+                                              style={{
+                                                background: '#3BBFBF',
+                                                borderRadius: 8,
+                                                padding: '6px 14px',
+                                                fontSize: 12,
+                                                border: 'none',
+                                              }}
+                                              onClick={() => {
+                                                setFathomSessionIntelError(null);
+                                                fathomSessionIntelRunRef.current = false;
+                                                setFathomSessionIntelPhase('countdown');
+                                                setFathomSessionIntelCountdown(15);
+                                              }}
+                                            >
+                                              Try again (15s cooldown)
+                                            </button>
+                                          </div>
+                                        ) : null}
+                                        {fathomSessionIntelPhase === 'done' &&
+                                        fathomSessionIntelData ? (
+                                          <div className="mt-3 space-y-4">
+                                            <div
+                                              className="rounded-md border p-3"
+                                              style={{
+                                                borderColor: '#C8E8E5',
+                                                background: 'white',
+                                              }}
+                                            >
+                                              <p
+                                                className="m-0 text-xs font-semibold uppercase tracking-wide"
+                                                style={{ color: '#7A8F95' }}
+                                              >
+                                                Coaching Quality
+                                              </p>
+                                              <p
+                                                className="m-0 mt-1 text-3xl font-bold tabular-nums"
+                                                style={{ color: '#2D4459' }}
+                                              >
+                                                {fathomSessionIntelData.grade}
+                                              </p>
+                                              <p
+                                                className="m-0 mt-2 text-sm leading-snug"
+                                                style={{ color: '#2D4459' }}
+                                              >
+                                                {fathomSessionIntelData.grade_summary ||
+                                                  'Summary not returned.'}
+                                              </p>
+                                            </div>
+                                            <div
+                                              className="rounded-md border p-3"
+                                              style={{
+                                                borderColor: '#C8E8E5',
+                                                background: 'white',
+                                              }}
+                                            >
+                                              <p
+                                                className="m-0 text-xs font-semibold uppercase tracking-wide"
+                                                style={{ color: '#7A8F95' }}
+                                              >
+                                                {`Is ${clientFirstNameFromDisplayName(client.name)} ready to move from ${codeForNav} to ${nextStageMove ?? 'Business Complete'}?`}
+                                              </p>
+                                              <p
+                                                className="m-0 mt-1 text-xs"
+                                                style={{ color: '#7A8F95' }}
+                                              >
+                                                Confidence:{' '}
+                                                {fathomSessionIntelData.confidence}%
+                                              </p>
+                                              {fathomSessionIntelData.ready ? (
+                                                <div className="mt-3 space-y-2">
+                                                  <div className="flex items-start gap-2">
+                                                    <Check
+                                                      className="mt-0.5 h-5 w-5 shrink-0 text-green-600"
+                                                      aria-hidden
+                                                    />
+                                                    <p
+                                                      className="m-0 text-sm font-semibold text-green-800"
+                                                    >
+                                                      {nextStageMove
+                                                        ? `Ready to move to ${nextStageMove}`
+                                                        : 'Ready to move toward Business Complete'}
+                                                    </p>
+                                                  </div>
+                                                  <p
+                                                    className="m-0 text-xs font-semibold"
+                                                    style={{ color: '#2D4459' }}
+                                                  >
+                                                    Why
+                                                  </p>
+                                                  <ul
+                                                    className="m-0 list-disc space-y-1 pl-5 text-sm"
+                                                    style={{ color: '#2D4459' }}
+                                                  >
+                                                    {(
+                                                      fathomSessionIntelData.ready_reasons.slice(
+                                                        0,
+                                                        3
+                                                      ).length > 0
+                                                        ? fathomSessionIntelData.ready_reasons.slice(
+                                                            0,
+                                                            3
+                                                          )
+                                                        : [
+                                                            'Model pointed to readiness; confirm on your next call.',
+                                                          ]
+                                                    ).map((r, i) => (
+                                                      <li key={`rr-${i}`}>{r}</li>
+                                                    ))}
+                                                  </ul>
+                                                  {nextStageMove ? (
+                                                    <button
+                                                      type="button"
+                                                      disabled={fathomSessionIntelMoveSaving}
+                                                      className="mt-2 w-full font-bold text-white transition-opacity hover:opacity-95 disabled:opacity-60"
+                                                      style={{
+                                                        background: '#3BBFBF',
+                                                        borderRadius: 8,
+                                                        padding: '10px 16px',
+                                                        fontSize: 13,
+                                                        border: 'none',
+                                                      }}
+                                                      onClick={() => {
+                                                        void (async () => {
+                                                          setFathomSessionIntelMoveSaving(
+                                                            true
+                                                          );
+                                                          try {
+                                                            const fromC =
+                                                              pipelineCodeForStageMove(
+                                                                codeForNav
+                                                              );
+                                                            const toC =
+                                                              pipelineCodeForStageMove(
+                                                                nextStageMove
+                                                              );
+                                                            await moveClientStage(
+                                                              client.id,
+                                                              fromC,
+                                                              toC,
+                                                              'coach',
+                                                              'Session Intelligence (Fathom)'
+                                                            );
+                                                            setOptimisticInferredStage(
+                                                              toC
+                                                            );
+                                                            await onStageMoved?.(
+                                                              client.id,
+                                                              toC
+                                                            );
+                                                            void getStageReadiness(
+                                                              client.id
+                                                            ).then(setReadiness);
+                                                            toast.success(
+                                                              `Moved to ${toC}`
+                                                            );
+                                                          } catch (e) {
+                                                            console.error(e);
+                                                            toast.error(
+                                                              'Could not move stage.'
+                                                            );
+                                                          } finally {
+                                                            setFathomSessionIntelMoveSaving(
+                                                              false
+                                                            );
+                                                          }
+                                                        })();
+                                                      }}
+                                                    >
+                                                      {fathomSessionIntelMoveSaving
+                                                        ? 'Saving…'
+                                                        : `Move to ${nextStageMove}`}
+                                                    </button>
+                                                  ) : null}
+                                                </div>
+                                              ) : (
+                                                <div className="mt-3 space-y-3">
+                                                  <div className="flex items-start gap-2">
+                                                    <AlertTriangle
+                                                      className="mt-0.5 h-5 w-5 shrink-0 text-amber-600"
+                                                      aria-hidden
+                                                    />
+                                                    <p
+                                                      className="m-0 text-sm font-semibold text-amber-900"
+                                                    >
+                                                      {nextStageMove
+                                                        ? `Building toward ${nextStageMove}`
+                                                        : 'Building toward Business Complete'}
+                                                    </p>
+                                                  </div>
+                                                  <div>
+                                                    <p
+                                                      className="m-0 text-xs font-semibold"
+                                                      style={{ color: '#2D4459' }}
+                                                    >
+                                                      What this session showed
+                                                    </p>
+                                                    <ul
+                                                      className="m-0 mt-1 list-disc space-y-1 pl-5 text-sm"
+                                                      style={{ color: '#2D4459' }}
+                                                    >
+                                                      {(
+                                                        fathomSessionIntelData.session_highlights.slice(
+                                                          0,
+                                                          3
+                                                        ).length > 0
+                                                          ? fathomSessionIntelData.session_highlights.slice(
+                                                              0,
+                                                              3
+                                                            )
+                                                          : [
+                                                              'Momentum is forming; keep reinforcing wins.',
+                                                            ]
+                                                      ).map((h, i) => (
+                                                        <li key={`hi-${i}`}>{h}</li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                  <div>
+                                                    <p
+                                                      className="m-0 text-xs font-semibold"
+                                                      style={{ color: '#2D4459' }}
+                                                    >
+                                                      What is still needed
+                                                    </p>
+                                                    <ul
+                                                      className="m-0 mt-1 list-disc space-y-1 pl-5 text-sm"
+                                                      style={{ color: '#2D4459' }}
+                                                    >
+                                                      {(
+                                                        fathomSessionIntelData.gaps.slice(
+                                                          0,
+                                                          3
+                                                        ).length > 0
+                                                          ? fathomSessionIntelData.gaps.slice(
+                                                              0,
+                                                              3
+                                                            )
+                                                          : [
+                                                              'More depth on commitment and funding.',
+                                                            ]
+                                                      ).map((g, i) => (
+                                                        <li key={`gp-${i}`}>{g}</li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                  <div>
+                                                    <p
+                                                      className="m-0 text-xs font-semibold"
+                                                      style={{ color: '#2D4459' }}
+                                                    >
+                                                      Questions to ask next time
+                                                    </p>
+                                                    <ul
+                                                      className="m-0 mt-1 list-disc space-y-1 pl-5 text-sm"
+                                                      style={{ color: '#2D4459' }}
+                                                    >
+                                                      {(
+                                                        fathomSessionIntelData.next_questions.slice(
+                                                          0,
+                                                          3
+                                                        ).length > 0
+                                                          ? fathomSessionIntelData.next_questions.slice(
+                                                              0,
+                                                              3
+                                                            )
+                                                          : [
+                                                              'What would make you comfortable taking the next pipeline step?',
+                                                            ]
+                                                      ).map((q, i) => (
+                                                        <li key={`nq-${i}`}>{q}</li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                  <button
+                                                    type="button"
+                                                    className="w-full font-bold text-white transition-opacity hover:opacity-95"
+                                                    style={{
+                                                      background: '#2D4459',
+                                                      borderRadius: 8,
+                                                      padding: '10px 16px',
+                                                      fontSize: 13,
+                                                      border: 'none',
+                                                    }}
+                                                    onClick={() => {
+                                                      const gapText =
+                                                        fathomSessionIntelData.gaps
+                                                          .join('; ') ||
+                                                        fathomSessionIntelData.grade_summary;
+                                                      setReminderNote(
+                                                        `Follow-up after session: ${gapText}`
+                                                      );
+                                                      setReminderType('Follow-up');
+                                                      setReminderFormOpen(true);
+                                                      setDetailTab('overview');
+                                                      setOverviewRemindersExpanded(
+                                                        true
+                                                      );
+                                                      toast.message(
+                                                        'Reminder draft saved in Overview'
+                                                      );
+                                                    }}
+                                                  >
+                                                    Log a follow-up reminder
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2" style={{ borderColor: '#E8EEF1' }}>
+                                              <span
+                                                className="text-xs"
+                                                style={{ color: '#7A8F95' }}
+                                              >
+                                                Session analysis (refresh to
+                                                re-run)
+                                              </span>
+                                              <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 rounded-md p-1.5 text-[#3BBFBF] transition-colors hover:bg-slate-100"
+                                                aria-label="Regenerate session intelligence"
+                                                disabled={
+                                                  fathomSessionIntelPhase ===
+                                                  'loading'
+                                                }
+                                                onClick={() => {
+                                                  setFathomSessionIntelError(null);
+                                                  fathomSessionIntelRunRef.current = false;
+                                                  setFathomSessionIntelPhase(
+                                                    'countdown'
+                                                  );
+                                                  setFathomSessionIntelCountdown(
+                                                    15
+                                                  );
+                                                }}
+                                              >
+                                                <RotateCw className="h-4 w-4" aria-hidden />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
                                     <div
                                       style={{
                                         marginTop: 12,
