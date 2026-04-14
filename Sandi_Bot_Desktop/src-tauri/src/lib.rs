@@ -1813,6 +1813,7 @@ pub fn run() {
         migrations::migration_68(),
         migrations::migration_69(),
         migrations::migration_70(),
+        migrations::migration_71(),
     ];
 
     tauri::Builder::default()

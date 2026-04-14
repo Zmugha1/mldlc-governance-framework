@@ -353,3 +353,21 @@ pub fn migration_70() -> Migration {
         kind: MigrationKind::Up,
     }
 }
+
+/// Migration 71: `business_closed_date` on `clients` (master placement date, YYYY-MM-DD TEXT).
+///
+/// Placement counts for a calendar year must use this column together with outcome;
+/// `outcome_bucket` alone is not sufficient. Nullable: existing converted rows stay NULL
+/// until the coach sets a date.
+pub fn migration_71() -> Migration {
+    Migration {
+        version: 71,
+        description: "clients_business_closed_date",
+        sql: "ALTER TABLE clients ADD COLUMN business_closed_date TEXT;
+              UPDATE clients
+              SET business_closed_date = '2025-07-01'
+              WHERE name LIKE '%Andrea%'
+                AND outcome_bucket = 'converted';",
+        kind: MigrationKind::Up,
+    }
+}
