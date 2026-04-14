@@ -1601,6 +1601,9 @@ function ClientDetailModal({
   );
   const [councilLoading, setCouncilLoading] = useState(false);
   const [councilError, setCouncilError] = useState<string | null>(null);
+  /** Pipeline stage Sandi wants Best Next Questions framed toward (defaults to client's recorded stage). */
+  const [councilQuestionTargetStage, setCouncilQuestionTargetStage] =
+    useState<PipelineStage>('IC');
   const [activeLens, setActiveLens] = useState<
     'chairman' | 'readiness' | 'alignment' | 'integrity'
   >('chairman');
@@ -1635,6 +1638,15 @@ function ClientDetailModal({
     setCouncilError(null);
     setActiveLens('chairman');
     setRatedQuestions({});
+  }, [client?.id]);
+
+  useEffect(() => {
+    if (!client?.id) return;
+    const raw = optimisticInferredStage ?? client.inferred_stage;
+    const c = resolvePipelineStageCode(raw) ?? 'IC';
+    setCouncilQuestionTargetStage(
+      STAGE_ORDER.includes(c as PipelineStage) ? (c as PipelineStage) : 'IC'
+    );
   }, [client?.id]);
 
   useEffect(() => {
@@ -3154,12 +3166,17 @@ function ClientDetailModal({
           ? spouseRaw
           : 'Unknown';
 
+      const stageForCouncilPrompt =
+        councilQuestionTargetStage === codeForNav
+          ? councilQuestionTargetStage
+          : `${councilQuestionTargetStage} (TARGET: coach selected this pipeline stage for question generation. Client CRM recorded stage: ${codeForNav}. Frame every question to advance readiness toward ${councilQuestionTargetStage} while grounding in verified data about where the client is today.)`;
+
       const input: CouncilInput = {
         clientName: client.name,
         clientId: client.id,
         discStyle: discStyleLabel === '—' ? '' : discStyleLabel,
         discScores: { d, i, s, c },
-        currentStage: client.inferred_stage || 'IC',
+        currentStage: stageForCouncilPrompt,
         dangers: you2Details?.dangers ?? [],
         strengths: you2Details?.strengths ?? [],
         opportunities: you2Details?.opportunities ?? [],
@@ -6077,8 +6094,60 @@ not who they have been.`;
                   );
                 };
 
+                const renderCouncilStageSelector = () => (
+                  <div className="mx-auto mb-5 w-full max-w-2xl">
+                    <p
+                      className="m-0 mb-2 font-bold"
+                      style={{ color: '#2D4459', fontSize: 13 }}
+                    >
+                      Generate questions for
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {STAGE_ORDER.map((stage) => {
+                        const on = councilQuestionTargetStage === stage;
+                        return (
+                          <button
+                            key={stage}
+                            type="button"
+                            disabled={councilLoading}
+                            aria-pressed={on}
+                            aria-label={`Generate questions for stage ${stage}`}
+                            onClick={() => setCouncilQuestionTargetStage(stage)}
+                            className="font-bold"
+                            style={{
+                              fontSize: 13,
+                              borderRadius: 9999,
+                              padding: '8px 14px',
+                              border: on ? 'none' : '1px solid #C8E8E5',
+                              background: on ? '#3BBFBF' : '#E8ECEF',
+                              color: on ? 'white' : '#2D4459',
+                              cursor: councilLoading ? 'not-allowed' : 'pointer',
+                              opacity: councilLoading ? 0.65 : 1,
+                            }}
+                          >
+                            {stage}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {councilQuestionTargetStage !== codeForNav ? (
+                      <p
+                        className="m-0 mt-2"
+                        style={{ color: '#7A8F95', fontSize: 12 }}
+                      >
+                        Preparing questions for [{councilQuestionTargetStage}]
+                        {' — client is currently in ['}
+                        {codeForNav}
+                        {']'}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+
                 if (councilLoading) {
                   return (
+                    <>
+                      {renderCouncilStageSelector()}
                     <div
                       className="mx-auto w-full max-w-lg"
                       style={{
@@ -6115,6 +6184,7 @@ not who they have been.`;
                         Three coaching frameworks deliberating independently
                       </p>
                     </div>
+                    </>
                   );
                 }
 
@@ -6138,6 +6208,8 @@ not who they have been.`;
                           : '#2D4459';
 
                   return (
+                    <>
+                      {renderCouncilStageSelector()}
                     <div className="mx-auto w-full max-w-2xl space-y-4">
                       <div className="flex flex-wrap gap-2">
                         {(
@@ -6329,10 +6401,13 @@ not who they have been.`;
                         </p>
                       ) : null}
                     </div>
+                    </>
                   );
                 }
 
                 return (
+                  <>
+                    {renderCouncilStageSelector()}
                   <div
                     className="mx-auto w-full max-w-md"
                     style={{
@@ -6391,6 +6466,7 @@ not who they have been.`;
                       Generate Questions
                     </button>
                   </div>
+                  </>
                 );
               })()}
             </div>
