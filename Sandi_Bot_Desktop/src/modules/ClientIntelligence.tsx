@@ -769,6 +769,29 @@ function sanitizeText(text: string): string {
     .trim();
 }
 
+/** Vision copy: nudge common past-tense phrases toward forward-looking voice. */
+function postProcessVisionFutureTense(raw: string): string {
+  let t = raw;
+  const pairs: Array<[RegExp, string]> = [
+    [/I've been/gi, 'I am'],
+    [/I\u2019ve been/gi, 'I am'],
+    [/I have been/gi, 'I am'],
+    [/I was\b/gi, 'I am'],
+    [/you've been/gi, 'you are'],
+    [/you\u2019ve been/gi, 'you are'],
+    [/you have been/gi, 'you are'],
+    [/you were\b/gi, 'you are'],
+    [/\bI've\b/gi, 'I'],
+    [/\bI\u2019ve\b/gi, 'I'],
+  ];
+  for (const [re, rep] of pairs) {
+    t = t.replace(re, rep);
+  }
+  return t;
+}
+
+type VisionTabViewMode = 'pick' | 'edit' | 'readonly';
+
 type StageTransitionReadinessVerdict = 'ready' | 'not_ready';
 
 type StageTransitionReadinessResult = {
@@ -1839,6 +1862,9 @@ function ClientDetailModal({
   const [visionError, setVisionError] = useState<string | null>(null);
   const [visionSaveSuccess, setVisionSaveSuccess] =
     useState<string | null>(null);
+  const [visionTabView, setVisionTabView] =
+    useState<VisionTabViewMode>('pick');
+  const [visionImproving, setVisionImproving] = useState(false);
   const [visionRubric, setVisionRubric] = useState<VisionRubricValue | null>(
     null
   );
@@ -1892,19 +1918,20 @@ function ClientDetailModal({
   }, [onStageMoveUndoOffer]);
 
   useEffect(() => {
-    if (client?.vision_statement) {
-      setVisionText(
-        String(
-          client.vision_statement
-        ).trim()
-      );
+    const persisted = String(
+      client?.vision_statement || client?.visionStatement || ''
+    ).trim();
+    if (persisted) {
+      setVisionText(persisted);
+      setVisionTabView('readonly');
     } else {
       setVisionText('');
+      setVisionTabView('pick');
     }
     setVisionRubric(null);
     setVisionRubricSubmitted(false);
     setVisionError(null);
-  }, [client?.id]);
+  }, [client?.id, client?.vision_statement, client?.visionStatement]);
 
   useEffect(() => {
     setCouncilLoading(false);
@@ -4155,34 +4182,10 @@ not who they have been.`;
         return;
       }
 
-      const postProcessVisionFutureTense = (
-        raw: string
-      ): string => {
-        let t = raw;
-        const pairs: Array<[RegExp, string]> = [
-          [/I've been/gi, 'I am'],
-          [/I\u2019ve been/gi, 'I am'],
-          [/I have been/gi, 'I am'],
-          [/I was\b/gi, 'I am'],
-          [/you've been/gi, 'you are'],
-          [/you\u2019ve been/gi, 'you are'],
-          [/you have been/gi, 'you are'],
-          [/you were\b/gi, 'you are'],
-          [/\bI've\b/gi, 'I'],
-          [/\bI\u2019ve\b/gi, 'I'],
-        ];
-        for (const [re, rep] of pairs) {
-          t = t.replace(re, rep);
-        }
-        return t;
-      };
-
-      const tenseAdjusted =
-        postProcessVisionFutureTense(
-          generated
-        );
+      const tenseAdjusted = postProcessVisionFutureTense(generated);
       const sanitized = sanitizeText(tenseAdjusted);
       setVisionText(sanitized);
+      setVisionTabView('edit');
       setVisionGenerating(false);
     } catch (err) {
       console.error(
@@ -4195,6 +4198,124 @@ not who they have been.`;
           'Make sure Ollama is running.'
       );
     }
+  };
+
+  const handleImproveVisionWithAI = async () => {
+    const rawIn = visionText.trim();
+    if (!rawIn) {
+      toast.error('Add some text before improving.');
+      return;
+    }
+    if (!client?.id) return;
+    setVisionImproving(true);
+    setVisionError(null);
+    const improveSystem = `You are an expert writing coach for franchise coaching clients.
+Improve the vision statement you are given while keeping the person's own voice and their specific details
+(numbers, locations, goals, names, constraints).
+Write entirely in future-focused present tense. Never use em dashes. Use commas or periods instead.
+Keep the result under 200 words. Use plain, warm language. Be direct.`;
+
+    const improveUser = `Improve this vision statement:\n\n${rawIn}`;
+
+    try {
+      const improved = await withOllamaCheck(
+        async () => {
+          const result = await invoke<unknown>('ollama_generate', {
+            model: 'qwen2.5:7b',
+            prompt: improveUser,
+            system: improveSystem,
+            stream: false,
+          });
+          const text =
+            typeof result === 'string'
+              ? result.trim()
+              : String(
+                  (result as { response?: string })?.response ||
+                    (result as { message?: { content?: string } })?.message
+                      ?.content ||
+                    ''
+                ).trim();
+          if (!text || text.length < 10) {
+            throw new Error('vision_improve_empty');
+          }
+          return text;
+        },
+        () => {
+          setVisionError(OLLAMA_NOT_READY_USER_MESSAGE);
+          setVisionImproving(false);
+        }
+      );
+      if (improved == null) return;
+      const noEmDash = String(improved).replace(/\u2014/g, ',');
+      const sanitized = sanitizeText(
+        postProcessVisionFutureTense(noEmDash)
+      );
+      setVisionText(sanitized);
+    } catch (e) {
+      console.error('Vision improve error:', e);
+      setVisionError(
+        'Could not improve vision. Check AI Ready and try again.'
+      );
+    } finally {
+      setVisionImproving(false);
+    }
+  };
+
+  const handleGenerateFresh = async () => {
+    setVisionText('');
+    setVisionRubric(null);
+    setVisionRubricSubmitted(false);
+    await handleGenerateVision();
+  };
+
+  const handleLooksGoodVision = async () => {
+    const t = sanitizeText(visionText.trim());
+    if (!t) {
+      toast.error('Add text before saving.');
+      return;
+    }
+    try {
+      await saveVisionToDb(t);
+      setVisionText(t);
+      setVisionTabView('readonly');
+      setVisionSaveSuccess(null);
+      _onVisionUpdated?.();
+      onClientDataMutated?.();
+      toast.success('Vision saved');
+    } catch {
+      toast.error('Could not save vision.');
+    }
+  };
+
+  const handleClearVisionStatement = () => {
+    if (
+      !window.confirm(
+        'Clear vision statement?\nThis cannot be undone.'
+      )
+    ) {
+      return;
+    }
+    void (async () => {
+      if (!client?.id) return;
+      try {
+        await dbExecute(
+          `UPDATE clients SET vision_statement = NULL, vision_approved = 0,
+           vision_approved_date = NULL, updated_at = datetime('now') WHERE id = $1`,
+          [client.id]
+        );
+        setVisionText('');
+        setVisionRubric(null);
+        setVisionRubricSubmitted(false);
+        setVisionTabView('pick');
+        setVisionError(null);
+        _onVisionUpdated?.();
+        onClientDataMutated?.();
+        toast.message('Vision cleared');
+      } catch (e) {
+        console.error(e);
+        toast.error('Could not clear vision.');
+      }
+    })();
   };
 
   const handleDownloadVisionPpt =
@@ -8360,67 +8481,6 @@ Use reminders for:
           <TabsContent value="vision" className="h-full min-h-0 mt-0">
             <div className="overflow-y-auto h-full max-h-[75vh] px-6 py-4">
               <div style={{ padding: '16px 0' }}>
-                {/* DATA FOUNDATION INDICATOR */}
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 10,
-                    marginBottom: 16,
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: '#7A8F95',
-                    }}
-                  >
-                    Powered by:
-                  </span>
-                  {[
-                    {
-                      label: 'DISC',
-                      has:
-                        discScores != null &&
-                        discScores.d +
-                          discScores.i +
-                          discScores.s +
-                          discScores.c >
-                          0,
-                    },
-                    {
-                      label: 'You 2.0',
-                      has: Boolean(you2Vision?.trim()),
-                    },
-                    {
-                      label: 'Sessions',
-                      has:
-                        latestSessionNotesPlain.trim().length > 10,
-                    },
-                    {
-                      label: 'Identity',
-                      has: Boolean(
-                        (coachProfileRow?.bio ?? '').trim()
-                      ),
-                    },
-                  ].map((item) => (
-                    <span
-                      key={item.label}
-                      style={{
-                        fontSize: 11,
-                        color: item.has
-                          ? '#3BBFBF'
-                          : '#C8E8E5',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      {item.has ? '●' : '○'}{' '}
-                      {item.label}
-                    </span>
-                  ))}
-                </div>
-
                 <div
                   style={{
                     marginBottom: 20,
@@ -8503,31 +8563,23 @@ Use reminders for:
                   </div>
                 ) : null}
 
-                {/* GENERATE BUTTON — shown when
-                    no text and not generating */}
-                {!visionText && !visionGenerating ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void handleGenerateVision()
-                    }
+                {visionSaveSuccess ? (
+                  <div
                     style={{
-                      background: '#3BBFBF',
-                      color: 'white',
+                      padding: '10px 14px',
+                      background: '#F0FAFA',
+                      borderLeft: '4px solid #3BBFBF',
                       borderRadius: 8,
-                      padding: '10px 20px',
-                      fontSize: 13,
-                      fontWeight: 'bold',
-                      border: 'none',
-                      cursor: 'pointer',
+                      color: '#2D4459',
+                      fontSize: 12,
+                      marginBottom: 12,
                     }}
                   >
-                    Generate Vision Statement
-                  </button>
+                    ✓ {visionSaveSuccess}
+                  </div>
                 ) : null}
 
-                {/* LOADING STATE */}
-                {visionGenerating ? (
+                {visionGenerating || visionImproving ? (
                   <div
                     style={{
                       padding: '16px 0',
@@ -8536,142 +8588,233 @@ Use reminders for:
                       fontStyle: 'italic',
                     }}
                   >
-                    Writing vision statement for{' '}
-                    {client?.name}...
+                    {visionImproving
+                      ? 'Improving your vision...'
+                      : `Writing vision statement for ${client?.name}...`}
                   </div>
                 ) : null}
 
-                {/* GENERATED TEXT + RUBRIC
-                    + DOWNLOADS */}
-                {visionText && !visionGenerating ? (
+                {!visionGenerating &&
+                !visionImproving &&
+                visionTabView === 'pick' ? (
+                  <div className="flex flex-col gap-4 md:flex-row md:items-stretch">
+                    <div
+                      className="flex min-w-0 flex-1 flex-col rounded-lg border p-4"
+                      style={{
+                        borderColor: '#C8E8E5',
+                        background: 'white',
+                      }}
+                    >
+                      <p
+                        className="m-0 text-sm font-semibold"
+                        style={{ color: '#2D4459' }}
+                      >
+                        Generate from scratch
+                      </p>
+                      <p
+                        className="mt-1 text-xs leading-snug"
+                        style={{ color: '#7A8F95' }}
+                      >
+                        Build a new statement from DISC, You 2.0, and recent sessions.
+                      </p>
+                      <button
+                        type="button"
+                        className="mt-3 w-full font-bold text-white transition-opacity hover:opacity-95"
+                        style={{
+                          background: '#2D4459',
+                          borderRadius: 8,
+                          padding: '10px 16px',
+                          fontSize: 13,
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => void handleGenerateVision()}
+                      >
+                        Generate Vision Statement
+                      </button>
+                    </div>
+                    <div
+                      className="flex min-w-0 flex-1 flex-col rounded-lg border p-4"
+                      style={{
+                        borderColor: '#3BBFBF',
+                        background: 'white',
+                      }}
+                    >
+                      <p
+                        className="m-0 text-sm font-semibold"
+                        style={{ color: '#2D4459' }}
+                      >
+                        Paste your own
+                      </p>
+                      <p
+                        className="mt-1 text-xs leading-snug"
+                        style={{ color: '#7A8F95' }}
+                      >
+                        Paste text you have already written, then edit or improve with AI.
+                      </p>
+                      <button
+                        type="button"
+                        className="mt-3 w-full font-bold transition-opacity hover:opacity-95"
+                        style={{
+                          background: 'white',
+                          color: '#3BBFBF',
+                          borderRadius: 8,
+                          padding: '10px 16px',
+                          fontSize: 13,
+                          border: '2px solid #3BBFBF',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => {
+                          setVisionText('');
+                          setVisionRubric(null);
+                          setVisionRubricSubmitted(false);
+                          setVisionTabView('edit');
+                        }}
+                      >
+                        Paste Existing Vision
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!visionGenerating &&
+                !visionImproving &&
+                visionTabView === 'readonly' ? (
+                  <div
+                    className="relative rounded-lg border bg-white p-4 pr-12"
+                    style={{ borderColor: '#C8E8E5' }}
+                  >
+                    <button
+                      type="button"
+                      className="absolute right-3 top-3 rounded p-1.5 text-[#3BBFBF] transition-colors hover:bg-slate-100"
+                      aria-label="Edit vision"
+                      onClick={() => setVisionTabView('edit')}
+                    >
+                      <Pencil className="h-5 w-5" aria-hidden />
+                    </button>
+                    <p
+                      className="m-0 whitespace-pre-wrap text-sm leading-relaxed"
+                      style={{ color: '#2D4459' }}
+                    >
+                      {visionText}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="font-bold text-white transition-opacity hover:opacity-95"
+                        style={{
+                          background: '#C8613F',
+                          borderRadius: 8,
+                          padding: '10px 20px',
+                          fontSize: 13,
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => void handleDownloadVisionPpt()}
+                      >
+                        Download PowerPoint
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!visionGenerating &&
+                !visionImproving &&
+                visionTabView === 'edit' ? (
                   <div>
-                    {/* EDITABLE TEXTAREA */}
                     <textarea
                       value={visionText}
-                      onChange={(e) =>
-                        setVisionText(e.target.value)
-                      }
+                      onChange={(e) => setVisionText(e.target.value)}
+                      placeholder="Paste or type the vision statement here..."
                       style={{
                         width: '100%',
-                        minHeight: 160,
-                        border: '2px solid #3BBFBF',
-                        borderRadius: 10,
-                        padding: '14px 16px',
+                        minHeight: 200,
+                        border: '1px solid #C8E8E5',
+                        borderRadius: 8,
+                        padding: 16,
                         fontSize: 14,
                         color: '#2D4459',
-                        lineHeight: 1.8,
+                        lineHeight: 1.7,
                         resize: 'vertical',
                         fontFamily: 'inherit',
                         boxSizing: 'border-box',
                       }}
                     />
-
-                    <p
-                      style={{
-                        color: '#7A8F95',
-                        fontSize: 11,
-                        fontStyle: 'italic',
-                        margin: '4px 0 12px',
-                      }}
-                    >
-                      Edit directly in the box above
-                      before downloading
-                    </p>
-
-                    {/* RUBRIC — shown before
-                        rating is submitted */}
-                    {!visionRubricSubmitted ? (
-                      <VisionRubric
-                        key={client?.id ?? 'no-client'}
-                        clientName={client?.name}
-                        setVisionRubric={setVisionRubric}
-                        setVisionRubricSubmitted={
-                          setVisionRubricSubmitted
-                        }
-                        handleGenerateVision={
-                          handleGenerateVision
-                        }
-                      />
-                    ) : null}
-
-                    {/* DOWNLOAD BUTTONS — shown
-                        after rubric submitted
-                        or always after generate */}
-                    {visionRubricSubmitted &&
-                    visionRubric != null ? (
-                      <>
-                        {visionSaveSuccess ? (
-                          <div
-                            style={{
-                              padding: '10px 14px',
-                              background: '#F0FAFA',
-                              borderLeft: '4px solid #3BBFBF',
-                              borderRadius: 8,
-                              color: '#2D4459',
-                              fontSize: 12,
-                              marginBottom: 10,
-                            }}
-                          >
-                            ✓ {visionSaveSuccess}
-                          </div>
-                        ) : null}
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: 8,
-                            marginTop: 12,
-                            flexWrap: 'wrap',
-                            alignItems: 'center',
-                          }}
-                        >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void handleDownloadVisionPpt()
-                          }
-                          style={{
-                            background: '#2D4459',
-                            color: 'white',
-                            borderRadius: 8,
-                            padding: '10px 20px',
-                            fontSize: 13,
-                            fontWeight: 'bold',
-                            border: 'none',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Download PowerPoint
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setVisionText('');
-                            setVisionRubric(null);
-                            setVisionRubricSubmitted(
-                              false
-                            );
-                            setVisionError(null);
-                            setVisionSaveSuccess(null);
-                          }}
-                          style={{
-                            background: 'white',
-                            color: '#7A8F95',
-                            borderRadius: 8,
-                            padding: '10px 16px',
-                            fontSize: 12,
-                            border:
-                              '1px solid #C8E8E5',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Start Over
-                        </button>
-                      </div>
-                      </>
-                    ) : null}
-
-                    {/* TERRITORY CHECK */}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="font-bold text-white transition-opacity hover:opacity-95 disabled:opacity-50"
+                        style={{
+                          background: '#3BBFBF',
+                          borderRadius: 8,
+                          padding: '10px 18px',
+                          fontSize: 13,
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                        disabled={visionImproving}
+                        onClick={() => void handleImproveVisionWithAI()}
+                      >
+                        Improve with AI
+                      </button>
+                      <button
+                        type="button"
+                        className="font-bold transition-opacity hover:opacity-95 disabled:opacity-50"
+                        style={{
+                          background: 'white',
+                          color: '#2D4459',
+                          borderRadius: 8,
+                          padding: '10px 18px',
+                          fontSize: 13,
+                          border: '2px solid #2D4459',
+                          cursor: 'pointer',
+                        }}
+                        disabled={visionGenerating}
+                        onClick={() => void handleGenerateFresh()}
+                      >
+                        Generate Fresh
+                      </button>
+                      <button
+                        type="button"
+                        className="font-bold text-white transition-opacity hover:opacity-95"
+                        style={{
+                          background: '#2D4459',
+                          borderRadius: 8,
+                          padding: '10px 18px',
+                          fontSize: 13,
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => void handleLooksGoodVision()}
+                      >
+                        Looks Good
+                      </button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-4">
+                      <button
+                        type="button"
+                        className="text-sm font-semibold underline"
+                        style={{ color: '#7A8F95', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        onClick={handleClearVisionStatement}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        className="font-bold text-white transition-opacity hover:opacity-95"
+                        style={{
+                          background: '#C8613F',
+                          borderRadius: 8,
+                          padding: '10px 20px',
+                          fontSize: 13,
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => void handleDownloadVisionPpt()}
+                      >
+                        Download PowerPoint
+                      </button>
+                    </div>
                     <div style={{ marginTop: 20 }}>
                       <p
                         style={{
@@ -8681,17 +8824,11 @@ Use reminders for:
                           margin: '0 0 6px',
                         }}
                       >
-                        Optional — paste territory
-                        check results to include
-                        in the PowerPoint
+                        Optional — paste territory check results to include in the PowerPoint
                       </p>
                       <textarea
                         value={territoryNotes}
-                        onChange={(e) =>
-                          setTerritoryNotes(
-                            e.target.value
-                          )
-                        }
+                        onChange={(e) => setTerritoryNotes(e.target.value)}
                         placeholder="Paste territory check results here..."
                         style={{
                           width: '100%',
@@ -8707,6 +8844,48 @@ Use reminders for:
                         }}
                       />
                     </div>
+                  </div>
+                ) : null}
+
+                {!visionGenerating && !visionImproving ? (
+                  <div
+                    className="mt-6 flex flex-wrap gap-2"
+                    style={{
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: '#7A8F95' }}>Powered by:</span>
+                    {[
+                      {
+                        label: 'DISC',
+                        has:
+                          discScores != null &&
+                          discScores.d + discScores.i + discScores.s + discScores.c > 0,
+                      },
+                      {
+                        label: 'You 2.0',
+                        has: Boolean(you2Vision?.trim()),
+                      },
+                      {
+                        label: 'Sessions',
+                        has: latestSessionNotesPlain.trim().length > 10,
+                      },
+                      {
+                        label: 'Identity',
+                        has: Boolean((coachProfileRow?.bio ?? '').trim()),
+                      },
+                    ].map((item) => (
+                      <span
+                        key={item.label}
+                        style={{
+                          fontSize: 11,
+                          color: item.has ? '#3BBFBF' : '#C8E8E5',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {item.has ? '●' : '○'} {item.label}
+                      </span>
+                    ))}
                   </div>
                 ) : null}
               </div>
