@@ -2,10 +2,7 @@ import { dbSelect, dbExecute, getDb } from './db';
 import { logEntry as logAuditEntry } from './auditService';
 import type { Client } from '../types';
 import { getRecommendation } from './recommendationService';
-import {
-  getAllStageReadiness,
-  type PipelineStage,
-} from './stageReadinessService';
+import { getAllStageReadiness } from './stageReadinessService';
 import type { DashboardStats } from '../types';
 
 const NET_WORTH_PINK_FLAG_TEXT =
@@ -321,66 +318,6 @@ export interface ClientStageLogRow {
   notes: string | null;
 }
 
-function normalizeStageCode(s: string | null | undefined): string {
-  return String(s ?? '').trim();
-}
-
-/**
- * Updates `inferred_stage` when Sandi moves a client, logs `client_stage_log`,
- * and writes `audit_log` (action_type `stage_transition`).
- */
-export async function moveClientStage(
-  clientId: string,
-  newStage: PipelineStage,
-  _reason: string,
-  _movedBy: string
-): Promise<boolean> {
-  try {
-    const current = await dbSelect<{ inferred_stage: string | null }>(
-      `SELECT inferred_stage FROM clients WHERE id = $1`,
-      [clientId]
-    );
-    if (current.length === 0) return false;
-
-    const fromStage = current[0].inferred_stage ?? null;
-    const toStage = normalizeStageCode(newStage);
-    if (normalizeStageCode(fromStage) === toStage) return true;
-
-    await dbExecute(
-      `UPDATE clients SET
-         inferred_stage = $1,
-         updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2`,
-      [toStage, clientId]
-    );
-
-    const logId = crypto.randomUUID();
-    const movedAt = new Date().toISOString();
-
-    await dbExecute(
-      `INSERT INTO client_stage_log
-         (id, client_id, from_stage, to_stage, moved_at, moved_by, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [logId, clientId, fromStage, toStage, movedAt, 'sandi', null]
-    );
-
-    const detail = `${fromStage ?? ''} → ${toStage}`;
-    await logAuditEntry(
-      'stage_transition',
-      clientId,
-      fromStage,
-      toStage,
-      detail,
-      'deterministic'
-    );
-
-    return true;
-  } catch (error) {
-    console.error('moveClientStage failed:', error);
-    return false;
-  }
-}
-
 export async function getStageTransitions(
   clientId: string
 ): Promise<ClientStageLogRow[]> {
@@ -421,6 +358,63 @@ export async function getConversionRate(
 
   if (denominator === 0) return 0;
   return (numerator / denominator) * 100;
+}
+
+/**
+ * Placements for a calendar year: converted or business_complete, with a non-null
+ * `business_closed_date` in that year. Single source of truth for placement lists;
+ * do not duplicate this filter in UI SQL.
+ */
+export async function getPlacementsForYear(year?: number): Promise<Client[]> {
+  const y = year ?? new Date().getFullYear();
+  const yearStr = String(y);
+  const rows = await dbSelect<Client>(
+    `SELECT * FROM clients
+     WHERE outcome_bucket IN ('converted', 'business_complete')
+       AND business_closed_date IS NOT NULL
+       AND strftime('%Y', business_closed_date) = $1
+     ORDER BY business_closed_date DESC`,
+    [yearStr]
+  );
+  return rows;
+}
+
+/** Count of placements for a calendar year (see {@link getPlacementsForYear}). */
+export async function getPlacementCount(year?: number): Promise<number> {
+  const rows = await getPlacementsForYear(year);
+  return rows.length;
+}
+
+/**
+ * Sets master placement date `business_closed_date` (YYYY-MM-DD). Ensures
+ * `outcome_bucket` is `converted` or `business_complete` (sets `converted` when neither).
+ */
+export async function setBusinessClosedDate(
+  clientId: string,
+  closedDate: string
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE clients SET
+       business_closed_date = ?,
+       updated_at = datetime('now'),
+       outcome_bucket = CASE
+         WHEN outcome_bucket IN ('converted', 'business_complete') THEN outcome_bucket
+         ELSE 'converted'
+       END
+     WHERE id = ?`,
+    [closedDate, clientId]
+  );
+}
+
+/** Converted or business_complete clients missing `business_closed_date` (need coach input). */
+export async function getClientsWithMissingCloseDates(): Promise<Client[]> {
+  return dbSelect<Client>(
+    `SELECT * FROM clients
+     WHERE outcome_bucket IN ('converted', 'business_complete')
+       AND business_closed_date IS NULL
+     ORDER BY name ASC`
+  );
 }
 
 export async function inactivateClient(
