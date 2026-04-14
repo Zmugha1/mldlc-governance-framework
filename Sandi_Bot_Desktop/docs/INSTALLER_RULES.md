@@ -156,3 +156,25 @@ Standard client delivery folder must include at minimum:
 3. **Setup Instructions PDF**.
 
 All three live in a **Google Drive** folder shared with the client **before** the installation call.
+
+---
+
+## Mandatory rules supplement (session April 14 2026 — end of session)
+
+These rules **add** to everything above. Never delete prior requirements.
+
+### RULE — shortcutsDefaultDesktop is NOT valid
+
+**shortcutsDefaultDesktop** is **NOT** a valid Tauri NsisConfig key. `tauri-utils` uses `deny_unknown_fields`. Adding it breaks config parsing entirely and prevents builds. Desktop shortcuts must be created in **`src-tauri/nsis/main.nsh`** only via **NSIS_HOOK_POSTINSTALL** calling **CreateOrUpdateDesktopShortcut**. **Never** put shortcut config in `tauri.conf.json` ever.
+
+### RULE — Vision placeholder images before every Sandi build
+
+Vision placeholder images must be swapped before every installer build for Sandi: **`public/coach-motivation-road.jpg`**, **`public/coach-motivation-cliff-you.jpg`**. Replace with Sandi's actual images keeping exact same filenames. No code change needed. Just file replacement.
+
+### RULE — Always test on developer machine before delivery
+
+Always test on developer machine before delivery. Run full test checklist **RUN-027** before every installer build. Never ship untested build.
+
+### RULE — Ollama must be running during installer testing
+
+Ollama must be running during installer testing. AI Ready must show green before running any AI tests. False failures occur when Ollama is not running.

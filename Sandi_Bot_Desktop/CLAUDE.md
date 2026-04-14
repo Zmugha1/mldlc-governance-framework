@@ -730,3 +730,57 @@ DB trust rule is permanent:
 If client has used the system
 their data is sacred.
 Communicate before any DB change.
+
+## Rules added April 14 2026 (end of session capture)
+
+Master stage change logger rule:
+All stage movements must go through
+stageService.ts moveClientStage()
+Never write inline SQL UPDATE for
+inferred_stage anywhere else
+This is ADR-059 and permanent.
+
+STZ acronym rule:
+Never show STZ in any user-visible
+text in the app ever.
+STZ stays in code and docs only.
+Coaches see plain language always.
+
+Vision future tense rule:
+Always enforce future tense in
+vision generation via both
+system prompt AND post-processing.
+Never rely on prompt alone for
+stylistic enforcement.
+
+Fathom cooldown rule:
+Always add 15 second cooldown
+after Fathom extraction before
+running Session Intelligence.
+Ollama needs time to reset between
+heavy consecutive operations.
+
+Stage readiness factors rule:
+Each stage has specific readiness
+signals defined April 14 2026.
+Always use stage-specific factors
+in readiness prompts never generic.
+See STZ_ADR_LOG ADR-065 for
+full factor definitions per stage.
+
+Two-layer DB rule:
+coach_bot_knowledge.db ships
+read-only with every installer.
+coach_bot.db created on first run.
+RAG queries both simultaneously.
+Never mix IP with client data
+in a single database.
+
+shortcutsDefaultDesktop rule:
+This is NOT a valid Tauri NsisConfig
+key and will break config parsing.
+Desktop shortcuts must be created
+in src-tauri/nsis/main.nsh only
+via NSIS_HOOK_POSTINSTALL.
+Never put shortcut config in
+tauri.conf.json.

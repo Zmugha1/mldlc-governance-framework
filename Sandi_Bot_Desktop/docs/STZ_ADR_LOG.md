@@ -870,3 +870,143 @@ Consequence: Never replace client DB
   if client edited data in current version
   those edits must be preserved or migrated
 Never do: Silent overwrite of coaching data
+
+## ADR-058
+Date: 2026-04-10
+Decision: All coach-driven pipeline stage
+  changes go through moveClientStage()
+  in src/services/stageService.ts
+Layer: Tech / Data integrity
+Context: Stage moves were split across
+  Client Intelligence SQL, readiness
+  service, clientService, and Admin
+  rollback with inconsistent audit rows
+Consequence: moveClientStage(clientId,
+  fromStage, toStage, movedBy, reason?)
+  updates inferred_stage and
+  last_contact_date, inserts
+  client_stage_log, writes audit_log
+  action_type stage_movement, runs
+  pink-flag detection, and surfaces undo
+  (in-app bar when registered, else Sonner).
+  System inference (stageInferenceService)
+  and document-driven stage updates remain
+  separate from coach moves.
+Never do: Inline UPDATE clients for
+  inferred_stage for a coach pipeline move
+  outside stageService.moveClientStage
+
+## ADR-059
+Date: April 14 2026
+Decision: Master stage change logger
+  implemented as single source of truth
+  in stageService.ts moveClientStage()
+Layer: L3 Agents
+Context: Stage movements were happening
+  in multiple places with inline SQL
+  causing inconsistent logging
+Consequence: Every stage movement
+  everywhere calls moveClientStage()
+  never inline SQL for inferred_stage
+Never do: never write inline UPDATE
+  for inferred_stage outside
+  stageService.ts
+
+## ADR-060
+Date: April 14 2026
+Decision: STZ acronym removed from
+  all user-visible text permanently
+Layer: L1 Prompts
+Context: Sandi does not need to see
+  internal framework naming
+Consequence: All coach-facing text
+  uses plain language only
+  STZ stays in code not UI
+Never do: never show STZ acronym
+  to any coach in any UI string
+
+## ADR-061
+Date: April 14 2026
+Decision: Vision statement must
+  enforce future tense via both
+  prompt rules and post-processing
+Layer: L1 Prompts
+Context: Sandi caught past tense
+  immediately — LLMs default to
+  mixed tense without explicit rules
+Consequence: Always specify tense
+  in vision prompt AND post-process
+  to replace past tense phrases
+Never do: never rely on prompt alone
+  for stylistic enforcement —
+  always post-process too
+
+## ADR-062
+Date: April 14 2026
+Decision: Two-layer knowledge DB
+  architecture locked
+  coach_bot_knowledge.db ships
+  read-only with every installer
+  coach_bot.db created on first run
+Layer: L2 Skills
+Context: RAG needs both methodology
+  knowledge and client data
+  to generate grounded responses
+Consequence: Every installer ships
+  the knowledge base pre-embedded
+  RAG queries both DBs simultaneously
+Never do: never ship a single DB
+  that mixes Zubia IP with
+  coach client data
+
+## ADR-063
+Date: April 14 2026
+Decision: Data completeness meter
+  on Overview stage card is
+  file depth signal not AI verdict
+  AI verdict comes from readiness
+  button separately
+Layer: L5 Evaluation
+Context: Sandi needs to know both
+  how much data exists AND
+  whether client is ready to move
+Consequence: Two separate signals
+  always shown together on Overview
+Never do: never combine data
+  completeness with AI readiness
+  into a single score
+
+## ADR-064
+Date: April 14 2026
+Decision: Post-Fathom Session
+  Intelligence fires automatically
+  after extraction with 15 second
+  cooldown before analysis
+Layer: L3 Agents
+Context: Sandi uses ChatGPT to grade
+  sessions and check readiness
+  after every call — this must
+  be inside Coach Bot
+Consequence: Every Fathom extraction
+  automatically triggers session
+  grade and readiness verdict
+  No manual step needed
+Never do: never make Sandi go to
+  ChatGPT for session grading
+
+## ADR-065
+Date: April 14 2026
+Decision: Stage transition readiness
+  uses stage-specific factors
+  not generic readiness logic
+Layer: L2 Skills
+Context: Each stage has different
+  signals that indicate readiness
+  IC to C1 is different from
+  C3 to C4 completely
+Consequence: Readiness verdict
+  prompt includes exact factors
+  per stage as defined in
+  session April 14 2026
+Never do: never use generic
+  readiness prompt across all stages

@@ -248,3 +248,81 @@ Blockers:
     documents not received yet
   Two vision images not received yet
   Gmail OAuth root cause unknown
+
+## Session April 14 2026
+
+Commits this session:
+  db2ac43 fix: vision future tense
+  5e33453 fix: desktop shortcut NSIS
+  40597bb fix: Ollama health check
+  a2b4925 fix: bake Google credentials
+  bf8f837 fix: Gmail OAuth debug
+  2acb545 fix: vision PPT branding
+  25cdb7e migration 70 new fields
+  cb454a9 CI facelift UI and banner
+  ddca3a9 BNQ tab moved to second
+  aa7904e remove STZ from UI
+  978dad7 stage selector on BNQ
+  04dd6d2 stage readiness button
+  00a92ed reminders into Overview
+  b4396a2 readiness meter BNQ preview
+  94fca3b post-Fathom session intelligence
+
+ADRs added: 7 (ADR-059 through ADR-065)
+Incidents resolved: 4 (INC-041 through INC-044)
+Runbooks added: 3 (RUN-026 through RUN-028)
+Voice rules added: 4 (VOICE-010 through VOICE-013)
+
+Major builds completed today:
+  All six Friday fixes done
+  Client Intelligence complete rebuild
+  Master stage logger stageService.ts
+  Data completeness meter
+  Stage transition readiness button
+  Stage selector on BNQ
+  BNQ preview on Overview
+  Reminders moved into Overview
+  Post-Fathom Session Intelligence
+  DISC-based vision PPT branding
+  STZ removed from all UI
+
+Sandi UAT outcomes:
+  Vision statement working
+  PowerPoint download working
+  Council running
+  Gmail partially connected
+  Excited and engaged
+  Wants to update client cards
+
+Misses identified for tomorrow:
+  Miss 1 — Vision editable field
+    Sandi wants to paste her own
+    written vision for improvement
+  Miss 2 — Fathom cooldown indicator
+    Visual countdown after heavy ops
+  Miss 3 — Morning Brief calendar
+    filter showing wrong names
+  Miss 4 — Coaching Actions UX
+    dismiss and handle actions
+  Miss 5 — Year filter on conversions
+    2025 vs 2026 placements
+  Miss 8 — How to Use Fathom section
+    step by step workflow
+
+Next session must start with:
+  Miss 1 vision editable field prompt
+  Miss 2 Fathom cooldown prompt
+  Miss 8 How to Use Fathom prompt
+  Then build Friday installer
+
+Blockers:
+  Sandi's identity documents
+    not received yet
+  Sandi's knowledge documents
+    not received yet
+  Two vision images need swapping
+    in public folder before build
+  Gmail OAuth root cause
+    still not fully resolved
+  Morning Brief calendar filter
+    showing test data not Sandi's

@@ -478,3 +478,94 @@ Expected output: green AI Ready indicator
 Watch out for: model not pulled —
   run ollama list to verify
   qwen2.5:7b is present
+
+## RUN-026
+Task: Fathom session upload workflow
+  for Sandi — step by step
+Trigger: After every coaching call
+  that was recorded in Fathom
+Steps:
+  1. Open Fathom after call ends
+  2. Find the recording
+  3. Click Copy Transcript
+  4. Open Coach Bot
+  5. Go to Client Intelligence
+  6. Select the client you just
+     coached
+  7. Click Fathom tab
+  8. Click Add Session
+  9. Set the session date
+  10. Paste transcript into
+      Fathom Transcript field
+  11. Click Extract Session
+  12. Wait for 9-block CLEAR
+      analysis to appear
+  13. Wait 15 seconds for cooldown
+  14. Review Session Intelligence
+      grade and readiness verdict
+  15. If ready click Move to
+      next stage button
+  16. If not ready log follow-up
+      reminder with gap summary
+Expected output: 9-block analysis
+  plus session grade plus
+  readiness verdict
+Watch out for: Do not run other
+  AI operations immediately before
+  Fathom extraction — wait 30
+  seconds after vision or Council
+
+## RUN-027
+Task: Friday installer delivery
+  package preparation
+Trigger: Before every new installer
+  is delivered to Sandi or any coach
+Steps:
+  1. Swap vision placeholder images
+     public/coach-motivation-road.jpg
+     public/coach-motivation-cliff-you.jpg
+     with Sandi's actual images
+  2. Run npm run tauri:build
+  3. Test all five pages load
+  4. Test Council generates
+  5. Test Vision generates future tense
+  6. Test Fathom extracts
+  7. Test Session Intelligence fires
+  8. Test stage readiness button
+  9. Test data completeness meter
+  10. Confirm desktop shortcut created
+  11. Copy installer to delivery folder
+  12. Upload to Google Drive
+  13. Send Sandi update email
+Expected output: Sandi can install
+  with one double-click and all
+  features work
+Watch out for: Ollama must be
+  running during testing or all
+  AI tests give false failures
+
+## RUN-028
+Task: Ollama recovery on client machine
+  when AI operations fail mid-session
+Trigger: Any AI operation fails
+  or shows generic error
+Steps:
+  1. Wait 30 seconds — model may
+     just be processing
+  2. Look for green AI Ready badge
+     in bottom left sidebar
+  3. If amber or red click AI Ready
+  4. If still failing open PowerShell
+  5. Run: Get-Process -Name ollama
+  6. If no process run: ollama serve
+  7. Leave PowerShell window open
+  8. Return to Coach Bot
+  9. Wait 15 seconds
+  10. Try operation again
+Expected output: Green AI Ready
+  badge and successful AI operation
+Watch out for: Model not pulled
+  run ollama list to verify
+  qwen2.5:7b is present
+  If missing run:
+  ollama pull qwen2.5:7b-instruct-q4_k_m

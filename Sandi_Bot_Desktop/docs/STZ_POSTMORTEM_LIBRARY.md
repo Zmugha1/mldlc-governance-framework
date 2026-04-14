@@ -561,3 +561,70 @@ Fix applied: debug tool_connections table
 Prevention rule: always verify token
   saved correctly after OAuth
 Layer: Integrations
+
+## INC-041
+Date: April 14 2026
+What broke: Fathom extraction failed
+  on Sandi's machine mid-session
+  after vision and Council ran
+Root cause: Ollama model exhausted
+  after multiple heavy operations
+  No cooldown between operations
+  No health check before extraction
+Fix applied: Fix 3 Ollama health
+  check before every AI operation
+  Post-Fathom cooldown 15 seconds
+  added in Prompt 7
+Prevention rule: Always add cooldown
+  after heavy AI operations
+  Never assume Ollama is ready
+  between consecutive operations
+
+## INC-042
+Date: April 14 2026
+What broke: shortcutsDefaultDesktop
+  key in tauri.conf.json broke
+  config parsing entirely
+Root cause: tauri-utils uses
+  deny_unknown_fields on NsisConfig
+  shortcutsDefaultDesktop is not
+  a valid key
+Fix applied: moved shortcut creation
+  to src-tauri/nsis/main.nsh via
+  NSIS_HOOK_POSTINSTALL calling
+  CreateOrUpdateDesktopShortcut
+Prevention rule: never put shortcut
+  config in tauri.conf.json
+  always use main.nsh for NSIS
+  desktop shortcut behavior
+
+## INC-043
+Date: April 14 2026
+What broke: Vision PowerPoint
+  showed past tense language
+  Sandi caught immediately
+Root cause: Prompt did not
+  explicitly enforce future tense
+  LLM defaulted to mixed tense
+Fix applied: Added explicit rules
+  to vision system prompt plus
+  post-processing replacement
+Prevention rule: always enforce
+  stylistic rules via both prompt
+  and post-processing never
+  prompt alone
+
+## INC-044
+Date: April 14 2026
+What broke: Morning Brief showed
+  test client Zubia in today's
+  calls instead of Sandi's clients
+Root cause: Calendar connected to
+  Zubia's account during testing
+  not Sandi's account
+Fix applied: Not yet fixed
+  deferred to post-Friday
+Prevention rule: always test
+  Google Calendar integration
+  with the coach's own account
+  never the developer account
