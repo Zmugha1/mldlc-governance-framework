@@ -4282,6 +4282,13 @@ not who they have been.`;
               Overview
             </TabsTrigger>
             <TabsTrigger
+              value="best-next-questions"
+              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-1 py-2 text-[11px] font-medium leading-tight shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
+            >
+              <span className="block text-center">Best Next</span>
+              <span className="block text-center">Questions</span>
+            </TabsTrigger>
+            <TabsTrigger
               value="disc"
               className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
             >
@@ -4316,13 +4323,6 @@ not who they have been.`;
               className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
             >
               Reminders
-            </TabsTrigger>
-            <TabsTrigger
-              value="best-next-questions"
-              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-1 py-2 text-[11px] font-medium leading-tight shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
-            >
-              <span className="block text-center">Best Next</span>
-              <span className="block text-center">Questions</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -5812,6 +5812,587 @@ not who they have been.`;
                 </CardContent>
               </Card>
             )}
+            </div>
+          </TabsContent>
+
+
+
+          <TabsContent
+            value="best-next-questions"
+            className="h-full min-h-0 mt-0 focus-visible:outline-none"
+          >
+            <div className="h-full max-h-[75vh] overflow-y-auto p-6">
+              {(() => {
+                const councilHasDisc =
+                  discScores != null &&
+                  discScores.d +
+                    discScores.i +
+                    discScores.s +
+                    discScores.c >
+                    0;
+                const councilHasYou2 =
+                  (you2Details?.dangers?.length ?? 0) > 0 ||
+                  (you2Details?.strengths?.length ?? 0) > 0 ||
+                  (you2Details?.opportunities?.length ?? 0) > 0;
+                const councilHasSessions =
+                  fathomSessionCount > 0 ||
+                  latestSessionNotesPlain.trim().length > 20;
+                const councilHasIdentity =
+                  !!(coachProfileRow?.bio?.trim() ||
+                    coachProfileRow?.coaching_philosophy?.trim());
+                const councilDataFoundation = (
+                  <div className="mb-4 text-center">
+                    <p
+                      className="m-0"
+                      style={{ color: '#7A8F95', fontSize: 11 }}
+                    >
+                      Council powered by:
+                    </p>
+                    <div
+                      className="mt-2 flex flex-wrap items-center justify-center gap-4"
+                      style={{ fontSize: 12, color: '#2D4459' }}
+                    >
+                      <span>
+                        DISC{' '}
+                        <span style={{ color: councilHasDisc ? '#3BBFBF' : '#C8C8C8' }}>
+                          {councilHasDisc ? '●' : '○'}
+                        </span>
+                      </span>
+                      <span>
+                        You 2.0{' '}
+                        <span style={{ color: councilHasYou2 ? '#3BBFBF' : '#C8C8C8' }}>
+                          {councilHasYou2 ? '●' : '○'}
+                        </span>
+                      </span>
+                      <span>
+                        Sessions{' '}
+                        <span
+                          style={{
+                            color: councilHasSessions ? '#3BBFBF' : '#C8C8C8',
+                          }}
+                        >
+                          {councilHasSessions ? '●' : '○'}
+                        </span>
+                      </span>
+                      <span>
+                        Identity{' '}
+                        <span
+                          style={{
+                            color: councilHasIdentity ? '#3BBFBF' : '#C8C8C8',
+                          }}
+                        >
+                          {councilHasIdentity ? '●' : '○'}
+                        </span>
+                      </span>
+                    </div>
+                    <p
+                      className="m-0 mt-1 italic"
+                      style={{ color: '#7A8F95', fontSize: 10 }}
+                    >
+                      More data = better questions
+                    </p>
+                  </div>
+                );
+
+                const renderQuestionCard = (
+                  q: string,
+                  qi: number,
+                  showLensBadge: boolean,
+                  out: CouncilOutput | null
+                ) => {
+                  const rate = ratedQuestions[q];
+                  return (
+                    <div
+                      key={`${qi}-${q.slice(0, 40)}`}
+                      className="mb-2"
+                      style={{
+                        background: 'white',
+                        border: '1px solid #C8E8E5',
+                        borderRadius: 10,
+                        padding: '14px 16px',
+                      }}
+                    >
+                      <p
+                        className="m-0"
+                        style={{
+                          color: '#2D4459',
+                          fontSize: 13,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {q}
+                      </p>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        {showLensBadge && out ? (
+                          <span
+                            style={{
+                              background: '#F4F7F8',
+                              color: '#7A8F95',
+                              borderRadius: 12,
+                              padding: '2px 8px',
+                              fontSize: 10,
+                            }}
+                          >
+                            {chairmanQuestionLensBadge(q, out)}
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                        <div className="flex shrink-0 gap-1">
+                          <button
+                            type="button"
+                            aria-label="Thumbs up"
+                            className="flex h-6 w-6 items-center justify-center rounded border-0 text-base leading-none"
+                            style={{
+                              width: 24,
+                              height: 24,
+                              background: rate === 'up' ? '#3BBFBF' : '#F4F7F8',
+                              color: rate === 'up' ? 'white' : '#7A8F95',
+                            }}
+                            onClick={() => {
+                              setRatedQuestions((prev) => ({
+                                ...prev,
+                                [q]: 'up',
+                              }));
+                              void logCorrection({
+                                clientId: client.id,
+                                fieldName: 'coaching_question',
+                                originalValue: q,
+                                correctedValue: 'approved',
+                                correctionType: 'question_thumbs_up',
+                                page: 'client_intelligence',
+                              });
+                            }}
+                          >
+                            👍
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Thumbs down"
+                            className="flex h-6 w-6 items-center justify-center rounded border-0 text-base leading-none"
+                            style={{
+                              width: 24,
+                              height: 24,
+                              background: rate === 'down' ? '#3BBFBF' : '#F4F7F8',
+                              color: rate === 'down' ? 'white' : '#7A8F95',
+                            }}
+                            onClick={() => {
+                              setRatedQuestions((prev) => ({
+                                ...prev,
+                                [q]: 'down',
+                              }));
+                              void logCorrection({
+                                clientId: client.id,
+                                fieldName: 'coaching_question',
+                                originalValue: q,
+                                correctedValue: 'rejected',
+                                correctionType: 'question_thumbs_down',
+                                page: 'client_intelligence',
+                              });
+                            }}
+                          >
+                            👎
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+
+                const renderUncertainty = (out: CouncilOutput) => {
+                  const a = out.uncertaintyAudit;
+                  return (
+                    <div className="mt-4">
+                      <p
+                        className="m-0 font-bold"
+                        style={{ color: '#2D4459', fontSize: 14, marginTop: 16 }}
+                      >
+                        What Coach Bot Verified
+                      </p>
+                      {a.verified.length > 0 ? (
+                        <ul className="m-0 mt-2 list-none space-y-1 p-0">
+                          {a.verified.map((v, i) => (
+                            <li
+                              key={`v-${i}`}
+                              style={{ color: '#3BBFBF', fontSize: 12 }}
+                            >
+                              ✅ {v}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {a.unverified.length > 0 ? (
+                        <ul className="m-0 mt-2 list-none space-y-1 p-0">
+                          {a.unverified.map((v, i) => (
+                            <li
+                              key={`u-${i}`}
+                              style={{ color: '#F59E0B', fontSize: 12 }}
+                            >
+                              ⚠️ {v}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {a.missing.length > 0 ? (
+                        <ul className="m-0 mt-2 list-none space-y-1 p-0">
+                          {a.missing.map((v, i) => (
+                            <li
+                              key={`m-${i}`}
+                              style={{ color: '#F05F57', fontSize: 12 }}
+                            >
+                              ❌ {v}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {a.recommendations.length > 0 ? (
+                        <div
+                          className="mt-2"
+                          style={{
+                            background: '#FFF8F0',
+                            borderLeft: '4px solid #F05F57',
+                            borderRadius: 8,
+                            padding: '12px 16px',
+                          }}
+                        >
+                          <p
+                            className="m-0 font-bold"
+                            style={{ color: '#C8613F', fontSize: 12 }}
+                          >
+                            Before This Call
+                          </p>
+                          <ul className="m-0 mt-2 list-disc space-y-1 pl-5">
+                            {a.recommendations.map((r, i) => (
+                              <li
+                                key={`r-${i}`}
+                                style={{ color: '#2D4459', fontSize: 12 }}
+                              >
+                                {r}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                };
+
+                if (councilLoading) {
+                  return (
+                    <div
+                      className="mx-auto w-full max-w-lg"
+                      style={{
+                        background: '#2D4459',
+                        borderRadius: 12,
+                        padding: 24,
+                        color: 'white',
+                      }}
+                    >
+                      <p
+                        className="m-0 font-bold"
+                        style={{ fontSize: 15, color: 'white' }}
+                      >
+                        STZ Coaching Council deliberating...
+                      </p>
+                      <div className="mt-6 space-y-3">
+                        <div className="flex items-center gap-2 text-white">
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                          <span style={{ fontSize: 13 }}>Readiness Lens analyzing...</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-white">
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                          <span style={{ fontSize: 13 }}>Alignment Lens analyzing...</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-white">
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                          <span style={{ fontSize: 13 }}>Integrity Lens analyzing...</span>
+                        </div>
+                      </div>
+                      <p
+                        className="m-0 mt-4 italic"
+                        style={{ color: '#C8E8E5', fontSize: 12 }}
+                      >
+                        Three coaching frameworks deliberating independently
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (councilOutput) {
+                  const out = councilOutput;
+                  const activeLensOutput =
+                    activeLens === 'readiness'
+                      ? out.readinessLens
+                      : activeLens === 'alignment'
+                        ? out.alignmentLens
+                        : activeLens === 'integrity'
+                          ? out.integrityLens
+                          : null;
+                  const lensHeaderBg =
+                    activeLens === 'readiness'
+                      ? '#3BBFBF'
+                      : activeLens === 'alignment'
+                        ? '#F05F57'
+                        : activeLens === 'integrity'
+                          ? '#2D4459'
+                          : '#2D4459';
+
+                  return (
+                    <div className="mx-auto w-full max-w-2xl space-y-4">
+                      <div className="flex flex-wrap gap-2">
+                        {(
+                          [
+                            ['chairman', 'Chairman'],
+                            ['readiness', 'Readiness'],
+                            ['alignment', 'Alignment'],
+                            ['integrity', 'Integrity'],
+                          ] as const
+                        ).map(([id, label]) => {
+                          const on = activeLens === id;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => setActiveLens(id)}
+                              className="font-bold"
+                              style={{
+                                background: on ? '#3BBFBF' : '#F4F7F8',
+                                color: on ? 'white' : '#7A8F95',
+                                borderRadius: 8,
+                                padding: '6px 14px',
+                                fontSize: 12,
+                                border: 'none',
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {activeLens === 'chairman' ? (
+                        <>
+                          <div
+                            style={{
+                              background: '#2D4459',
+                              borderRadius: 12,
+                              padding: '20px 24px',
+                            }}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <p
+                                className="m-0 font-bold text-white"
+                                style={{ fontSize: 16 }}
+                              >
+                                Chairman Synthesis
+                              </p>
+                              <p
+                                className="m-0"
+                                style={{ color: '#C8E8E5', fontSize: 13 }}
+                              >
+                                Council confidence: {out.overallConfidence}%
+                              </p>
+                            </div>
+                            <p
+                              className="m-0 mt-2 italic"
+                              style={{ color: '#C8E8E5', fontSize: 13 }}
+                            >
+                              {out.chairmanSynthesis.primaryInsight}
+                            </p>
+                            <p
+                              className="m-0 mt-1"
+                              style={{ color: '#3BBFBF', fontSize: 12 }}
+                            >
+                              Coaching posture:{' '}
+                              {out.chairmanSynthesis.coachingPosture}
+                            </p>
+                          </div>
+                          <p
+                            className="m-0 font-bold"
+                            style={{
+                              color: '#2D4459',
+                              fontSize: 15,
+                              margin: '16px 0 8px',
+                            }}
+                          >
+                            Best Questions for This Call
+                          </p>
+                          {out.chairmanSynthesis.recommendedQuestions.map(
+                            (q, qi) =>
+                              renderQuestionCard(q, qi, true, out)
+                          )}
+                          <div
+                            className="mt-3"
+                            style={{
+                              background: '#FFF8F0',
+                              borderLeft: '4px solid #F05F57',
+                              borderRadius: 8,
+                              padding: '12px 16px',
+                            }}
+                          >
+                            <p
+                              className="m-0 font-bold uppercase"
+                              style={{ color: '#C8613F', fontSize: 12 }}
+                            >
+                              Minority Perspective
+                            </p>
+                            <p
+                              className="m-0 mt-2"
+                              style={{ color: '#2D4459', fontSize: 13 }}
+                            >
+                              {out.chairmanSynthesis.minorityPerspective}
+                            </p>
+                          </div>
+                        </>
+                      ) : activeLensOutput ? (
+                        <>
+                          <div
+                            style={{
+                              background: lensHeaderBg,
+                              borderRadius: 10,
+                              padding: '16px 20px',
+                            }}
+                          >
+                            <p
+                              className="m-0 font-bold text-white"
+                              style={{ fontSize: 15 }}
+                            >
+                              {activeLensOutput.lensName}
+                            </p>
+                            <p className="m-0 text-white" style={{ fontSize: 12 }}>
+                              {activeLensOutput.lensFramework}
+                            </p>
+                            <p
+                              className="m-0 text-white/80"
+                              style={{ fontSize: 11 }}
+                            >
+                              {activeLensOutput.confidence}% confidence
+                            </p>
+                            <p
+                              className="m-0 mt-2 italic text-white"
+                              style={{ fontSize: 13 }}
+                            >
+                              {activeLensOutput.insight}
+                            </p>
+                          </div>
+                          {activeLensOutput.questions.map((q, qi) =>
+                            renderQuestionCard(q, qi, false, out)
+                          )}
+                        </>
+                      ) : null}
+
+                      {renderUncertainty(out)}
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                        <button
+                          type="button"
+                          className="font-medium"
+                          style={{
+                            background: 'white',
+                            border: '1px solid #C8E8E5',
+                            color: '#7A8F95',
+                            borderRadius: 8,
+                            padding: '6px 14px',
+                            fontSize: 12,
+                          }}
+                          onClick={() => void handleRegenerateCouncil()}
+                        >
+                          Regenerate Council
+                        </button>
+                        <button
+                          type="button"
+                          className="font-bold text-white"
+                          style={{
+                            background: '#C8613F',
+                            borderRadius: 8,
+                            padding: '8px 16px',
+                            fontSize: 12,
+                            border: 'none',
+                          }}
+                          onClick={() => setAhaModalOpen(true)}
+                        >
+                          Log Aha Moment
+                        </button>
+                      </div>
+                      <p
+                        className="m-0 text-center"
+                        style={{ color: '#7A8F95', fontSize: 10 }}
+                      >
+                        Generated {new Date(out.generatedAt).toLocaleString()}
+                      </p>
+                      {councilError ? (
+                        <p
+                          className="m-0 text-center text-sm"
+                          style={{ color: '#F05F57' }}
+                        >
+                          {councilError}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    className="mx-auto w-full max-w-md"
+                    style={{
+                      background: 'white',
+                      border: '1px solid #C8E8E5',
+                      borderLeft: '4px solid #F05F57',
+                      borderRadius: 12,
+                      padding: '24px 28px',
+                    }}
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <MessageSquare
+                        className="h-8 w-8 shrink-0"
+                        style={{ color: '#F05F57' }}
+                        aria-hidden
+                      />
+                      <h2
+                        className="mt-4 font-bold"
+                        style={{ color: '#2D4459', fontSize: 16 }}
+                      >
+                        Best Next Questions
+                      </h2>
+                      <p
+                        className="mt-3 whitespace-pre-line leading-relaxed"
+                        style={{ color: '#7A8F95', fontSize: 13 }}
+                      >
+                        The STZ Coaching Council runs three independent lenses
+                        (readiness, alignment, integrity) using ICF standards,
+                        Motivational Interviewing, CLEAR, and franchise stage
+                        methodology, then synthesizes the best questions for
+                        this call.
+                      </p>
+                    </div>
+                    {councilDataFoundation}
+                    {councilError ? (
+                      <p
+                        className="mt-4 text-center text-sm"
+                        style={{ color: '#F05F57' }}
+                      >
+                        {councilError}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="mt-2 w-full font-bold text-white disabled:opacity-60"
+                      style={{
+                        background: '#F05F57',
+                        borderRadius: 8,
+                        padding: '10px 24px',
+                        fontSize: 14,
+                        border: 'none',
+                      }}
+                      disabled={councilLoading}
+                      onClick={() => void handleGenerateBestNextQuestions()}
+                    >
+                      Generate Questions
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </TabsContent>
 
@@ -7429,585 +8010,6 @@ Use reminders for:
                   </div>
                 ) : null}
               </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent
-            value="best-next-questions"
-            className="h-full min-h-0 mt-0 focus-visible:outline-none"
-          >
-            <div className="h-full max-h-[75vh] overflow-y-auto p-6">
-              {(() => {
-                const councilHasDisc =
-                  discScores != null &&
-                  discScores.d +
-                    discScores.i +
-                    discScores.s +
-                    discScores.c >
-                    0;
-                const councilHasYou2 =
-                  (you2Details?.dangers?.length ?? 0) > 0 ||
-                  (you2Details?.strengths?.length ?? 0) > 0 ||
-                  (you2Details?.opportunities?.length ?? 0) > 0;
-                const councilHasSessions =
-                  fathomSessionCount > 0 ||
-                  latestSessionNotesPlain.trim().length > 20;
-                const councilHasIdentity =
-                  !!(coachProfileRow?.bio?.trim() ||
-                    coachProfileRow?.coaching_philosophy?.trim());
-                const councilDataFoundation = (
-                  <div className="mb-4 text-center">
-                    <p
-                      className="m-0"
-                      style={{ color: '#7A8F95', fontSize: 11 }}
-                    >
-                      Council powered by:
-                    </p>
-                    <div
-                      className="mt-2 flex flex-wrap items-center justify-center gap-4"
-                      style={{ fontSize: 12, color: '#2D4459' }}
-                    >
-                      <span>
-                        DISC{' '}
-                        <span style={{ color: councilHasDisc ? '#3BBFBF' : '#C8C8C8' }}>
-                          {councilHasDisc ? '●' : '○'}
-                        </span>
-                      </span>
-                      <span>
-                        You 2.0{' '}
-                        <span style={{ color: councilHasYou2 ? '#3BBFBF' : '#C8C8C8' }}>
-                          {councilHasYou2 ? '●' : '○'}
-                        </span>
-                      </span>
-                      <span>
-                        Sessions{' '}
-                        <span
-                          style={{
-                            color: councilHasSessions ? '#3BBFBF' : '#C8C8C8',
-                          }}
-                        >
-                          {councilHasSessions ? '●' : '○'}
-                        </span>
-                      </span>
-                      <span>
-                        Identity{' '}
-                        <span
-                          style={{
-                            color: councilHasIdentity ? '#3BBFBF' : '#C8C8C8',
-                          }}
-                        >
-                          {councilHasIdentity ? '●' : '○'}
-                        </span>
-                      </span>
-                    </div>
-                    <p
-                      className="m-0 mt-1 italic"
-                      style={{ color: '#7A8F95', fontSize: 10 }}
-                    >
-                      More data = better questions
-                    </p>
-                  </div>
-                );
-
-                const renderQuestionCard = (
-                  q: string,
-                  qi: number,
-                  showLensBadge: boolean,
-                  out: CouncilOutput | null
-                ) => {
-                  const rate = ratedQuestions[q];
-                  return (
-                    <div
-                      key={`${qi}-${q.slice(0, 40)}`}
-                      className="mb-2"
-                      style={{
-                        background: 'white',
-                        border: '1px solid #C8E8E5',
-                        borderRadius: 10,
-                        padding: '14px 16px',
-                      }}
-                    >
-                      <p
-                        className="m-0"
-                        style={{
-                          color: '#2D4459',
-                          fontSize: 13,
-                          lineHeight: 1.6,
-                        }}
-                      >
-                        {q}
-                      </p>
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        {showLensBadge && out ? (
-                          <span
-                            style={{
-                              background: '#F4F7F8',
-                              color: '#7A8F95',
-                              borderRadius: 12,
-                              padding: '2px 8px',
-                              fontSize: 10,
-                            }}
-                          >
-                            {chairmanQuestionLensBadge(q, out)}
-                          </span>
-                        ) : (
-                          <span />
-                        )}
-                        <div className="flex shrink-0 gap-1">
-                          <button
-                            type="button"
-                            aria-label="Thumbs up"
-                            className="flex h-6 w-6 items-center justify-center rounded border-0 text-base leading-none"
-                            style={{
-                              width: 24,
-                              height: 24,
-                              background: rate === 'up' ? '#3BBFBF' : '#F4F7F8',
-                              color: rate === 'up' ? 'white' : '#7A8F95',
-                            }}
-                            onClick={() => {
-                              setRatedQuestions((prev) => ({
-                                ...prev,
-                                [q]: 'up',
-                              }));
-                              void logCorrection({
-                                clientId: client.id,
-                                fieldName: 'coaching_question',
-                                originalValue: q,
-                                correctedValue: 'approved',
-                                correctionType: 'question_thumbs_up',
-                                page: 'client_intelligence',
-                              });
-                            }}
-                          >
-                            👍
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Thumbs down"
-                            className="flex h-6 w-6 items-center justify-center rounded border-0 text-base leading-none"
-                            style={{
-                              width: 24,
-                              height: 24,
-                              background: rate === 'down' ? '#3BBFBF' : '#F4F7F8',
-                              color: rate === 'down' ? 'white' : '#7A8F95',
-                            }}
-                            onClick={() => {
-                              setRatedQuestions((prev) => ({
-                                ...prev,
-                                [q]: 'down',
-                              }));
-                              void logCorrection({
-                                clientId: client.id,
-                                fieldName: 'coaching_question',
-                                originalValue: q,
-                                correctedValue: 'rejected',
-                                correctionType: 'question_thumbs_down',
-                                page: 'client_intelligence',
-                              });
-                            }}
-                          >
-                            👎
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                };
-
-                const renderUncertainty = (out: CouncilOutput) => {
-                  const a = out.uncertaintyAudit;
-                  return (
-                    <div className="mt-4">
-                      <p
-                        className="m-0 font-bold"
-                        style={{ color: '#2D4459', fontSize: 14, marginTop: 16 }}
-                      >
-                        What Coach Bot Verified
-                      </p>
-                      {a.verified.length > 0 ? (
-                        <ul className="m-0 mt-2 list-none space-y-1 p-0">
-                          {a.verified.map((v, i) => (
-                            <li
-                              key={`v-${i}`}
-                              style={{ color: '#3BBFBF', fontSize: 12 }}
-                            >
-                              ✅ {v}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {a.unverified.length > 0 ? (
-                        <ul className="m-0 mt-2 list-none space-y-1 p-0">
-                          {a.unverified.map((v, i) => (
-                            <li
-                              key={`u-${i}`}
-                              style={{ color: '#F59E0B', fontSize: 12 }}
-                            >
-                              ⚠️ {v}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {a.missing.length > 0 ? (
-                        <ul className="m-0 mt-2 list-none space-y-1 p-0">
-                          {a.missing.map((v, i) => (
-                            <li
-                              key={`m-${i}`}
-                              style={{ color: '#F05F57', fontSize: 12 }}
-                            >
-                              ❌ {v}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {a.recommendations.length > 0 ? (
-                        <div
-                          className="mt-2"
-                          style={{
-                            background: '#FFF8F0',
-                            borderLeft: '4px solid #F05F57',
-                            borderRadius: 8,
-                            padding: '12px 16px',
-                          }}
-                        >
-                          <p
-                            className="m-0 font-bold"
-                            style={{ color: '#C8613F', fontSize: 12 }}
-                          >
-                            Before This Call
-                          </p>
-                          <ul className="m-0 mt-2 list-disc space-y-1 pl-5">
-                            {a.recommendations.map((r, i) => (
-                              <li
-                                key={`r-${i}`}
-                                style={{ color: '#2D4459', fontSize: 12 }}
-                              >
-                                {r}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                };
-
-                if (councilLoading) {
-                  return (
-                    <div
-                      className="mx-auto w-full max-w-lg"
-                      style={{
-                        background: '#2D4459',
-                        borderRadius: 12,
-                        padding: 24,
-                        color: 'white',
-                      }}
-                    >
-                      <p
-                        className="m-0 font-bold"
-                        style={{ fontSize: 15, color: 'white' }}
-                      >
-                        STZ Coaching Council deliberating...
-                      </p>
-                      <div className="mt-6 space-y-3">
-                        <div className="flex items-center gap-2 text-white">
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                          <span style={{ fontSize: 13 }}>Readiness Lens analyzing...</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-white">
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                          <span style={{ fontSize: 13 }}>Alignment Lens analyzing...</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-white">
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                          <span style={{ fontSize: 13 }}>Integrity Lens analyzing...</span>
-                        </div>
-                      </div>
-                      <p
-                        className="m-0 mt-4 italic"
-                        style={{ color: '#C8E8E5', fontSize: 12 }}
-                      >
-                        Three coaching frameworks deliberating independently
-                      </p>
-                    </div>
-                  );
-                }
-
-                if (councilOutput) {
-                  const out = councilOutput;
-                  const activeLensOutput =
-                    activeLens === 'readiness'
-                      ? out.readinessLens
-                      : activeLens === 'alignment'
-                        ? out.alignmentLens
-                        : activeLens === 'integrity'
-                          ? out.integrityLens
-                          : null;
-                  const lensHeaderBg =
-                    activeLens === 'readiness'
-                      ? '#3BBFBF'
-                      : activeLens === 'alignment'
-                        ? '#F05F57'
-                        : activeLens === 'integrity'
-                          ? '#2D4459'
-                          : '#2D4459';
-
-                  return (
-                    <div className="mx-auto w-full max-w-2xl space-y-4">
-                      <div className="flex flex-wrap gap-2">
-                        {(
-                          [
-                            ['chairman', 'Chairman'],
-                            ['readiness', 'Readiness'],
-                            ['alignment', 'Alignment'],
-                            ['integrity', 'Integrity'],
-                          ] as const
-                        ).map(([id, label]) => {
-                          const on = activeLens === id;
-                          return (
-                            <button
-                              key={id}
-                              type="button"
-                              onClick={() => setActiveLens(id)}
-                              className="font-bold"
-                              style={{
-                                background: on ? '#3BBFBF' : '#F4F7F8',
-                                color: on ? 'white' : '#7A8F95',
-                                borderRadius: 8,
-                                padding: '6px 14px',
-                                fontSize: 12,
-                                border: 'none',
-                              }}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {activeLens === 'chairman' ? (
-                        <>
-                          <div
-                            style={{
-                              background: '#2D4459',
-                              borderRadius: 12,
-                              padding: '20px 24px',
-                            }}
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <p
-                                className="m-0 font-bold text-white"
-                                style={{ fontSize: 16 }}
-                              >
-                                Chairman Synthesis
-                              </p>
-                              <p
-                                className="m-0"
-                                style={{ color: '#C8E8E5', fontSize: 13 }}
-                              >
-                                Council confidence: {out.overallConfidence}%
-                              </p>
-                            </div>
-                            <p
-                              className="m-0 mt-2 italic"
-                              style={{ color: '#C8E8E5', fontSize: 13 }}
-                            >
-                              {out.chairmanSynthesis.primaryInsight}
-                            </p>
-                            <p
-                              className="m-0 mt-1"
-                              style={{ color: '#3BBFBF', fontSize: 12 }}
-                            >
-                              Coaching posture:{' '}
-                              {out.chairmanSynthesis.coachingPosture}
-                            </p>
-                          </div>
-                          <p
-                            className="m-0 font-bold"
-                            style={{
-                              color: '#2D4459',
-                              fontSize: 15,
-                              margin: '16px 0 8px',
-                            }}
-                          >
-                            Best Questions for This Call
-                          </p>
-                          {out.chairmanSynthesis.recommendedQuestions.map(
-                            (q, qi) =>
-                              renderQuestionCard(q, qi, true, out)
-                          )}
-                          <div
-                            className="mt-3"
-                            style={{
-                              background: '#FFF8F0',
-                              borderLeft: '4px solid #F05F57',
-                              borderRadius: 8,
-                              padding: '12px 16px',
-                            }}
-                          >
-                            <p
-                              className="m-0 font-bold uppercase"
-                              style={{ color: '#C8613F', fontSize: 12 }}
-                            >
-                              Minority Perspective
-                            </p>
-                            <p
-                              className="m-0 mt-2"
-                              style={{ color: '#2D4459', fontSize: 13 }}
-                            >
-                              {out.chairmanSynthesis.minorityPerspective}
-                            </p>
-                          </div>
-                        </>
-                      ) : activeLensOutput ? (
-                        <>
-                          <div
-                            style={{
-                              background: lensHeaderBg,
-                              borderRadius: 10,
-                              padding: '16px 20px',
-                            }}
-                          >
-                            <p
-                              className="m-0 font-bold text-white"
-                              style={{ fontSize: 15 }}
-                            >
-                              {activeLensOutput.lensName}
-                            </p>
-                            <p className="m-0 text-white" style={{ fontSize: 12 }}>
-                              {activeLensOutput.lensFramework}
-                            </p>
-                            <p
-                              className="m-0 text-white/80"
-                              style={{ fontSize: 11 }}
-                            >
-                              {activeLensOutput.confidence}% confidence
-                            </p>
-                            <p
-                              className="m-0 mt-2 italic text-white"
-                              style={{ fontSize: 13 }}
-                            >
-                              {activeLensOutput.insight}
-                            </p>
-                          </div>
-                          {activeLensOutput.questions.map((q, qi) =>
-                            renderQuestionCard(q, qi, false, out)
-                          )}
-                        </>
-                      ) : null}
-
-                      {renderUncertainty(out)}
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                        <button
-                          type="button"
-                          className="font-medium"
-                          style={{
-                            background: 'white',
-                            border: '1px solid #C8E8E5',
-                            color: '#7A8F95',
-                            borderRadius: 8,
-                            padding: '6px 14px',
-                            fontSize: 12,
-                          }}
-                          onClick={() => void handleRegenerateCouncil()}
-                        >
-                          Regenerate Council
-                        </button>
-                        <button
-                          type="button"
-                          className="font-bold text-white"
-                          style={{
-                            background: '#C8613F',
-                            borderRadius: 8,
-                            padding: '8px 16px',
-                            fontSize: 12,
-                            border: 'none',
-                          }}
-                          onClick={() => setAhaModalOpen(true)}
-                        >
-                          Log Aha Moment
-                        </button>
-                      </div>
-                      <p
-                        className="m-0 text-center"
-                        style={{ color: '#7A8F95', fontSize: 10 }}
-                      >
-                        Generated {new Date(out.generatedAt).toLocaleString()}
-                      </p>
-                      {councilError ? (
-                        <p
-                          className="m-0 text-center text-sm"
-                          style={{ color: '#F05F57' }}
-                        >
-                          {councilError}
-                        </p>
-                      ) : null}
-                    </div>
-                  );
-                }
-
-                return (
-                  <div
-                    className="mx-auto w-full max-w-md"
-                    style={{
-                      background: 'white',
-                      border: '1px solid #C8E8E5',
-                      borderLeft: '4px solid #F05F57',
-                      borderRadius: 12,
-                      padding: '24px 28px',
-                    }}
-                  >
-                    <div className="flex flex-col items-center text-center">
-                      <MessageSquare
-                        className="h-8 w-8 shrink-0"
-                        style={{ color: '#F05F57' }}
-                        aria-hidden
-                      />
-                      <h2
-                        className="mt-4 font-bold"
-                        style={{ color: '#2D4459', fontSize: 16 }}
-                      >
-                        Best Next Questions
-                      </h2>
-                      <p
-                        className="mt-3 whitespace-pre-line leading-relaxed"
-                        style={{ color: '#7A8F95', fontSize: 13 }}
-                      >
-                        The STZ Coaching Council runs three independent lenses
-                        (readiness, alignment, integrity) using ICF standards,
-                        Motivational Interviewing, CLEAR, and franchise stage
-                        methodology, then synthesizes the best questions for
-                        this call.
-                      </p>
-                    </div>
-                    {councilDataFoundation}
-                    {councilError ? (
-                      <p
-                        className="mt-4 text-center text-sm"
-                        style={{ color: '#F05F57' }}
-                      >
-                        {councilError}
-                      </p>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="mt-2 w-full font-bold text-white disabled:opacity-60"
-                      style={{
-                        background: '#F05F57',
-                        borderRadius: 8,
-                        padding: '10px 24px',
-                        fontSize: 14,
-                        border: 'none',
-                      }}
-                      disabled={councilLoading}
-                      onClick={() => void handleGenerateBestNextQuestions()}
-                    >
-                      Generate Questions
-                    </button>
-                  </div>
-                );
-              })()}
             </div>
           </TabsContent>
         </div>
