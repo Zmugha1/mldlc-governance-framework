@@ -6092,7 +6092,7 @@ not who they have been.`;
                         className="m-0 font-bold"
                         style={{ fontSize: 15, color: 'white' }}
                       >
-                        STZ Coaching Council deliberating...
+                        Coaching Council deliberating...
                       </p>
                       <div className="mt-6 space-y-3">
                         <div className="flex items-center gap-2 text-white">
@@ -6359,7 +6359,7 @@ not who they have been.`;
                         className="mt-3 whitespace-pre-line leading-relaxed"
                         style={{ color: '#7A8F95', fontSize: 13 }}
                       >
-                        The STZ Coaching Council runs three independent lenses
+                        The Coaching Council runs three independent lenses
                         (readiness, alignment, integrity) using ICF standards,
                         Motivational Interviewing, CLEAR, and franchise stage
                         methodology, then synthesizes the best questions for
