@@ -1,6 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Star, MessageSquare, CheckCircle, Target, Info } from 'lucide-react';
 import { getDb } from '../services/db';
+import {
+  getPlacementCount,
+  getClientsWithMissingCloseDates,
+} from '../services/clientService';
+import type { Client } from '../types';
 import UATFeedback from '@/components/UATFeedback';
 import {
   Tooltip,
@@ -101,6 +106,28 @@ function navigateToClientIntelligence(stageFilter?: 'C1' | 'C2' | 'C4'): void {
   }
 }
 
+/** Open Client Intelligence with a client name pre-selected (same pattern as Executive Dashboard). */
+function navigateToClientIntelligenceByClientName(clientName: string): void {
+  try {
+    localStorage.setItem('selected_client_name', clientName);
+    localStorage.removeItem(STORAGE_STAGE_FILTER);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(
+    new CustomEvent('coachbot:navigate-module', {
+      bubbles: true,
+      detail: { module: 'clients' as const },
+    })
+  );
+  const rail = document.querySelector('.fixed.inset-y-0.left-0');
+  const nav = rail?.querySelector('nav .space-y-1');
+  const btns = nav?.querySelectorAll(':scope > button');
+  if (btns && btns.length >= 3) {
+    (btns[2] as HTMLButtonElement).click();
+  }
+}
+
 function InfoTip({ text }: { text: string }) {
   return (
     <Tooltip>
@@ -140,6 +167,8 @@ export default function BusinessGoals() {
   const [error, setError] = useState<string | null>(null);
   const [headerNow, setHeaderNow] = useState(() => new Date());
   const [placementCount, setPlacementCount] = useState(0);
+  const [placementDisplayYear, setPlacementDisplayYear] = useState(() => new Date().getFullYear());
+  const [missingCloseClients, setMissingCloseClients] = useState<Client[]>([]);
   const [revenueSumRaw, setRevenueSumRaw] = useState(0);
   const [c3WeekCount, setC3WeekCount] = useState(0);
   const [c3YtdCount, setC3YtdCount] = useState(0);
@@ -173,7 +202,8 @@ export default function BusinessGoals() {
         const activeSql = `LOWER(COALESCE(c.outcome_bucket, 'active')) = 'active'`;
 
         const [
-          placementRows,
+          yearPlacementCount,
+          missingCloseList,
           revenueRows,
           c3WeekRows,
           c3YtdRows,
@@ -186,11 +216,8 @@ export default function BusinessGoals() {
           pinkRows,
           readyRows,
         ] = await Promise.all([
-          db.select<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM clients c
-             WHERE c.business_purchase_date IS NOT NULL AND TRIM(c.business_purchase_date) != ''`,
-            []
-          ),
+          getPlacementCount(now.getFullYear()),
+          getClientsWithMissingCloseDates(),
           db.select<{ placement_revenue: string | null }>(
             `SELECT c.placement_revenue FROM clients c
              WHERE c.business_purchase_date IS NOT NULL AND TRIM(c.business_purchase_date) != ''`,
@@ -277,7 +304,9 @@ export default function BusinessGoals() {
         const c4Total = Number(c4?.total ?? 0);
         const c4Poc = Number(c4?.with_poc ?? 0);
 
-        setPlacementCount(Number(tauriSqlFirst(placementRows)?.cnt ?? 0));
+        setPlacementCount(yearPlacementCount);
+        setPlacementDisplayYear(now.getFullYear());
+        setMissingCloseClients(missingCloseList);
         setRevenueSumRaw(
           tauriSqlRows(revenueRows).reduce(
             (sum: number, r: { placement_revenue: string | null }) => sum + parseRevenue(r.placement_revenue),
@@ -529,6 +558,39 @@ export default function BusinessGoals() {
         </div>
       </section>
 
+      {missingCloseClients.length > 0 ? (
+        <div
+          className="mt-4 rounded-lg px-4 py-3"
+          style={{ background: '#F59E0B', color: '#FFFFFF' }}
+          role="status"
+        >
+          <p className="m-0 text-sm font-semibold leading-snug">
+            {missingCloseClients.length} placed clients are missing a close date and are not counted in
+            your {placementDisplayYear} placements. Set their close dates in Client Intelligence.
+          </p>
+          <ul className="mb-0 mt-2 list-none space-y-1.5 p-0">
+            {missingCloseClients.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  className="cursor-pointer text-left underline"
+                  style={{
+                    color: '#FFFFFF',
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    font: 'inherit',
+                  }}
+                  onClick={() => navigateToClientIntelligenceByClientName(c.name)}
+                >
+                  {c.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {/* ZONE 2 — REVENUE STORY */}
       <section
         className="mt-4"
@@ -546,8 +608,12 @@ export default function BusinessGoals() {
             <p className="mt-2 font-bold tabular-nums text-white" style={{ fontSize: 32 }}>
               {moneyFmt.format(revenueToDate)}
             </p>
+            <p className="mt-1 font-bold tabular-nums text-white" style={{ fontSize: 22 }}>
+              {placementCount} / {PLACEMENT_TARGET} in {placementDisplayYear}
+            </p>
             <p className="mt-1" style={{ fontSize: 12, color: '#C8E8E5' }}>
-              {placementCount} of {PLACEMENT_TARGET} placements
+              {Math.max(0, PLACEMENT_TARGET - placementCount)} placements needed to reach your goal of{' '}
+              {PLACEMENT_TARGET}
             </p>
           </div>
           <div>
