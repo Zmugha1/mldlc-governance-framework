@@ -26,7 +26,11 @@ import {
 import { SkeletonCard } from '@/components/SkeletonCard';
 import FeedbackButton from '../components/FeedbackButton';
 import UATFeedback from '@/components/UATFeedback';
-import { getDashboardStats, getAllClients } from '@/services/clientService';
+import {
+  getDashboardStats,
+  getAllClients,
+  getPlacementCount,
+} from '@/services/clientService';
 import { getAllStageReadiness } from '@/services/stageReadinessService';
 import type { Client, DashboardStats } from '@/types';
 import { normalizeDisplayStage } from '@/services/clientAdapter';
@@ -475,10 +479,6 @@ function startOfQuarterLocal(ref: Date): Date {
   return new Date(ref.getFullYear(), q, 1);
 }
 
-function startOfYearLocal(ref: Date): Date {
-  return new Date(ref.getFullYear(), 0, 1);
-}
-
 type KpiPeriod = 'weekly' | 'monthly' | 'quarterly' | 'ytd';
 
 /** Fallback when `user_preferences.install_date` is null (local midnight). */
@@ -593,13 +593,6 @@ function formatUsdWhole(n: number): string {
 
 const PLACEMENT_TARGET_COUNT = 11;
 const GREETING_REVENUE_GOAL = 300_000;
-const DEFAULT_GREETING_PLACEMENT_REVENUE = 28_000;
-
-function parseGreetingPlacementRevenue(raw: string | null | undefined): number {
-  if (raw == null || String(raw).trim() === '') return DEFAULT_GREETING_PLACEMENT_REVENUE;
-  const n = Number(String(raw).replace(/[$,\s]/g, ''));
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_GREETING_PLACEMENT_REVENUE;
-}
 
 const GATHER_DISPLAY_STAGES = new Set([
   'Initial Contact',
@@ -903,7 +896,6 @@ export default function ExecutiveDashboard() {
       const todayStr = formatLocalYyyyMmDd(now);
       const monthStartStr = formatLocalYyyyMmDd(startOfMonthLocal(now));
       const quarterStartStr = formatLocalYyyyMmDd(startOfQuarterLocal(now));
-      const yearStartStr = formatLocalYyyyMmDd(startOfYearLocal(now));
 
       const [
         s,
@@ -914,7 +906,7 @@ export default function ExecutiveDashboard() {
         placementW,
         placementM,
         placementQ,
-        placementY,
+        placementYOfficial,
         pinkFlagWeekClients,
         sessionsNullSchedRows,
         anchorSeekerRows,
@@ -952,7 +944,7 @@ export default function ExecutiveDashboard() {
         dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [weekStartStr, todayStr]),
         dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [monthStartStr, todayStr]),
         dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [quarterStartStr, todayStr]),
-        dbSelect<{ count: number }>(PLACEMENT_COUNT_SQL, [yearStartStr, todayStr]),
+        getPlacementCount(now.getFullYear()),
         dbSelect<{ client_id: string }>(
           `SELECT DISTINCT client_id FROM intervention_logs
            WHERE signal_type = 'pink_flag'
@@ -1101,7 +1093,7 @@ export default function ExecutiveDashboard() {
         weekly: Number(placementW[0]?.count ?? 0),
         monthly: Number(placementM[0]?.count ?? 0),
         quarterly: Number(placementQ[0]?.count ?? 0),
-        ytd: Number(placementY[0]?.count ?? 0),
+        ytd: placementYOfficial,
       });
       const prefRow = userPrefsRows[0];
       const parsedInstall = parseUserPrefsInstallDate(prefRow?.install_date ?? null);
@@ -1349,20 +1341,11 @@ export default function ExecutiveDashboard() {
     return ordered;
   }, [clients, discLetterByProfileClientId]);
 
+  /** Matches Business Goals: revenue attributed from current-year placement count only. */
   const greetingPlacementRevenueYtd = useMemo(() => {
-    let sum = 0;
-    for (const cl of clients) {
-      const ext = cl as Client & {
-        business_purchase_date?: string | null;
-        placement_revenue?: string | null;
-      };
-      if (ext.business_purchase_date == null || String(ext.business_purchase_date).trim() === '') {
-        continue;
-      }
-      sum += parseGreetingPlacementRevenue(ext.placement_revenue);
-    }
-    return sum;
-  }, [clients]);
+    const n = placementByPeriod.ytd;
+    return n * (GREETING_REVENUE_GOAL / PLACEMENT_TARGET_COUNT);
+  }, [placementByPeriod.ytd]);
 
   const atRiskGreetingCount = useMemo(
     () => needsAttentionOrdered.filter((e) => e.kind === 'at_risk').length,
@@ -1651,6 +1634,9 @@ export default function ExecutiveDashboard() {
             </p>
             <p className="font-bold tabular-nums text-white" style={{ fontSize: 24 }}>
               {ytdPlacementsForGreeting} / {PLACEMENT_TARGET_COUNT}
+            </p>
+            <p className="m-0 font-semibold tabular-nums" style={{ fontSize: 11, color: '#3BBFBF' }}>
+              {new Date(greetingNow).getFullYear()}
             </p>
             <p style={{ fontSize: 11, color: '#3BBFBF' }}>
               {greetingMoneyFmt.format(greetingPlacementRevenueYtd)} of{' '}
