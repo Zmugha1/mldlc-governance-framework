@@ -28,6 +28,7 @@ import {
   MessageSquare,
   UserPlus,
   X,
+  ArrowRight,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -745,6 +746,73 @@ function sanitizeText(text: string): string {
     .replace(/, ,/g, ',')
     .replace(/,,/g, ',')
     .trim();
+}
+
+type StageTransitionReadinessVerdict = 'ready' | 'not_ready';
+
+type StageTransitionReadinessResult = {
+  verdict: StageTransitionReadinessVerdict;
+  confidence: number;
+  reasonsReady: string[];
+  nextSteps: string[];
+  gaps: string[];
+  questions: string[];
+  watchFor: string[];
+};
+
+function stageReadinessStringsFromJsonField(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((x) => sanitizeText(String(x ?? '')))
+    .filter((s) => s.length > 0);
+}
+
+function parseStageReadinessJson(
+  raw: string
+): StageTransitionReadinessResult | null {
+  const t = sanitizeText(raw)
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  const brace = t.match(/\{[\s\S]*\}/);
+  const jsonStr = brace ? brace[0] : t;
+  try {
+    const p = JSON.parse(jsonStr) as Record<string, unknown>;
+    const vd = String(p.verdict ?? '')
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+    const verdict: StageTransitionReadinessVerdict =
+      vd === 'ready' ? 'ready' : 'not_ready';
+    const confRaw = Number(p.confidence);
+    const confidence = Math.min(
+      100,
+      Math.max(0, Number.isFinite(confRaw) ? confRaw : 50)
+    );
+    return {
+      verdict,
+      confidence,
+      reasonsReady: stageReadinessStringsFromJsonField(
+        p.reasons_why_ready ?? p.reasons
+      ),
+      nextSteps: stageReadinessStringsFromJsonField(
+        p.suggested_next_steps ?? p.next_steps
+      ),
+      gaps: stageReadinessStringsFromJsonField(
+        p.gaps_holding_back ?? p.gaps
+      ),
+      questions: stageReadinessStringsFromJsonField(
+        p.questions_to_build_readiness ?? p.questions
+      ),
+      watchFor: stageReadinessStringsFromJsonField(p.watch_for),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clientFirstNameFromDisplayName(name: string): string {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  return parts[0] ?? 'Client';
 }
 
 function formatLastContactDisplay(raw: string): string {
@@ -1617,6 +1685,12 @@ function ClientDetailModal({
     direction: 'forward' | 'back';
   } | null>(null);
   const [stageMoveSaving, setStageMoveSaving] = useState(false);
+  const [stageReadinessLoading, setStageReadinessLoading] = useState(false);
+  const [stageReadinessResult, setStageReadinessResult] =
+    useState<StageTransitionReadinessResult | null>(null);
+  const [stageReadinessError, setStageReadinessError] = useState<
+    string | null
+  >(null);
   /** Overrides `client.inferred_stage` after a successful move until parent props refresh. */
   const [optimisticInferredStage, setOptimisticInferredStage] = useState<
     string | null
@@ -1663,6 +1737,12 @@ function ClientDetailModal({
     setCouncilError(null);
     setActiveLens('chairman');
     setRatedQuestions({});
+  }, [client?.id]);
+
+  useEffect(() => {
+    setStageReadinessLoading(false);
+    setStageReadinessResult(null);
+    setStageReadinessError(null);
   }, [client?.id]);
 
   useEffect(() => {
@@ -2612,6 +2692,154 @@ function ClientDetailModal({
       setStageMoveSaving(false);
     }
   };
+
+  const handleEvaluateStageTransitionReadiness =
+    async (): Promise<void> => {
+      if (!client?.id) return;
+      setStageReadinessLoading(true);
+      setStageReadinessError(null);
+      setStageReadinessResult(null);
+      try {
+        const firstName = clientFirstNameFromDisplayName(client.name);
+        const currentCode = codeForNav;
+        const currentLabel = stageDisplay.label;
+        const atC5 = currentCode === 'C5';
+        const targetCode = nextStageMove;
+        const targetLabel = targetCode
+          ? getStageDisplay(targetCode).label
+          : 'Business Complete';
+
+        let daysInStage = 'unknown';
+        try {
+          const logRows = await dbSelect<{ moved_at: string | null }>(
+            `SELECT moved_at FROM client_stage_log
+             WHERE client_id = ? AND to_stage = ?
+             ORDER BY datetime(moved_at) DESC LIMIT 1`,
+            [client.id, currentCode]
+          );
+          const movedAt = logRows[0]?.moved_at?.trim();
+          const anchor =
+            movedAt ||
+            String(client.updated_at ?? '').trim() ||
+            String(client.created_at ?? '').trim();
+          if (anchor) {
+            const t = Date.parse(anchor);
+            if (!Number.isNaN(t)) {
+              const days = Math.max(
+                0,
+                Math.floor((Date.now() - t) / 86400000)
+              );
+              daysInStage = String(days);
+            }
+          }
+        } catch {
+          /* keep unknown */
+        }
+
+        const discLine =
+          discScores != null &&
+          discScores.d + discScores.i + discScores.s + discScores.c > 0
+            ? `Primary style (highest natural score): ${deriveStyleLetter(
+                discScores.d,
+                discScores.i,
+                discScores.s,
+                discScores.c
+              )}. Scores D=${discScores.d}, I=${discScores.i}, S=${discScores.s}, C=${discScores.c}. Coach-facing label: ${discStyleLabel === '—' ? 'not set' : discStyleLabel}.`
+            : 'DISC profile not loaded or all scores zero.';
+
+        const dangers = (you2Details?.dangers ?? [])
+          .slice(0, 5)
+          .join('; ');
+        const strengths = (you2Details?.strengths ?? [])
+          .slice(0, 5)
+          .join('; ');
+        const you2Line = `You 2.0 dangers (top): ${dangers || 'none listed'}. Strengths (top): ${strengths || 'none listed'}. One-year vision snippet: ${(you2Vision || persistedVisionText || '').trim().slice(0, 400) || 'none'}.`;
+
+        const sessLines = fathomSessions.slice(0, 3).map((s, idx) => {
+          const plain = sanitizeSessionNotes(s.notes ?? '').slice(0, 600);
+          return `Session ${idx + 1} (${s.session_date ?? 'no date'}): ${plain || 'no plain notes'}`;
+        });
+        const sessionBlock =
+          sessLines.length > 0
+            ? sessLines.join('\n')
+            : `Latest session notes (plain): ${(latestSessionNotesPlain || '').slice(0, 900) || 'none'}.`;
+
+        const { activeFlags, resolvedFlags } = splitPinkFlags(
+          parseClientPinkFlagsJson(localPinkFlagsJson)
+        );
+        const pinkActive = activeFlags
+          .map((f) => pinkFlagDisplayName(f))
+          .join('; ');
+        const pinkResolved = resolvedFlags
+          .map((f) => pinkFlagDisplayName(f))
+          .join('; ');
+
+        const finLine = `TUMAY-style financial signals: net worth range ${clientMergedFinancials.netWorth || 'unknown'}, credit score ${clientMergedFinancials.creditScore || 'unknown'}, time commitment ${clientMergedFinancials.timeCommit || 'unknown'}.`;
+
+        const transitionAsk = atC5
+          ? `The seeker is already at pipeline stage C5 (${currentLabel}). Evaluate whether they are ready to be treated as **Business Complete** (placement / franchise purchase closed, or ready to exit active coaching for this outcome). This is not a move to another letter stage.`
+          : `Evaluate readiness to move from **${currentCode}** (${currentLabel}) to **${targetCode}** (${targetLabel}).`;
+
+        const userPrompt = `${transitionAsk}
+
+Client name: ${client.name}
+Approximate days in current stage (since last recorded move into this stage, else profile dates): ${daysInStage}
+
+${discLine}
+${you2Line}
+
+Recent coaching sessions (newest first, truncated):
+${sessionBlock}
+
+Pink flags active: ${pinkActive || 'none'}. Pink flags previously resolved (still useful context): ${pinkResolved || 'none'}.
+
+${finLine}
+
+Return ONLY valid JSON with no markdown fences. The verdict field must be exactly the string "ready" or "not_ready".
+Include these keys: verdict (string), confidence (number 0 to 100), reasons_why_ready (array of strings), suggested_next_steps (array), gaps_holding_back (array), questions_to_build_readiness (array), watch_for (array).
+When verdict is ready, fill reasons_why_ready (3 to 5 items) and suggested_next_steps (2 to 3 items); leave gap arrays empty or minimal.
+When verdict is not_ready, fill gaps_holding_back (2 to 3), questions_to_build_readiness (3 to 5), watch_for (2 to 4).
+
+If data is thin, choose not_ready with gaps that name missing data, and still give helpful questions. Never use em dashes. Use plain conversational language.`;
+
+        const systemPrompt = `You are a franchise coaching advisor. Evaluate whether this seeker is ready to move from their current stage to the next.
+Be specific and grounded in the data provided. Never use em dashes.
+Use plain conversational language.`;
+
+        const raw = await withOllamaCheck(
+          () =>
+            invoke<string>('ollama_generate', {
+              model: 'qwen2.5:7b',
+              prompt: userPrompt,
+              system: systemPrompt,
+              stream: false,
+            }),
+          () => {
+            setStageReadinessError(OLLAMA_NOT_READY_USER_MESSAGE);
+          }
+        );
+
+        if (raw == null) {
+          return;
+        }
+
+        const parsed = parseStageReadinessJson(raw);
+        if (!parsed) {
+          setStageReadinessError(
+            'Could not read AI response. Please try again.'
+          );
+          return;
+        }
+        setStageReadinessResult(parsed);
+      } catch (e) {
+        console.error('stage readiness evaluation failed:', e);
+        setStageReadinessError(
+          'Could not evaluate readiness. Please try again.'
+        );
+      } finally {
+        setStageReadinessLoading(false);
+      }
+    };
 
   const handleInactivate = () => {
     if (!onInactivate) return;
@@ -4902,6 +5130,234 @@ not who they have been.`;
                 </CardContent>
               </Card>
             </div>
+
+            {nextStageMove != null || codeForNav === 'C5' ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle
+                    className="text-lg"
+                    style={{ color: '#2D4459' }}
+                  >
+                    Stage transition readiness
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <button
+                    type="button"
+                    disabled={stageReadinessLoading}
+                    onClick={() => void handleEvaluateStageTransitionReadiness()}
+                    className="flex w-full items-center justify-center gap-2 font-bold transition-opacity hover:opacity-95 disabled:opacity-60"
+                    style={{
+                      background: '#2D4459',
+                      color: 'white',
+                      borderRadius: 8,
+                      padding: '12px 24px',
+                      fontSize: 14,
+                      border: 'none',
+                      cursor: stageReadinessLoading ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {codeForNav === 'C5' ? (
+                      <>
+                        <span aria-hidden>🎓</span>
+                        Evaluate for Business Complete
+                      </>
+                    ) : (
+                      <>
+                        <ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
+                        Is {clientFirstNameFromDisplayName(client.name)} ready for{' '}
+                        {nextStageMove}?
+                      </>
+                    )}
+                  </button>
+
+                  {stageReadinessLoading ? (
+                    <div
+                      className="flex items-center justify-center gap-2 py-2"
+                      style={{ color: '#3BBFBF', fontSize: 14 }}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Loader2
+                        className="h-5 w-5 shrink-0 animate-spin"
+                        aria-hidden
+                      />
+                      Evaluating readiness...
+                    </div>
+                  ) : null}
+
+                  {stageReadinessError ? (
+                    <p
+                      className="m-0 whitespace-pre-line text-center text-sm"
+                      style={{ color: '#7A8F95' }}
+                    >
+                      {stageReadinessError}
+                    </p>
+                  ) : null}
+
+                  {stageReadinessResult ? (
+                    <div
+                      className="rounded-lg border p-4"
+                      style={{
+                        borderColor:
+                          stageReadinessResult.verdict === 'ready'
+                            ? '#86EFAC'
+                            : '#FDE68A',
+                        background:
+                          stageReadinessResult.verdict === 'ready'
+                            ? '#F0FDF4'
+                            : '#FFFBEB',
+                      }}
+                    >
+                      {stageReadinessResult.verdict === 'ready' ? (
+                        <>
+                          <div className="mb-3 flex items-start gap-2">
+                            <Check
+                              className="mt-0.5 h-5 w-5 shrink-0 text-green-600"
+                              aria-hidden
+                            />
+                            <div>
+                              <p
+                                className="m-0 font-bold"
+                                style={{ color: '#166534', fontSize: 16 }}
+                              >
+                                {codeForNav === 'C5'
+                                  ? 'Ready for Business Complete'
+                                  : `Ready for ${nextStageMove}`}
+                              </p>
+                              <p
+                                className="m-0 mt-1 text-sm"
+                                style={{ color: '#7A8F95' }}
+                              >
+                                Confidence: {stageReadinessResult.confidence}%
+                              </p>
+                            </div>
+                          </div>
+                          <p
+                            className="m-0 mb-2 text-sm font-semibold"
+                            style={{ color: '#2D4459' }}
+                          >
+                            Why they are ready
+                          </p>
+                          <ul className="m-0 mb-4 list-disc space-y-1 pl-5 text-sm" style={{ color: '#2D4459' }}>
+                            {(stageReadinessResult.reasonsReady.length > 0
+                              ? stageReadinessResult.reasonsReady
+                              : ['No specific reasons returned, use your judgment alongside this summary.']
+                            ).map((r, i) => (
+                              <li key={`rr-${i}`}>{r}</li>
+                            ))}
+                          </ul>
+                          <p
+                            className="m-0 mb-2 text-sm font-semibold"
+                            style={{ color: '#2D4459' }}
+                          >
+                            Suggested next steps
+                          </p>
+                          <ul className="m-0 mb-4 list-disc space-y-1 pl-5 text-sm" style={{ color: '#2D4459' }}>
+                            {(stageReadinessResult.nextSteps.length > 0
+                              ? stageReadinessResult.nextSteps
+                              : ['No steps returned, proceed using your normal stage checklist.']
+                            ).map((r, i) => (
+                              <li key={`ns-${i}`}>{r}</li>
+                            ))}
+                          </ul>
+                          {nextStageMove != null ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setStageMoveDialog({
+                                  target: nextStageMove,
+                                  direction: 'forward',
+                                })
+                              }
+                              className="w-full font-bold transition-opacity hover:opacity-95"
+                              style={{
+                                background: '#3BBFBF',
+                                color: 'white',
+                                borderRadius: 8,
+                                padding: '12px 24px',
+                                fontSize: 14,
+                                border: 'none',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Move to {nextStageMove}
+                            </button>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <div className="mb-3 flex items-start gap-2">
+                            <AlertTriangle
+                              className="mt-0.5 h-5 w-5 shrink-0 text-amber-600"
+                              aria-hidden
+                            />
+                            <div>
+                              <p
+                                className="m-0 font-bold"
+                                style={{ color: '#92400E', fontSize: 16 }}
+                              >
+                                {codeForNav === 'C5'
+                                  ? 'Not quite ready for Business Complete'
+                                  : `Not quite ready for ${nextStageMove}`}
+                              </p>
+                              <p
+                                className="m-0 mt-1 text-sm"
+                                style={{ color: '#7A8F95' }}
+                              >
+                                Confidence: {stageReadinessResult.confidence}%
+                              </p>
+                            </div>
+                          </div>
+                          <p
+                            className="m-0 mb-2 text-sm font-semibold"
+                            style={{ color: '#2D4459' }}
+                          >
+                            What is holding them back
+                          </p>
+                          <ul className="m-0 mb-4 list-disc space-y-1 pl-5 text-sm" style={{ color: '#2D4459' }}>
+                            {(stageReadinessResult.gaps.length > 0
+                              ? stageReadinessResult.gaps
+                              : ['Gaps not specified, review profile and sessions manually.']
+                            ).map((r, i) => (
+                              <li key={`g-${i}`}>{r}</li>
+                            ))}
+                          </ul>
+                          <p
+                            className="m-0 mb-2 text-sm font-semibold"
+                            style={{ color: '#2D4459' }}
+                          >
+                            Questions to ask to build readiness
+                          </p>
+                          <ul className="m-0 mb-4 list-disc space-y-1 pl-5 text-sm" style={{ color: '#2D4459' }}>
+                            {(stageReadinessResult.questions.length > 0
+                              ? stageReadinessResult.questions
+                              : ['What support do you need before taking the next pipeline step?']
+                            ).map((r, i) => (
+                              <li key={`q-${i}`}>{r}</li>
+                            ))}
+                          </ul>
+                          <p
+                            className="m-0 mb-2 text-sm font-semibold"
+                            style={{ color: '#2D4459' }}
+                          >
+                            What to watch for
+                          </p>
+                          <ul className="m-0 list-disc space-y-1 pl-5 text-sm" style={{ color: '#2D4459' }}>
+                            {(stageReadinessResult.watchFor.length > 0
+                              ? stageReadinessResult.watchFor
+                              : ['Momentum on homework, clearer spouse alignment, stronger session follow-through.']
+                            ).map((r, i) => (
+                              <li key={`w-${i}`}>{r}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
 
             <Card>
               <CardHeader>
