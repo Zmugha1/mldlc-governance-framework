@@ -825,6 +825,31 @@ function deriveStyleLetter(
     .sort((a, b) => b[1] - a[1])[0][0] as 'D' | 'I' | 'S' | 'C';
 }
 
+const VISION_MOTIVATION_ROAD_QUOTE =
+  "You don't have to have it all figured out to move forward";
+const VISION_MOTIVATION_CLIFF_QUOTE =
+  'Your Only Limit Is YOU';
+
+/** High D/I → cliff (Vito style); High S/C or unknown → road (Alex style). */
+function visionMotivationKindFromDiscScores(
+  disc: { d: number; i: number; s: number; c: number } | null
+): 'road' | 'cliff' {
+  if (!disc) return 'road';
+  const sum = disc.d + disc.i + disc.s + disc.c;
+  if (sum <= 0) return 'road';
+  const letter = deriveStyleLetter(disc.d, disc.i, disc.s, disc.c);
+  return letter === 'D' || letter === 'I' ? 'cliff' : 'road';
+}
+
+function visionMotivationJpegToDataUrl(buf: ArrayBuffer): string {
+  const u8 = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < u8.byteLength; i++) {
+    binary += String.fromCharCode(u8[i]!);
+  }
+  return `image/jpeg;base64,${btoa(binary)}`;
+}
+
 function DISCBadge({ style }: { style: 'D' | 'I' | 'S' | 'C' }) {
   const color = discColors[style];
   const labels = { D: 'Dominance', I: 'Influence', S: 'Steadiness', C: 'Conscientiousness' };
@@ -2225,6 +2250,19 @@ function ClientDetailModal({
       ? STAGE_ORDER[currentIndex + 1]!
       : null;
 
+  const visionMotivation = useMemo(() => {
+    const kind = visionMotivationKindFromDiscScores(discScores);
+    const quote =
+      kind === 'cliff'
+        ? VISION_MOTIVATION_CLIFF_QUOTE
+        : VISION_MOTIVATION_ROAD_QUOTE;
+    const imageSrc =
+      kind === 'cliff'
+        ? '/coach-motivation-cliff-you.jpg'
+        : '/coach-motivation-road.jpg';
+    return { kind, quote, imageSrc };
+  }, [discScores]);
+
   const clientMergedFinancials = useMemo(() => {
     const parseCreditRaw = (raw: unknown): number => {
       if (raw === null || raw === undefined) return 0;
@@ -3452,11 +3490,13 @@ not who they have been.`;
           }
         );
 
+        const hasTerritory = territoryNotes.trim().length > 0;
+        const visionBodyH = hasTerritory ? 4.28 : 4.98;
         slide.addText(text, {
           x: 0.5,
           y: 1.5,
           w: 12,
-          h: 5.0,
+          h: visionBodyH,
           fontSize: 15,
           color: 'FFFFFF',
           fontFace: 'Calibri',
@@ -3464,14 +3504,14 @@ not who they have been.`;
           wrap: true,
         });
 
-        if (territoryNotes.trim()) {
+        if (hasTerritory) {
           slide.addText(
             `Territory Notes: ${territoryNotes}`,
             {
               x: 0.5,
-              y: 6.6,
+              y: 5.88,
               w: 12,
-              h: 0.5,
+              h: 0.48,
               fontSize: 11,
               color: 'C8E8E5',
               fontFace: 'Calibri',
@@ -3480,22 +3520,86 @@ not who they have been.`;
           );
         }
 
-        const coachProfile = coachProfileRow;
-        const coachName =
-          coachProfile?.full_name?.trim() ||
-          coachProfile?.name?.trim() ||
-          'Your Franchise Coach';
-        const footerText = `${coachName} · Coach Bot`;
-
-        slide.addText(footerText, {
+        const footerLine1Y = hasTerritory ? 6.44 : 6.82;
+        const footerLine2Y = hasTerritory ? 6.66 : 7.04;
+        slide.addText('Coach Sandi Stahl', {
           x: 0.5,
-          y: 7.1,
+          y: footerLine1Y,
           w: 12,
-          h: 0.3,
-          fontSize: 9,
+          h: 0.22,
+          fontSize: 11,
+          bold: true,
+          color: 'C8E8E5',
+          fontFace: 'Calibri',
+        });
+        slide.addText('Franchise Coach', {
+          x: 0.5,
+          y: footerLine2Y,
+          w: 12,
+          h: 0.2,
+          fontSize: 10,
           color: '7A8F95',
           fontFace: 'Calibri',
         });
+
+        const motKind = visionMotivationKindFromDiscScores(discScores);
+        const motImagePath =
+          motKind === 'cliff'
+            ? '/coach-motivation-cliff-you.jpg'
+            : '/coach-motivation-road.jpg';
+        const motQuote =
+          motKind === 'cliff'
+            ? VISION_MOTIVATION_CLIFF_QUOTE
+            : VISION_MOTIVATION_ROAD_QUOTE;
+        try {
+          const imgResp = await fetch(motImagePath);
+          if (imgResp.ok) {
+            const motBuf = await imgResp.arrayBuffer();
+            const motData = visionMotivationJpegToDataUrl(motBuf);
+            const motSlide = pptx.addSlide();
+            motSlide.addImage({
+              data: motData,
+              x: 0,
+              y: 0,
+              w: 13.33,
+              h: 7.5,
+            });
+            motSlide.addText(motQuote, {
+              x: 0.65,
+              y: 5.05,
+              w: 12.03,
+              h: 1.75,
+              fontSize: motKind === 'cliff' ? 26 : 22,
+              bold: true,
+              color: 'FFFFFF',
+              fontFace: 'Calibri',
+              align: 'center',
+              valign: 'middle',
+              wrap: true,
+            });
+            motSlide.addText('Coach Sandi Stahl', {
+              x: 0.5,
+              y: 7.02,
+              w: 12,
+              h: 0.2,
+              fontSize: 10,
+              bold: true,
+              color: 'C8E8E5',
+              fontFace: 'Calibri',
+            });
+            motSlide.addText('Franchise Coach', {
+              x: 0.5,
+              y: 7.22,
+              w: 12,
+              h: 0.18,
+              fontSize: 9,
+              color: '7A8F95',
+              fontFace: 'Calibri',
+            });
+          }
+        } catch {
+          /* motivation slide optional */
+        }
 
         const safeName =
           (client?.name || 'client')
@@ -6820,6 +6924,53 @@ not who they have been.`;
                       {item.label}
                     </span>
                   ))}
+                </div>
+
+                <div
+                  style={{
+                    marginBottom: 20,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    border: '1px solid #C8E8E5',
+                    background: '#F4F7F8',
+                  }}
+                >
+                  <img
+                    src={visionMotivation.imageSrc}
+                    alt={visionMotivation.quote}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      maxHeight: 220,
+                      objectFit: 'cover',
+                    }}
+                  />
+                  <p
+                    className="m-0 px-4 py-3 text-center font-bold"
+                    style={{
+                      color: '#2D4459',
+                      fontSize: 16,
+                      lineHeight: 1.45,
+                      background: 'white',
+                    }}
+                  >
+                    {visionMotivation.quote}
+                  </p>
+                  <div
+                    className="px-4 py-2 text-center"
+                    style={{
+                      background: '#2D4459',
+                      color: '#C8E8E5',
+                      fontSize: 12,
+                    }}
+                  >
+                    <p className="m-0 font-semibold" style={{ color: 'white' }}>
+                      Coach Sandi Stahl
+                    </p>
+                    <p className="m-0 mt-0.5" style={{ color: '#C8E8E5' }}>
+                      Franchise Coach
+                    </p>
+                  </div>
                 </div>
 
                 {/* ERROR STATE */}
