@@ -1614,6 +1614,31 @@ function VisionRubric({
   );
 }
 
+/** Wraps a disabled control so Radix tooltip still receives hover while `cooldownActive`. */
+function CooldownTooltipButton({
+  cooldownActive,
+  tooltip,
+  children,
+  triggerClassName = 'inline-flex w-full max-w-full cursor-not-allowed justify-center',
+}: {
+  cooldownActive: boolean;
+  tooltip: string;
+  children: React.ReactElement;
+  triggerClassName?: string;
+}) {
+  if (!cooldownActive) return children;
+  return (
+    <Tooltip delayDuration={150}>
+      <TooltipTrigger asChild>
+        <span className={triggerClassName}>{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <p className="m-0 max-w-xs text-sm">{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ClientDetailModal({
   client,
   onInactivate,
@@ -1905,6 +1930,13 @@ function ClientDetailModal({
     full_name?: string | null;
     name?: string | null;
   } | null>(null);
+  const [aiCooldown, setAiCooldown] = useState(0);
+  const [aiCooldownMessage, setAiCooldownMessage] = useState('');
+  const aiCooldownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
+  const aiCooldownResolveRef = useRef<(() => void) | null>(null);
+  const aiCooldownSecondsRef = useRef(0);
 
   useEffect(() => {
     if (!onStageMoveUndoOffer) {
@@ -1995,6 +2027,18 @@ function ClientDetailModal({
     setCouncilQuestionTargetStage(
       STAGE_ORDER.includes(c as PipelineStage) ? (c as PipelineStage) : 'IC'
     );
+  }, [client?.id]);
+
+  useEffect(() => {
+    if (aiCooldownIntervalRef.current != null) {
+      window.clearInterval(aiCooldownIntervalRef.current);
+      aiCooldownIntervalRef.current = null;
+    }
+    aiCooldownResolveRef.current?.();
+    aiCooldownResolveRef.current = null;
+    aiCooldownSecondsRef.current = 0;
+    setAiCooldown(0);
+    setAiCooldownMessage('');
   }, [client?.id]);
 
   useEffect(() => {
@@ -3833,6 +3877,43 @@ Use plain conversational language.`;
     }
   };
 
+  function startCooldown(seconds: number, message: string): Promise<void> {
+    return new Promise((resolve) => {
+      if (aiCooldownIntervalRef.current != null) {
+        window.clearInterval(aiCooldownIntervalRef.current);
+        aiCooldownIntervalRef.current = null;
+      }
+      const prevResolve = aiCooldownResolveRef.current;
+      aiCooldownResolveRef.current = null;
+      prevResolve?.();
+
+      setAiCooldownMessage(message);
+      setAiCooldown(seconds);
+      if (seconds <= 0) {
+        setAiCooldownMessage('');
+        resolve();
+        return;
+      }
+      aiCooldownSecondsRef.current = seconds;
+      aiCooldownResolveRef.current = resolve;
+      aiCooldownIntervalRef.current = window.setInterval(() => {
+        aiCooldownSecondsRef.current -= 1;
+        const next = aiCooldownSecondsRef.current;
+        setAiCooldown(Math.max(0, next));
+        if (next <= 0) {
+          if (aiCooldownIntervalRef.current != null) {
+            window.clearInterval(aiCooldownIntervalRef.current);
+            aiCooldownIntervalRef.current = null;
+          }
+          setAiCooldownMessage('');
+          const r = aiCooldownResolveRef.current;
+          aiCooldownResolveRef.current = null;
+          r?.();
+        }
+      }, 1000);
+    });
+  }
+
   const handleGenerateBestNextQuestions = async () => {
     if (!client?.id) return;
     setCouncilLoading(true);
@@ -3887,6 +3968,10 @@ Use plain conversational language.`;
       );
       if (output != null) {
         setCouncilOutput(output);
+        void startCooldown(
+          20,
+          'AI is resting after question generation — ready in 20s'
+        );
       }
     } catch (e) {
       console.error(e);
@@ -4187,6 +4272,10 @@ not who they have been.`;
       setVisionText(sanitized);
       setVisionTabView('edit');
       setVisionGenerating(false);
+      void startCooldown(
+        20,
+        'AI is resting after vision generation — ready in 20s'
+      );
     } catch (err) {
       console.error(
         'Vision generation error:',
@@ -4927,6 +5016,8 @@ Keep the result under 200 words. Use plain, warm language. Be direct.`;
 
   const aiWorking =
     visionGenerating || councilLoading || fathomUploading;
+  const aiCooldownActive = aiCooldown > 0;
+  const aiCooldownRestTooltip = `AI is resting — ready in ${aiCooldown}s`;
 
   const tumayRelocationFundingFields = (
     <>
@@ -5107,6 +5198,31 @@ Keep the result under 200 words. Use plain, warm language. Be direct.`;
           aria-live="polite"
         >
           AI is working — please stay on this page until complete
+        </div>
+      ) : null}
+      {aiCooldownActive ? (
+        <div
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[160] flex w-[min(100%,28rem)] -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-3 shadow-lg"
+          style={{ background: '#2D4459' }}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <Loader2
+            className="h-5 w-5 shrink-0 animate-spin text-white"
+            aria-hidden
+          />
+          <p
+            className="m-0 min-w-0 flex-1 text-center text-sm leading-snug text-white"
+          >
+            {aiCooldownMessage}
+          </p>
+          <span
+            className="shrink-0 tabular-nums"
+            style={{ color: '#3BBFBF', fontSize: 20, fontWeight: 700 }}
+          >
+            {aiCooldown}
+          </span>
         </div>
       ) : null}
       {showInactivateConfirm ? (
@@ -6001,23 +6117,35 @@ Keep the result under 200 words. Use plain, warm language. Be direct.`;
                           Generate questions for this client&apos;s current
                           stage to see them here.
                         </p>
-                        <button
-                          type="button"
-                          className="mt-3 font-bold text-white transition-opacity hover:opacity-90"
-                          style={{
-                            background: '#3BBFBF',
-                            borderRadius: 8,
-                            padding: '6px 14px',
-                            fontSize: 12,
-                            border: 'none',
-                          }}
-                          disabled={councilLoading}
-                          onClick={() => {
-                            void handleGenerateBestNextQuestions();
-                          }}
+                        <CooldownTooltipButton
+                          cooldownActive={aiCooldownActive}
+                          tooltip={aiCooldownRestTooltip}
                         >
-                          Generate Now
-                        </button>
+                          <button
+                            type="button"
+                            className="mt-3 font-bold text-white transition-opacity hover:opacity-90"
+                            style={{
+                              background:
+                                councilLoading || aiCooldownActive
+                                  ? '#9CA3AF'
+                                  : '#3BBFBF',
+                              borderRadius: 8,
+                              padding: '6px 14px',
+                              fontSize: 12,
+                              border: 'none',
+                              cursor:
+                                councilLoading || aiCooldownActive
+                                  ? 'not-allowed'
+                                  : 'pointer',
+                            }}
+                            disabled={councilLoading || aiCooldownActive}
+                            onClick={() => {
+                              void handleGenerateBestNextQuestions();
+                            }}
+                          >
+                            Generate Now
+                          </button>
+                        </CooldownTooltipButton>
                       </div>
                     );
                   }
@@ -6072,17 +6200,23 @@ Keep the result under 200 words. Use plain, warm language. Be direct.`;
                             }
                           })()}
                         </p>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-md p-1.5 text-[#3BBFBF] transition-colors hover:bg-slate-100 disabled:opacity-50"
-                          aria-label="Regenerate questions"
-                          disabled={councilLoading}
-                          onClick={() => {
-                            void handleRegenerateCouncil();
-                          }}
+                        <CooldownTooltipButton
+                          cooldownActive={aiCooldownActive}
+                          tooltip={aiCooldownRestTooltip}
+                          triggerClassName="inline-flex cursor-not-allowed"
                         >
-                          <RotateCw className="h-4 w-4" aria-hidden />
-                        </button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-md p-1.5 text-[#3BBFBF] transition-colors hover:bg-slate-100 disabled:opacity-50"
+                            aria-label="Regenerate questions"
+                            disabled={councilLoading || aiCooldownActive}
+                            onClick={() => {
+                              void handleRegenerateCouncil();
+                            }}
+                          >
+                            <RotateCw className="h-4 w-4" aria-hidden />
+                          </button>
+                        </CooldownTooltipButton>
                       </div>
                     </>
                   );
@@ -6100,21 +6234,31 @@ Keep the result under 200 words. Use plain, warm language. Be direct.`;
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <button
-                    type="button"
-                    disabled={stageReadinessLoading}
-                    onClick={() => void handleEvaluateStageTransitionReadiness()}
-                    className="flex w-full items-center justify-center gap-2 font-bold transition-opacity hover:opacity-95 disabled:opacity-60"
-                    style={{
-                      background: '#2D4459',
-                      color: 'white',
-                      borderRadius: 8,
-                      padding: '12px 24px',
-                      fontSize: 14,
-                      border: 'none',
-                      cursor: stageReadinessLoading ? 'wait' : 'pointer',
-                    }}
+                  <CooldownTooltipButton
+                    cooldownActive={aiCooldownActive}
+                    tooltip={aiCooldownRestTooltip}
                   >
+                    <button
+                      type="button"
+                      disabled={stageReadinessLoading || aiCooldownActive}
+                      onClick={() => void handleEvaluateStageTransitionReadiness()}
+                      className="flex w-full items-center justify-center gap-2 font-bold transition-opacity hover:opacity-95 disabled:opacity-60"
+                      style={{
+                        background:
+                          stageReadinessLoading || aiCooldownActive
+                            ? '#9CA3AF'
+                            : '#2D4459',
+                        color: 'white',
+                        borderRadius: 8,
+                        padding: '12px 24px',
+                        fontSize: 14,
+                        border: 'none',
+                        cursor:
+                          stageReadinessLoading || aiCooldownActive
+                            ? 'not-allowed'
+                            : 'pointer',
+                      }}
+                    >
                     {codeForNav === 'C5' ? (
                       <>
                         <span aria-hidden>🎓</span>
@@ -6127,7 +6271,8 @@ Keep the result under 200 words. Use plain, warm language. Be direct.`;
                         {nextStageMove}?
                       </>
                     )}
-                  </button>
+                    </button>
+                  </CooldownTooltipButton>
 
                   {stageReadinessLoading ? (
                     <div
@@ -8076,21 +8221,38 @@ Use reminders for:
                       {renderUncertainty(out)}
 
                       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                        <button
-                          type="button"
-                          className="font-medium"
-                          style={{
-                            background: 'white',
-                            border: '1px solid #C8E8E5',
-                            color: '#7A8F95',
-                            borderRadius: 8,
-                            padding: '6px 14px',
-                            fontSize: 12,
-                          }}
-                          onClick={() => void handleRegenerateCouncil()}
+                        <CooldownTooltipButton
+                          cooldownActive={aiCooldownActive}
+                          tooltip={aiCooldownRestTooltip}
+                          triggerClassName="inline-flex cursor-not-allowed"
                         >
-                          Regenerate Council
-                        </button>
+                          <button
+                            type="button"
+                            className="font-medium"
+                            style={{
+                              background:
+                                councilLoading || aiCooldownActive
+                                  ? '#E5E7EB'
+                                  : 'white',
+                              border: '1px solid #C8E8E5',
+                              color:
+                                councilLoading || aiCooldownActive
+                                  ? '#9CA3AF'
+                                  : '#7A8F95',
+                              borderRadius: 8,
+                              padding: '6px 14px',
+                              fontSize: 12,
+                              cursor:
+                                councilLoading || aiCooldownActive
+                                  ? 'not-allowed'
+                                  : 'pointer',
+                            }}
+                            disabled={councilLoading || aiCooldownActive}
+                            onClick={() => void handleRegenerateCouncil()}
+                          >
+                            Regenerate Council
+                          </button>
+                        </CooldownTooltipButton>
                         <button
                           type="button"
                           className="font-bold text-white"
@@ -8170,21 +8332,33 @@ Use reminders for:
                         {councilError}
                       </p>
                     ) : null}
-                    <button
-                      type="button"
-                      className="mt-2 w-full font-bold text-white disabled:opacity-60"
-                      style={{
-                        background: '#F05F57',
-                        borderRadius: 8,
-                        padding: '10px 24px',
-                        fontSize: 14,
-                        border: 'none',
-                      }}
-                      disabled={councilLoading}
-                      onClick={() => void handleGenerateBestNextQuestions()}
+                    <CooldownTooltipButton
+                      cooldownActive={aiCooldownActive}
+                      tooltip={aiCooldownRestTooltip}
                     >
-                      Generate Questions
-                    </button>
+                      <button
+                        type="button"
+                        className="mt-2 w-full font-bold text-white disabled:opacity-60"
+                        style={{
+                          background:
+                            councilLoading || aiCooldownActive
+                              ? '#9CA3AF'
+                              : '#F05F57',
+                          borderRadius: 8,
+                          padding: '10px 24px',
+                          fontSize: 14,
+                          border: 'none',
+                          cursor:
+                            councilLoading || aiCooldownActive
+                              ? 'not-allowed'
+                              : 'pointer',
+                        }}
+                        disabled={councilLoading || aiCooldownActive}
+                        onClick={() => void handleGenerateBestNextQuestions()}
+                      >
+                        Generate Questions
+                      </button>
+                    </CooldownTooltipButton>
                   </div>
                   </>
                 );
@@ -8617,21 +8791,27 @@ Use reminders for:
                       >
                         Build a new statement from DISC, You 2.0, and recent sessions.
                       </p>
-                      <button
-                        type="button"
-                        className="mt-3 w-full font-bold text-white transition-opacity hover:opacity-95"
-                        style={{
-                          background: '#2D4459',
-                          borderRadius: 8,
-                          padding: '10px 16px',
-                          fontSize: 13,
-                          border: 'none',
-                          cursor: 'pointer',
-                        }}
-                        onClick={() => void handleGenerateVision()}
+                      <CooldownTooltipButton
+                        cooldownActive={aiCooldownActive}
+                        tooltip={aiCooldownRestTooltip}
                       >
-                        Generate Vision Statement
-                      </button>
+                        <button
+                          type="button"
+                          className="mt-3 w-full font-bold text-white transition-opacity hover:opacity-95"
+                          style={{
+                            background: aiCooldownActive ? '#9CA3AF' : '#2D4459',
+                            borderRadius: 8,
+                            padding: '10px 16px',
+                            fontSize: 13,
+                            border: 'none',
+                            cursor: aiCooldownActive ? 'not-allowed' : 'pointer',
+                          }}
+                          disabled={aiCooldownActive}
+                          onClick={() => void handleGenerateVision()}
+                        >
+                          Generate Vision Statement
+                        </button>
+                      </CooldownTooltipButton>
                     </div>
                     <div
                       className="flex min-w-0 flex-1 flex-col rounded-lg border p-4"
@@ -8741,39 +8921,64 @@ Use reminders for:
                       }}
                     />
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="font-bold text-white transition-opacity hover:opacity-95 disabled:opacity-50"
-                        style={{
-                          background: '#3BBFBF',
-                          borderRadius: 8,
-                          padding: '10px 18px',
-                          fontSize: 13,
-                          border: 'none',
-                          cursor: 'pointer',
-                        }}
-                        disabled={visionImproving}
-                        onClick={() => void handleImproveVisionWithAI()}
+                      <CooldownTooltipButton
+                        cooldownActive={aiCooldownActive}
+                        tooltip={aiCooldownRestTooltip}
                       >
-                        Improve with AI
-                      </button>
-                      <button
-                        type="button"
-                        className="font-bold transition-opacity hover:opacity-95 disabled:opacity-50"
-                        style={{
-                          background: 'white',
-                          color: '#2D4459',
-                          borderRadius: 8,
-                          padding: '10px 18px',
-                          fontSize: 13,
-                          border: '2px solid #2D4459',
-                          cursor: 'pointer',
-                        }}
-                        disabled={visionGenerating}
-                        onClick={() => void handleGenerateFresh()}
+                        <button
+                          type="button"
+                          className="font-bold text-white transition-opacity hover:opacity-95 disabled:opacity-50"
+                          style={{
+                            background:
+                              visionImproving || aiCooldownActive
+                                ? '#9CA3AF'
+                                : '#3BBFBF',
+                            borderRadius: 8,
+                            padding: '10px 18px',
+                            fontSize: 13,
+                            border: 'none',
+                            cursor:
+                              visionImproving || aiCooldownActive
+                                ? 'not-allowed'
+                                : 'pointer',
+                          }}
+                          disabled={visionImproving || aiCooldownActive}
+                          onClick={() => void handleImproveVisionWithAI()}
+                        >
+                          Improve with AI
+                        </button>
+                      </CooldownTooltipButton>
+                      <CooldownTooltipButton
+                        cooldownActive={aiCooldownActive}
+                        tooltip={aiCooldownRestTooltip}
                       >
-                        Generate Fresh
-                      </button>
+                        <button
+                          type="button"
+                          className="font-bold transition-opacity hover:opacity-95 disabled:opacity-50"
+                          style={{
+                            background: 'white',
+                            color:
+                              visionGenerating || aiCooldownActive
+                                ? '#9CA3AF'
+                                : '#2D4459',
+                            borderRadius: 8,
+                            padding: '10px 18px',
+                            fontSize: 13,
+                            border:
+                              visionGenerating || aiCooldownActive
+                                ? '2px solid #9CA3AF'
+                                : '2px solid #2D4459',
+                            cursor:
+                              visionGenerating || aiCooldownActive
+                                ? 'not-allowed'
+                                : 'pointer',
+                          }}
+                          disabled={visionGenerating || aiCooldownActive}
+                          onClick={() => void handleGenerateFresh()}
+                        >
+                          Generate Fresh
+                        </button>
+                      </CooldownTooltipButton>
                       <button
                         type="button"
                         className="font-bold text-white transition-opacity hover:opacity-95"
@@ -9146,9 +9351,18 @@ Use reminders for:
                 ) : null}
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <CooldownTooltipButton
+                    cooldownActive={aiCooldownActive}
+                    tooltip={aiCooldownRestTooltip}
+                    triggerClassName="inline-flex cursor-not-allowed"
+                  >
                   <button
                     type="button"
-                    disabled={fathomUploading || !fathomPasteText.trim()}
+                    disabled={
+                      fathomUploading ||
+                      !fathomPasteText.trim() ||
+                      aiCooldownActive
+                    }
                     onClick={async () => {
                       if (!fathomPasteText.trim() || !client) return;
                       try {
@@ -9248,6 +9462,10 @@ Use reminders for:
                         setFathomUploadSuccess(
                           'Session extracted. Last contacted date updated.'
                         );
+                        void startCooldown(
+                          15,
+                          'AI is resting after session extraction — ready in 15s'
+                        );
                         setTimeout(() => {
                           setFathomUploadSuccess(null);
                           setFathomProgress(0);
@@ -9267,7 +9485,11 @@ Use reminders for:
                     }}
                     style={{
                       background:
-                        fathomUploading || !fathomPasteText.trim() ? '#C8E8E5' : '#3BBFBF',
+                        fathomUploading || !fathomPasteText.trim()
+                          ? '#C8E8E5'
+                          : aiCooldownActive
+                            ? '#9CA3AF'
+                            : '#3BBFBF',
                       color: 'white',
                       borderRadius: 8,
                       padding: '8px 18px',
@@ -9275,11 +9497,16 @@ Use reminders for:
                       fontWeight: 'bold',
                       border: 'none',
                       cursor:
-                        fathomUploading || !fathomPasteText.trim() ? 'not-allowed' : 'pointer',
+                        fathomUploading ||
+                        !fathomPasteText.trim() ||
+                        aiCooldownActive
+                          ? 'not-allowed'
+                          : 'pointer',
                     }}
                   >
                     {fathomUploading ? 'Extracting...' : 'Extract Session'}
                   </button>
+                  </CooldownTooltipButton>
 
                   <button
                     type="button"
