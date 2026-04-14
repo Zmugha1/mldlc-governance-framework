@@ -30,6 +30,7 @@ import {
   X,
   ArrowRight,
   ChevronDown,
+  RotateCw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -60,12 +61,16 @@ import { dbExecute, dbSelect, getDb } from '@/services/db';
 import { logEntry } from '@/services/auditService';
 import {
   getStageReadiness,
-  moveClientStage,
   getAllStageReadiness,
   type PipelineStage,
   type Recommendation,
   type StageReadiness,
 } from '@/services/stageReadinessService';
+import {
+  moveClientStage,
+  pipelineCodeForStageMove,
+  registerStageMoveUndoOfferHandler,
+} from '@/services/stageService';
 import { getDiscProfilesMap } from '@/services/dashboardService';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -362,12 +367,6 @@ const STAGE_ORDER: readonly PipelineStage[] = [
   'C4',
   'C5',
 ];
-
-/** Tauri SQL may return a single row object instead of an array — normalize for indexing. */
-function normalizeSqlRows<T>(rows: T | T[] | null | undefined): T[] {
-  if (rows == null) return [];
-  return Array.isArray(rows) ? rows : [rows];
-}
 
 /** Advisory warning when moving forward into a stage with typical doc gaps. */
 function forwardMoveDocumentWarning(
@@ -1724,6 +1723,17 @@ function ClientDetailModal({
   } | null>(null);
 
   useEffect(() => {
+    if (!onStageMoveUndoOffer) {
+      registerStageMoveUndoOfferHandler(null);
+      return;
+    }
+    registerStageMoveUndoOfferHandler((payload) => {
+      onStageMoveUndoOffer(payload);
+    });
+    return () => registerStageMoveUndoOfferHandler(null);
+  }, [onStageMoveUndoOffer]);
+
+  useEffect(() => {
     if (client?.vision_statement) {
       setVisionText(
         String(
@@ -1739,12 +1749,53 @@ function ClientDetailModal({
   }, [client?.id]);
 
   useEffect(() => {
-    setCouncilOutput(null);
     setCouncilLoading(false);
     setCouncilError(null);
     setActiveLens('chairman');
     setRatedQuestions({});
+    if (!client?.id) {
+      setCouncilOutput(null);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(
+        `client_intel_bnq_${client.id}`
+      );
+      if (!raw) {
+        setCouncilOutput(null);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Partial<CouncilOutput>;
+      const rq = parsed?.chairmanSynthesis?.recommendedQuestions;
+      if (
+        Array.isArray(rq) &&
+        rq.some((q) => String(q).trim().length > 0) &&
+        typeof parsed.generatedAt === 'string' &&
+        parsed.generatedAt.trim() !== '' &&
+        parsed.readinessLens &&
+        parsed.alignmentLens &&
+        parsed.integrityLens
+      ) {
+        setCouncilOutput(parsed as CouncilOutput);
+      } else {
+        setCouncilOutput(null);
+      }
+    } catch {
+      setCouncilOutput(null);
+    }
   }, [client?.id]);
+
+  useEffect(() => {
+    if (!client?.id || !councilOutput?.generatedAt) return;
+    try {
+      localStorage.setItem(
+        `client_intel_bnq_${client.id}`,
+        JSON.stringify(councilOutput)
+      );
+    } catch {
+      /* ignore quota / privacy mode */
+    }
+  }, [client?.id, councilOutput]);
 
   useEffect(() => {
     setStageReadinessLoading(false);
@@ -2581,6 +2632,102 @@ function ClientDetailModal({
     );
   }, [localPinkFlagsJson, clientMergedFinancials.netWorth]);
 
+  /** Overview Stage card: file depth for next move (DISC / You2 / Fathom / pink / TUMAY). Not the AI stage verdict. */
+  const overviewDataCompletenessMeter = useMemo(() => {
+    const hasDisc =
+      discScores != null &&
+      discScores.d + discScores.i + discScores.s + discScores.c > 0;
+    const you20Complete =
+      you2Details != null &&
+      ((you2Details.dangers?.length ?? 0) > 0 ||
+        (you2Details.strengths?.length ?? 0) > 0 ||
+        (you2Details.opportunities?.length ?? 0) > 0 ||
+        Boolean(String(you2Details.financial_net_worth_range ?? '').trim()));
+    const fathomTwoPlus = fathomSessionCount >= 2;
+    const noActivePink = activePinkFlagsFiltered.length === 0;
+
+    let tumayFin = false;
+    const tr = tumayReadinessProfile;
+    if (tr) {
+      const nw = String(tr.financial_net_worth_range ?? '').trim();
+      const tc = String(tr.time_commitment ?? '').trim();
+      const cs = Number(tr.credit_score ?? 0);
+      if (nw && nw !== '0' && nw.toLowerCase() !== 'null') tumayFin = true;
+      else if (cs > 0) tumayFin = true;
+      else if (tc && tc.toLowerCase() !== 'null' && tc !== '') tumayFin = true;
+    }
+    if (!tumayFin && tumayData && typeof tumayData === 'object') {
+      const o = tumayData as Record<string, unknown>;
+      const nw = String(o.financial_net_worth_range ?? '').trim();
+      const tc = String(o.time_commitment ?? '').trim();
+      const cs = Number(o.credit_score ?? 0);
+      if (nw && nw !== '0' && nw.toLowerCase() !== 'null') tumayFin = true;
+      else if (cs > 0) tumayFin = true;
+      else if (tc && tc.toLowerCase() !== 'null' && tc !== '') tumayFin = true;
+    }
+
+    let pct = 0;
+    if (hasDisc) pct += 20;
+    if (you20Complete) pct += 20;
+    if (fathomTwoPlus) pct += 20;
+    if (noActivePink) pct += 20;
+    if (tumayFin) pct += 20;
+
+    const barColor =
+      pct <= 40 ? '#F05F57' : pct <= 70 ? '#F59E0B' : '#22C55E';
+    const filledSegments = Math.max(0, Math.min(10, Math.round(pct / 10)));
+
+    const strengths: string[] = [];
+    const gaps: string[] = [];
+    if (hasDisc) strengths.push('DISC on file');
+    if (you20Complete) strengths.push('You 2.0 depth');
+    if (fathomTwoPlus) strengths.push('two or more sessions logged');
+    if (noActivePink) strengths.push('no active pink flags');
+    if (tumayFin) strengths.push('TUMAY financial signals');
+    if (!hasDisc) gaps.push('DISC');
+    if (!you20Complete) gaps.push('You 2.0');
+    if (!fathomTwoPlus) gaps.push('second Fathom session');
+    if (!noActivePink) gaps.push('pink flags');
+    if (!tumayFin) gaps.push('TUMAY financials');
+
+    let blurb = '';
+    if (strengths.length >= 2) {
+      blurb = `Strong ${strengths[0].toLowerCase()} and ${strengths[1].toLowerCase()}.`;
+    } else if (strengths.length === 1) {
+      blurb = `Good progress: ${strengths[0].toLowerCase()}.`;
+    }
+    if (gaps.length > 0) {
+      const g = gaps.slice(0, 3).join(', ');
+      blurb +=
+        (blurb ? ' ' : '') +
+        (pct >= 71
+          ? `Optional polish: ${g}.`
+          : `Still thin: add ${g}.`);
+    }
+    if (!blurb.trim()) {
+      blurb =
+        'Build DISC, You 2.0, Fathom history, clean pink flags, and TUMAY intake to raise this score.';
+    }
+
+    if (
+      pct < 71 &&
+      (!tumayFin || !you20Complete) &&
+      nextStageMove != null
+    ) {
+      blurb += ` Financial clarity still helps before ${getStageDisplayName(nextStageMove)}.`;
+    }
+
+    return { pct, barColor, filledSegments, blurb };
+  }, [
+    discScores,
+    you2Details,
+    fathomSessionCount,
+    activePinkFlagsFiltered,
+    tumayData,
+    tumayReadinessProfile,
+    nextStageMove,
+  ]);
+
   const goneQuietReengagementTipText =
     shouldShowGoneQuietBadge(client) && discScores
       ? goneQuietTipFromNaturalScores(discScores)
@@ -2670,77 +2817,23 @@ function ClientDetailModal({
     const target = stageMoveDialog.target;
     setStageMoveSaving(true);
     try {
-      console.log('[ClientIntel] stage move start', {
-        clientId: client.id,
-        target,
-      });
-      const db = await getDb();
-      const curRowsRaw = await db.select<{ inferred_stage: string | null }>(
+      const curRows = await dbSelect<{ inferred_stage: string | null }>(
         `SELECT inferred_stage FROM clients WHERE id = $1`,
         [client.id]
       );
-      const curRows = normalizeSqlRows(curRowsRaw);
-      const fromRaw = curRows[0]?.inferred_stage ?? null;
-      console.log('[ClientIntel] current stage from DB', fromRaw);
-
-      await db.execute(
-        `UPDATE clients
-         SET inferred_stage = $1,
-             updated_at = datetime('now')
-         WHERE id = $2`,
-        [target, client.id]
-      );
-      console.log('[ClientIntel] stage move UPDATE committed', {
-        clientId: client.id,
-        target,
-      });
-
-      const fromStageText =
-        fromRaw == null || String(fromRaw).trim() === ''
-          ? null
-          : String(fromRaw);
-      const toStageText = String(target);
-      await dbExecute(
-        `INSERT INTO client_stage_log (client_id, from_stage, to_stage, moved_at, moved_by, notes)
-         VALUES ($1, $2, $3, datetime('now'), $4, $5)`,
-        [String(client.id), fromStageText, toStageText, 'coach', null]
-      );
-
-      const detail = `${fromRaw ?? ''} → ${target}`;
-      await logEntry(
-        'stage_moved',
+      const fromCode = pipelineCodeForStageMove(curRows[0]?.inferred_stage);
+      const toCode = pipelineCodeForStageMove(String(target));
+      await moveClientStage(
         client.id,
-        fromRaw,
-        detail,
-        null,
-        'deterministic'
+        fromCode,
+        toCode,
+        'coach',
+        'overview stage move'
       );
 
-      localStorage.setItem('pipeline_updated', Date.now().toString());
-      localStorage.setItem(
-        'last_stage_move',
-        JSON.stringify({
-          client_id: client.id,
-          client_name: client.name,
-          from_stage: fromRaw,
-          to_stage: target,
-          moved_at: new Date().toISOString(),
-        })
-      );
-
-      setOptimisticInferredStage(target);
+      setOptimisticInferredStage(toCode);
       setStageMoveDialog(null);
-      await onStageMoved?.(client.id, target);
-
-      onStageMoveUndoOffer?.({
-        clientId: String(client.id),
-        clientName: client.name,
-        fromStage:
-          fromStageText == null || String(fromStageText).trim() === ''
-            ? ''
-            : String(fromStageText),
-        toStage: String(target),
-      });
+      await onStageMoved?.(client.id, toCode);
 
       void getStageReadiness(client.id).then(setReadiness);
     } catch (e) {
@@ -4749,6 +4842,55 @@ not who they have been.`;
                   <p style={{ color: '#7A8F95', fontSize: 13, marginTop: 4 }}>
                     {stageDisplay.label}
                   </p>
+                  <div
+                    className="mt-3 border-t pt-3"
+                    style={{ borderColor: '#E8EEF1' }}
+                  >
+                    <p
+                      className="m-0 text-xs font-semibold"
+                      style={{ color: '#2D4459' }}
+                    >
+                      Data completeness:{' '}
+                      <span
+                        className="tabular-nums"
+                        style={{ color: overviewDataCompletenessMeter.barColor }}
+                      >
+                        {overviewDataCompletenessMeter.pct}%
+                      </span>
+                    </p>
+                    <p
+                      className="m-0 mt-0.5 text-[10px] leading-tight"
+                      style={{ color: '#7A8F95' }}
+                    >
+                      Profile depth (DISC, You 2.0, 2+ Fathom sessions, pink
+                      flags, TUMAY). Not the AI readiness verdict — use the
+                      stage button below for that.
+                    </p>
+                    <div
+                      className="mt-2 flex gap-0.5"
+                      role="img"
+                      aria-label={`Data completeness about ${overviewDataCompletenessMeter.pct} percent`}
+                    >
+                      {Array.from({ length: 10 }, (_, i) => (
+                        <div
+                          key={i}
+                          className="h-2 min-w-0 flex-1 rounded-sm"
+                          style={{
+                            background:
+                              i < overviewDataCompletenessMeter.filledSegments
+                                ? overviewDataCompletenessMeter.barColor
+                                : '#E8EEF1',
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <p
+                      className="m-0 mt-2 text-xs italic leading-snug"
+                      style={{ color: '#2D4459' }}
+                    >
+                      {overviewDataCompletenessMeter.blurb}
+                    </p>
+                  </div>
                   <p className="text-xs text-slate-500 mt-2">
                     {stageCompartmentSubtitle}
                   </p>
@@ -5181,6 +5323,153 @@ not who they have been.`;
                   </div>
                 </CardContent>
               </Card>
+            </div>
+
+            <div
+              className="rounded-lg border bg-white p-4"
+              style={{ borderColor: '#C8E8E5' }}
+            >
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <h3
+                  className="m-0 font-bold"
+                  style={{ color: '#2D4459', fontSize: 15 }}
+                >
+                  Top Questions for{' '}
+                  {getStageDisplayName(councilQuestionTargetStage)}
+                </h3>
+                <button
+                  type="button"
+                  className="shrink-0 text-xs font-semibold underline-offset-2 hover:underline"
+                  style={{ color: '#3BBFBF' }}
+                  onClick={() => setDetailTab('best-next-questions')}
+                >
+                  See all questions
+                </button>
+              </div>
+
+              {councilLoading ? (
+                <div
+                  className="flex items-center gap-2 py-4"
+                  style={{ color: '#3BBFBF', fontSize: 13 }}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                  Generating questions…
+                </div>
+              ) : councilError ? (
+                <p className="m-0 text-sm" style={{ color: '#F05F57' }}>
+                  {councilError}
+                </p>
+              ) : (() => {
+                  const out = councilOutput;
+                  const topQs =
+                    out?.chairmanSynthesis?.recommendedQuestions
+                      ?.map((q) => String(q).trim())
+                      .filter((q) => q.length > 0)
+                      .slice(0, 2) ?? [];
+                  if (topQs.length === 0 || !out) {
+                    return (
+                      <div
+                        className="rounded-lg border px-4 py-4"
+                        style={{
+                          borderColor: '#C8E8E5',
+                          background: '#FEFAF5',
+                        }}
+                      >
+                        <p
+                          className="m-0 text-sm leading-relaxed"
+                          style={{ color: '#2D4459' }}
+                        >
+                          Generate questions for this client&apos;s current
+                          stage to see them here.
+                        </p>
+                        <button
+                          type="button"
+                          className="mt-3 font-bold text-white transition-opacity hover:opacity-90"
+                          style={{
+                            background: '#3BBFBF',
+                            borderRadius: 8,
+                            padding: '6px 14px',
+                            fontSize: 12,
+                            border: 'none',
+                          }}
+                          disabled={councilLoading}
+                          onClick={() => {
+                            void handleGenerateBestNextQuestions();
+                          }}
+                        >
+                          Generate Now
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <div className="space-y-3">
+                        {topQs.map((q, qi) => (
+                          <div
+                            key={`bnq-prev-${qi}-${q.slice(0, 48)}`}
+                            className="bg-white py-2 pl-3 pr-3"
+                            style={{
+                              border: '1px solid #C8E8E5',
+                              borderLeftWidth: 4,
+                              borderLeftColor: '#3BBFBF',
+                              borderRadius: 8,
+                            }}
+                          >
+                            <p
+                              className="m-0"
+                              style={{
+                                color: '#2D4459',
+                                fontSize: 14,
+                                lineHeight: 1.55,
+                              }}
+                            >
+                              {q}
+                            </p>
+                            <span
+                              className="mt-2 inline-block rounded-full px-2 py-0.5"
+                              style={{
+                                background: '#F4F7F8',
+                                color: '#7A8F95',
+                                fontSize: 10,
+                              }}
+                            >
+                              {chairmanQuestionLensBadge(q, out)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3" style={{ borderColor: '#E8EEF1' }}>
+                        <p className="m-0 text-xs" style={{ color: '#7A8F95' }}>
+                          Last generated:{' '}
+                          {(() => {
+                            try {
+                              const d = new Date(out.generatedAt);
+                              return Number.isNaN(d.getTime())
+                                ? out.generatedAt
+                                : formatDistanceToNow(d, { addSuffix: true });
+                            } catch {
+                              return out.generatedAt;
+                            }
+                          })()}
+                        </p>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-md p-1.5 text-[#3BBFBF] transition-colors hover:bg-slate-100 disabled:opacity-50"
+                          aria-label="Regenerate questions"
+                          disabled={councilLoading}
+                          onClick={() => {
+                            void handleRegenerateCouncil();
+                          }}
+                        >
+                          <RotateCw className="h-4 w-4" aria-hidden />
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
             </div>
 
             {nextStageMove != null || codeForNav === 'C5' ? (
@@ -5929,14 +6218,24 @@ not who they have been.`;
                           `Reason for moving to ${readiness.next_stage_full}?`
                         );
                         if (reason && nextStage) {
-                          moveClientStage(
+                          void moveClientStage(
                             readiness.client_id,
-                            nextStage,
-                            reason,
-                            'Sandi Stahl'
-                          ).then(() => {
-                            getStageReadiness(readiness.client_id).then(setReadiness);
-                          });
+                            pipelineCodeForStageMove(
+                              String(readiness.current_stage)
+                            ),
+                            pipelineCodeForStageMove(String(nextStage)),
+                            'Sandi Stahl',
+                            reason
+                          )
+                            .then(() =>
+                              getStageReadiness(readiness.client_id).then(
+                                setReadiness
+                              )
+                            )
+                            .catch((err) => {
+                              console.error(err);
+                              toast.error('Could not move stage. Try again.');
+                            });
                         }
                       }}
                       className="bg-green-600 hover:bg-green-700"
@@ -9410,35 +9709,20 @@ export default function ClientIntelligence() {
     if (!u) return;
     clearTimeout(u.timeoutId);
     setUndoState(null);
-    const revertStage =
-      !u.fromStage || u.fromStage.trim() === '' ? 'IC' : u.fromStage;
+    const revertCode = pipelineCodeForStageMove(
+      !u.fromStage || u.fromStage.trim() === '' ? 'IC' : u.fromStage
+    );
     try {
-      await dbExecute(
-        `UPDATE clients SET inferred_stage = $1, updated_at = datetime('now') WHERE id = $2`,
-        [revertStage, String(u.clientId)]
-      );
-      await dbExecute(
-        `INSERT INTO client_stage_log (client_id, from_stage, to_stage, moved_at, moved_by, notes)
-         VALUES ($1, $2, $3, datetime('now'), $4, $5)`,
-        [
-          String(u.clientId),
-          String(u.toStage),
-          String(revertStage),
-          'coach',
-          'undo',
-        ]
-      );
-      await logEntry(
-        'stage_move_rollback',
+      await moveClientStage(
         String(u.clientId),
-        u.toStage,
-        revertStage,
-        null,
-        'deterministic'
+        pipelineCodeForStageMove(u.toStage),
+        revertCode,
+        'coach',
+        'undo'
       );
       setSelectedClient((prev) =>
         prev && prev.id === u.clientId
-          ? { ...prev, inferred_stage: revertStage }
+          ? { ...prev, inferred_stage: revertCode }
           : prev
       );
       try {
@@ -9448,7 +9732,7 @@ export default function ClientIntelligence() {
         console.error(e);
       }
       loadClients({ silent: true });
-      const prevDisp = getStageDisplay(revertStage);
+      const prevDisp = getStageDisplay(revertCode);
       setUndoDoneToast(
         `↩ Undone — ${u.clientName} back at ${prevDisp.code} · ${prevDisp.label}`
       );
