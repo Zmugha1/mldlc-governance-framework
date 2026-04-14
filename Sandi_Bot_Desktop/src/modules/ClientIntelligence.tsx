@@ -29,6 +29,7 @@ import {
   UserPlus,
   X,
   ArrowRight,
+  ChevronDown,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -1024,6 +1025,14 @@ const REMINDER_TYPE_OPTIONS = [
 
 type ReminderTypeOption = (typeof REMINDER_TYPE_OPTIONS)[number];
 
+type ClientReminderListItem = {
+  id: string;
+  remind_on: string;
+  note: string | null;
+  reminder_type: string | null;
+  source: 'db' | 'local';
+};
+
 function mapParsedListItems(
   items: unknown[],
   primaryKey?: string
@@ -1570,13 +1579,11 @@ function ClientDetailModal({
   const [reminderType, setReminderType] = useState<ReminderTypeOption>('Follow-up');
   const [reminderSavedLocallyMsg, setReminderSavedLocallyMsg] = useState(false);
   const [reminderSetConfirm, setReminderSetConfirm] = useState(false);
-  const [savedReminder, setSavedReminder] = useState<{
-    date: string;
-    type: string;
-    note: string;
-    source: 'db' | 'local';
-    dbId?: string;
-  } | null>(null);
+  const [clientRemindersList, setClientRemindersList] = useState<
+    ClientReminderListItem[]
+  >([]);
+  const [overviewRemindersExpanded, setOverviewRemindersExpanded] =
+    useState(true);
   const [reminderSaving, setReminderSaving] = useState(false);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [lastEmail, setLastEmail] = useState<EmailMessage | null>(null);
@@ -1846,9 +1853,63 @@ function ClientDetailModal({
     setReminderType('Follow-up');
     setReminderSavedLocallyMsg(false);
     setReminderSetConfirm(false);
-    setSavedReminder(null);
     setReminderSaving(false);
   }, [client?.id]);
+
+  const refreshClientReminders = useCallback(async () => {
+    if (!client?.id) {
+      setClientRemindersList([]);
+      return;
+    }
+    try {
+      const rows = await dbSelect<{
+        id: string;
+        remind_on: string;
+        note: string | null;
+        reminder_type: string | null;
+      }>(
+        `SELECT id, remind_on, note, reminder_type FROM reminders WHERE client_id = ? ORDER BY remind_on ASC`,
+        [client.id]
+      );
+      const merged: ClientReminderListItem[] = rows.map((r) => ({
+        id: r.id,
+        remind_on: r.remind_on,
+        note: r.note,
+        reminder_type: r.reminder_type,
+        source: 'db',
+      }));
+      const prefix = `reminder_${client.id}_`;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith(prefix)) continue;
+        const datePart = key.slice(prefix.length);
+        if (merged.some((m) => m.remind_on === datePart)) continue;
+        try {
+          const raw = localStorage.getItem(key);
+          const j = raw
+            ? (JSON.parse(raw) as { type?: string; note?: string })
+            : {};
+          merged.push({
+            id: key,
+            remind_on: datePart,
+            note: typeof j.note === 'string' ? j.note : null,
+            reminder_type: typeof j.type === 'string' ? j.type : null,
+            source: 'local',
+          });
+        } catch {
+          /* skip */
+        }
+      }
+      merged.sort((a, b) => a.remind_on.localeCompare(b.remind_on));
+      setClientRemindersList(merged);
+    } catch {
+      setClientRemindersList([]);
+    }
+  }, [client?.id]);
+
+  useEffect(() => {
+    void refreshClientReminders();
+  }, [refreshClientReminders]);
 
   useEffect(() => {
     if (client?.id) {
@@ -3212,39 +3273,36 @@ Use plain conversational language.`;
           /* ignore quota */
         }
       }
-      setSavedReminder({
-        date: reminderDate.trim(),
-        type: reminderType,
-        note: noteTrim,
-        source: usedDb ? 'db' : 'local',
-        dbId: usedDb ? id : undefined,
-      });
       setReminderSetConfirm(true);
       window.setTimeout(() => setReminderSetConfirm(false), 4000);
+      setReminderFormOpen(false);
+      setReminderDate('');
+      setReminderNote('');
+      setReminderType('Follow-up');
+      await refreshClientReminders();
     } finally {
       setReminderSaving(false);
     }
   };
 
-  const handleClearSavedReminder = async () => {
-    if (!client?.id || !savedReminder) return;
-    if (savedReminder.source === 'db' && savedReminder.dbId) {
+  const handleDeleteReminder = async (row: ClientReminderListItem) => {
+    if (!client?.id) return;
+    if (row.source === 'db') {
       try {
-        await dbExecute(`DELETE FROM reminders WHERE id = ?`, [savedReminder.dbId]);
+        await dbExecute(`DELETE FROM reminders WHERE id = ?`, [row.id]);
       } catch {
         /* ignore */
       }
     } else {
       try {
-        const key = `reminder_${client.id}_${savedReminder.date}`;
-        localStorage.removeItem(key);
+        localStorage.removeItem(row.id);
       } catch {
         /* ignore */
       }
     }
-    setSavedReminder(null);
     setReminderSavedLocallyMsg(false);
     setReminderSetConfirm(false);
+    await refreshClientReminders();
   };
 
   const handlePlacementPocMark = async () => {
@@ -4623,7 +4681,7 @@ not who they have been.`;
           className="shrink-0 border border-b-0 px-1"
           style={{ background: 'white', borderColor: '#C8E8E5', borderRadius: '12px 12px 0 0' }}
         >
-          <TabsList className="mb-0 grid h-auto w-full grid-cols-8 gap-0 rounded-none border-0 bg-transparent p-1">
+          <TabsList className="mb-0 grid h-auto w-full grid-cols-7 gap-0 rounded-none border-0 bg-transparent p-1">
             <TabsTrigger
               value="overview"
               className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
@@ -4656,22 +4714,16 @@ not who they have been.`;
               TUMAY
             </TabsTrigger>
             <TabsTrigger
-              value="vision"
-              className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
-            >
-              Vision
-            </TabsTrigger>
-            <TabsTrigger
               value="fathom"
               className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
             >
               Fathom
             </TabsTrigger>
             <TabsTrigger
-              value="reminders"
+              value="vision"
               className="rounded-md border-0 border-b-[3px] border-transparent bg-transparent px-2 py-2.5 text-sm font-medium shadow-none data-[state=active]:border-[#3BBFBF] data-[state=active]:bg-transparent data-[state=active]:text-[#3BBFBF] data-[state=inactive]:text-[#7A8F95]"
             >
-              Reminders
+              Vision
             </TabsTrigger>
           </TabsList>
         </div>
@@ -6389,6 +6441,198 @@ not who they have been.`;
                 </CardContent>
               </Card>
             )}
+
+            <div
+              className="rounded-lg border"
+              style={{ borderColor: '#C8E8E5', background: 'white' }}
+            >
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-slate-50/80"
+                onClick={() =>
+                  setOverviewRemindersExpanded((v) => !v)
+                }
+                aria-expanded={overviewRemindersExpanded}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 text-[#2D4459] transition-transform ${overviewRemindersExpanded ? '' : '-rotate-90'}`}
+                    aria-hidden
+                  />
+                  <span
+                    className="font-bold"
+                    style={{ color: '#2D4459', fontSize: 16 }}
+                  >
+                    Follow-up Reminders ({clientRemindersList.length})
+                  </span>
+                </span>
+                <Bell className="h-5 w-5 shrink-0 text-[#3BBFBF]" aria-hidden />
+              </button>
+
+              {overviewRemindersExpanded ? (
+                <div
+                  className="space-y-4 border-t px-4 py-4"
+                  style={{ borderColor: '#C8E8E5' }}
+                >
+                  <p
+                    className="m-0 whitespace-pre-line text-sm leading-relaxed"
+                    style={{ color: '#7A8F95' }}
+                  >
+                    {`Set a reminder to follow up with this client at exactly the right time.
+
+Use reminders for:
+· Re-engagement after gone quiet
+· Post-POC trigger follow-up
+· 90-day referral ask after placement
+· C4 revival after 6 months`}
+                  </p>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="font-bold text-white transition-opacity hover:opacity-90"
+                      style={{
+                        background: '#3BBFBF',
+                        borderRadius: 8,
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        border: 'none',
+                      }}
+                      onClick={() => setReminderFormOpen(true)}
+                    >
+                      + Add Reminder
+                    </button>
+                  </div>
+
+                  {reminderFormOpen ? (
+                    <div className="space-y-4 rounded-lg border p-4" style={{ borderColor: '#C8E8E5', background: '#FEFAF5' }}>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="reminder-date-overview" className="text-sm" style={{ color: '#2D4459' }}>
+                          Remind me on
+                        </Label>
+                        <Input
+                          id="reminder-date-overview"
+                          type="date"
+                          value={reminderDate}
+                          onChange={(e) => setReminderDate(e.target.value)}
+                          className="w-full max-w-md"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="reminder-note-overview" className="text-sm" style={{ color: '#2D4459' }}>
+                          Note
+                        </Label>
+                        <Textarea
+                          id="reminder-note-overview"
+                          rows={3}
+                          value={reminderNote}
+                          onChange={(e) => setReminderNote(e.target.value)}
+                          placeholder={
+                            'What do you want to remember\nto do with this client?'
+                          }
+                          className="w-full max-w-md resize-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="reminder-type-overview" className="text-sm" style={{ color: '#2D4459' }}>
+                          Reminder type
+                        </Label>
+                        <select
+                          id="reminder-type-overview"
+                          value={reminderType}
+                          onChange={(e) =>
+                            setReminderType(e.target.value as ReminderTypeOption)
+                          }
+                          className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {REMINDER_TYPE_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          className="font-semibold text-white"
+                          style={{ background: '#3BBFBF' }}
+                          disabled={reminderSaving || !reminderDate.trim()}
+                          onClick={() => {
+                            void handleSaveReminder();
+                          }}
+                        >
+                          {reminderSaving ? 'Saving…' : 'Save Reminder'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setReminderFormOpen(false);
+                            setReminderDate('');
+                            setReminderNote('');
+                            setReminderType('Follow-up');
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {reminderSavedLocallyMsg ? (
+                    <p className="text-center text-sm" style={{ color: '#7A8F95' }}>
+                      Reminder saved locally
+                    </p>
+                  ) : null}
+                  {reminderSetConfirm ? (
+                    <p className="text-center text-sm font-medium" style={{ color: '#3BBFBF' }}>
+                      Reminder set ✓
+                    </p>
+                  ) : null}
+
+                  {clientRemindersList.length === 0 ? (
+                    <p className="text-sm italic" style={{ color: '#7A8F95' }}>
+                      No reminders yet. Add one above.
+                    </p>
+                  ) : (
+                    <ul className="m-0 list-none space-y-3 p-0">
+                      {clientRemindersList.map((row) => (
+                        <li
+                          key={`${row.source}-${row.id}`}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-3 text-sm"
+                          style={{
+                            borderColor: '#C8E8E5',
+                            color: '#2D4459',
+                            background: '#FAFAFA',
+                          }}
+                        >
+                          <span className="min-w-0 flex-1 break-words">
+                            <span className="font-medium tabular-nums">{row.remind_on}</span>
+                            <span className="mx-2 text-[#7A8F95]">|</span>
+                            <span>{row.reminder_type || '—'}</span>
+                            <span className="mx-2 text-[#7A8F95]">|</span>
+                            <span>{row.note?.trim() || '—'}</span>
+                            {row.source === 'local' ? (
+                              <span className="ml-2 text-xs text-amber-700">(local)</span>
+                            ) : null}
+                          </span>
+                          <button
+                            type="button"
+                            className="shrink-0 font-medium underline"
+                            style={{ color: '#3BBFBF' }}
+                            onClick={() => void handleDeleteReminder(row)}
+                          >
+                            Dismiss
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </div>
             </div>
           </TabsContent>
 
@@ -8550,151 +8794,6 @@ not who they have been.`;
             </div>
           </TabsContent>
 
-          <TabsContent value="reminders" className="h-full min-h-0 mt-0 focus-visible:outline-none">
-            <div className="flex h-full max-h-[75vh] justify-center overflow-y-auto p-6">
-              <div
-                className="mx-auto w-full max-w-md"
-                style={{
-                  background: 'white',
-                  border: '1px solid #C8E8E5',
-                  borderLeft: '4px solid #3BBFBF',
-                  borderRadius: 12,
-                  padding: '24px 28px',
-                }}
-              >
-                <div className="flex flex-col items-center text-center">
-                  <Bell className="h-8 w-8 shrink-0" style={{ color: '#3BBFBF' }} aria-hidden />
-                  <h2 className="mt-4 font-bold" style={{ color: '#2D4459', fontSize: 16 }}>
-                    Follow-up Reminders
-                  </h2>
-                  <p
-                    className="mt-3 whitespace-pre-line leading-relaxed"
-                    style={{ color: '#7A8F95', fontSize: 13 }}
-                  >
-                    {`Set a reminder to follow up with this client at exactly the right time.
-
-Use reminders for:
-· Re-engagement after gone quiet
-· Post-POC trigger follow-up
-· 90-day referral ask after placement
-· C4 revival after 6 months`}
-                  </p>
-                </div>
-                {!reminderFormOpen ? (
-                  <div className="mt-6 flex justify-center">
-                    <button
-                      type="button"
-                      className="font-bold text-white"
-                      style={{
-                        background: '#3BBFBF',
-                        color: 'white',
-                        borderRadius: 8,
-                        padding: '10px 20px',
-                        fontSize: 13,
-                      }}
-                      onClick={() => setReminderFormOpen(true)}
-                    >
-                      + Add Reminder
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-6 space-y-4 text-left">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="reminder-date" className="text-sm" style={{ color: '#2D4459' }}>
-                        Remind me on
-                      </Label>
-                      <Input
-                        id="reminder-date"
-                        type="date"
-                        value={reminderDate}
-                        onChange={(e) => setReminderDate(e.target.value)}
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="reminder-note" className="text-sm" style={{ color: '#2D4459' }}>
-                        Note
-                      </Label>
-                      <Textarea
-                        id="reminder-note"
-                        rows={3}
-                        value={reminderNote}
-                        onChange={(e) => setReminderNote(e.target.value)}
-                        placeholder={
-                          'What do you want to remember\nto do with this client?'
-                        }
-                        className="w-full resize-none"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="reminder-type" className="text-sm" style={{ color: '#2D4459' }}>
-                        Reminder type
-                      </Label>
-                      <select
-                        id="reminder-type"
-                        value={reminderType}
-                        onChange={(e) =>
-                          setReminderType(e.target.value as ReminderTypeOption)
-                        }
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        {REMINDER_TYPE_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <Button
-                      type="button"
-                      className="w-full font-semibold text-white"
-                      style={{ background: '#3BBFBF' }}
-                      disabled={reminderSaving || !reminderDate.trim()}
-                      onClick={() => {
-                        void handleSaveReminder();
-                      }}
-                    >
-                      {reminderSaving ? 'Saving…' : 'Save Reminder'}
-                    </Button>
-                  </div>
-                )}
-                {reminderSavedLocallyMsg ? (
-                  <p className="mt-4 text-center text-sm" style={{ color: '#7A8F95' }}>
-                    Reminder saved locally
-                  </p>
-                ) : null}
-                {reminderSetConfirm ? (
-                  <p className="mt-2 text-center text-sm font-medium" style={{ color: '#3BBFBF' }}>
-                    Reminder set ✓
-                  </p>
-                ) : null}
-                {savedReminder ? (
-                  <div
-                    className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-sm"
-                    style={{ borderColor: '#C8E8E5', color: '#2D4459' }}
-                  >
-                    <span className="min-w-0 flex-1 break-words">
-                      <span className="font-medium tabular-nums">{savedReminder.date}</span>
-                      <span className="mx-2 text-[#7A8F95]">|</span>
-                      <span>{savedReminder.type}</span>
-                      <span className="mx-2 text-[#7A8F95]">|</span>
-                      <span>{savedReminder.note || '—'}</span>
-                    </span>
-                    <button
-                      type="button"
-                      className="shrink-0 font-medium underline"
-                      style={{ color: '#3BBFBF' }}
-                      onClick={() => {
-                        void handleClearSavedReminder();
-                      }}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </TabsContent>
         </div>
         </Tabs>
 
