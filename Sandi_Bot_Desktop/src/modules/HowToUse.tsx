@@ -1,4 +1,16 @@
 import type { CSSProperties } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Video,
+  Copy,
+  Bot,
+  FileText,
+  Plus,
+  ClipboardPaste,
+  Clock,
+  Brain,
+  ArrowRight,
+} from 'lucide-react';
 
 const PAGE_BG = '#FEFAF6';
 const HEADER = '#2D4459';
@@ -198,6 +210,88 @@ const cardShell: CSSProperties = {
   marginBottom: 12,
 };
 
+const fathomAfterCallStepCard: CSSProperties = {
+  background: 'white',
+  borderRadius: 10,
+  border: `1px solid ${BORDER}`,
+  borderLeft: `3px solid ${TEAL}`,
+  padding: 16,
+  marginBottom: 12,
+};
+
+type FathomAfterCallStep = {
+  n: number;
+  Icon: LucideIcon;
+  title: string;
+  body: string;
+};
+
+const FATHOM_AFTER_CALL_STEPS: FathomAfterCallStep[] = [
+  {
+    n: 1,
+    Icon: Video,
+    title: 'Open Fathom after your call',
+    body:
+      'Go to app.fathom.video and find your recording. Every call you record in Fathom is stored there automatically.',
+  },
+  {
+    n: 2,
+    Icon: Copy,
+    title: 'Copy the transcript',
+    body:
+      'Open the recording and click Copy Transcript. This copies the full conversation text to your clipboard.',
+  },
+  {
+    n: 3,
+    Icon: Bot,
+    title: 'Open the client card',
+    body:
+      'In Coach Bot go to Client Intelligence and select the client you just coached.',
+  },
+  {
+    n: 4,
+    Icon: FileText,
+    title: 'Click the Fathom tab',
+    body:
+      'Inside the client card click the Fathom tab. This is where all session notes and transcripts live.',
+  },
+  {
+    n: 5,
+    Icon: Plus,
+    title: 'Add a new session',
+    body:
+      "Click Add Session and set today's date. This keeps your session history in order.",
+  },
+  {
+    n: 6,
+    Icon: ClipboardPaste,
+    title: 'Paste and extract',
+    body:
+      'Paste the transcript into the Fathom Transcript field and click Extract Session. Coach Bot will analyze the full conversation.',
+  },
+  {
+    n: 7,
+    Icon: Clock,
+    title: 'Wait for the analysis',
+    body:
+      'Coach Bot reads the session using the CLEAR framework and extracts all nine coaching dimensions. This takes about 30 to 60 seconds.',
+  },
+  {
+    n: 8,
+    Icon: Brain,
+    title: 'Review Session Intelligence',
+    body:
+      'After extraction Coach Bot automatically grades your session and tells you if your client is ready to move to the next stage. Check the readiness verdict carefully.',
+  },
+  {
+    n: 9,
+    Icon: ArrowRight,
+    title: 'Act on the verdict',
+    body:
+      'If your client is ready click Move to next stage. If not ready log a follow-up reminder with the gap summary so you remember what to address next session.',
+  },
+];
+
 function LabCard({ lab }: { lab: LabSpec }) {
   return (
     <article style={cardShell}>
@@ -372,6 +466,65 @@ export default function HowToUse() {
             <li>Click Extract.</li>
             <li>The session appears on the client card.</li>
           </ol>
+        </section>
+
+        <section style={{ ...cardShell, marginTop: 8 }}>
+          <h2 className="mb-2 font-bold" style={{ color: HEADER, fontSize: 16 }}>
+            How to Use Fathom After Every Call
+          </h2>
+          <p className="mb-6" style={{ color: MUTED, fontSize: 13, lineHeight: 1.65 }}>
+            Do this after every coaching call to make Coach Bot smarter
+          </p>
+
+          {FATHOM_AFTER_CALL_STEPS.map((step) => {
+            const StepIcon = step.Icon;
+            return (
+              <article key={step.n} style={fathomAfterCallStepCard}>
+                <div className="flex items-start gap-3">
+                  <span
+                    className="shrink-0 tabular-nums"
+                    style={{
+                      color: TEAL,
+                      fontSize: 28,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                    }}
+                    aria-hidden
+                  >
+                    {step.n}
+                  </span>
+                  <StepIcon
+                    className="mt-1 h-6 w-6 shrink-0"
+                    style={{ color: TEAL }}
+                    aria-hidden
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold" style={{ color: HEADER, fontSize: 16 }}>
+                      {step.title}
+                    </h3>
+                    <p className="m-0 mt-2" style={{ color: MUTED, fontSize: 13, lineHeight: 1.65 }}>
+                      {step.body}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+
+          <div
+            style={{
+              marginTop: 4,
+              background: BORDER,
+              borderLeft: `3px solid ${TEAL}`,
+              borderRadius: 8,
+              padding: '14px 16px',
+            }}
+          >
+            <p className="m-0" style={{ color: HEADER, fontSize: 13, lineHeight: 1.65 }}>
+              Wait 30 seconds after running Best Next Questions or Vision Statement before extracting a Fathom session.
+              Coach Bot needs a moment to reset between big tasks.
+            </p>
+          </div>
         </section>
 
         <section style={{ ...cardShell, marginTop: 8 }}>
