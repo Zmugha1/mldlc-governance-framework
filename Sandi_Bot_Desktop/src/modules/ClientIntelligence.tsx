@@ -55,6 +55,7 @@ import {
   getClient,
   inactivateClient,
   isNetWorthBelowThreshold,
+  setBusinessClosedDate,
 } from '@/services/clientService';
 import { clientToDisplay } from '@/services/clientAdapter';
 import { dbExecute, dbSelect, getDb } from '@/services/db';
@@ -342,6 +343,26 @@ function shouldShowPlacementMilestones(client: {
   if ((client.outcome_bucket ?? '').toLowerCase() === 'converted') return true;
   const code = resolvePipelineStageCode(client.inferred_stage);
   return code === 'C4' || code === 'C5';
+}
+
+/** Converted or business complete: show business close date for annual placement counts. */
+function isClosedPlacementOutcome(client: {
+  outcome_bucket?: string | null;
+}): boolean {
+  const b = (client.outcome_bucket ?? '').toLowerCase();
+  return b === 'converted' || b === 'business_complete';
+}
+
+function formatBusinessClosedLongDate(raw: string | null | undefined): string {
+  if (raw == null || String(raw).trim() === '') return '';
+  const trimmed = String(raw).trim().slice(0, 10);
+  const d = new Date(`${trimmed}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return String(raw).trim();
+  return d.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 /** Sandi: IC has no numbered compartment; C1–C5 → Compartment 1–5. */
@@ -1574,6 +1595,7 @@ function ClientDetailModal({
   client,
   onInactivate,
   onVisionUpdated: _onVisionUpdated,
+  onClientDataMutated,
   onStageMoved,
   onStageMoveToast,
   onStageMoveUndoOffer,
@@ -1581,6 +1603,8 @@ function ClientDetailModal({
   client: DisplayClient;
   onInactivate?: (id: string) => void;
   onVisionUpdated?: () => void;
+  /** After mutating client rows (e.g. business close date); parent should refresh selected client and lists. */
+  onClientDataMutated?: () => void;
   onStageMoved?: (
     clientId: string,
     newInferredStage?: string
@@ -1791,6 +1815,16 @@ function ClientDetailModal({
     | 'clear_trigger'
     | 'clear_purchase'
   >(null);
+  const [businessClosedDateStored, setBusinessClosedDateStored] = useState<
+    string | null
+  >(null);
+  const [businessClosedDateDraft, setBusinessClosedDateDraft] = useState('');
+  const [savingBusinessClosedDate, setSavingBusinessClosedDate] =
+    useState(false);
+  const [businessClosedPostSave, setBusinessClosedPostSave] = useState<{
+    tone: 'success' | 'info';
+    text: string;
+  } | null>(null);
   const [franchiseRecs, setFranchiseRecs] = useState<StoredFranchiseRec[]>([]);
   const [franchiseFormOpen, setFranchiseFormOpen] = useState(false);
   const [franchiseEditIndex, setFranchiseEditIndex] = useState<number | null>(
@@ -2200,6 +2234,41 @@ function ClientDetailModal({
         setPlacementRevenueStored(null);
       });
   }, [client?.id, client?.inferred_stage, client?.outcome_bucket]);
+
+  useEffect(() => {
+    if (!client?.id) return;
+    if (!isClosedPlacementOutcome(client)) {
+      setBusinessClosedDateStored(null);
+      setBusinessClosedDateDraft('');
+      setBusinessClosedPostSave(null);
+      return;
+    }
+    let cancelled = false;
+    void dbSelect<{ business_closed_date: string | null }>(
+      `SELECT business_closed_date FROM clients WHERE id = ?`,
+      [client.id]
+    )
+      .then((rows) => {
+        if (cancelled) return;
+        const v = rows[0]?.business_closed_date ?? null;
+        const trimmed =
+          v != null && String(v).trim() !== ''
+            ? String(v).trim().slice(0, 10)
+            : null;
+        setBusinessClosedDateStored(trimmed);
+        setBusinessClosedDateDraft(trimmed ?? '');
+        setBusinessClosedPostSave(null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBusinessClosedDateStored(null);
+          setBusinessClosedDateDraft('');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client?.id, client?.outcome_bucket]);
 
   useEffect(() => {
     if (client) {
@@ -3670,6 +3739,45 @@ Use plain conversational language.`;
     }
   };
 
+  const handleSaveBusinessClosedDate = async () => {
+    if (!client?.id || !isClosedPlacementOutcome(client)) return;
+    const trimmed = businessClosedDateDraft.trim();
+    if (!trimmed) {
+      toast.error('Enter a close date (YYYY-MM-DD).');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      toast.error('Use YYYY-MM-DD format.');
+      return;
+    }
+    setSavingBusinessClosedDate(true);
+    setBusinessClosedPostSave(null);
+    try {
+      await setBusinessClosedDate(client.id, trimmed);
+      setBusinessClosedDateStored(trimmed);
+      toast.success('Close date saved');
+      const y = Number.parseInt(trimmed.slice(0, 4), 10);
+      const cy = new Date().getFullYear();
+      if (y === cy) {
+        setBusinessClosedPostSave({
+          tone: 'success',
+          text: `This placement now counts toward your ${cy} goal.`,
+        });
+      } else {
+        setBusinessClosedPostSave({
+          tone: 'info',
+          text: `This placement was in ${y} and does not count toward your ${cy} goal.`,
+        });
+      }
+      onClientDataMutated?.();
+    } catch (e) {
+      console.error('business close date save failed:', e);
+      toast.error('Could not save close date.');
+    } finally {
+      setSavingBusinessClosedDate(false);
+    }
+  };
+
   const handlePlacementPurchaseClear = async () => {
     if (!client || !shouldShowPlacementMilestones(client)) return;
     setPlacementMilestoneSaving('clear_purchase');
@@ -5096,6 +5204,125 @@ not who they have been.`;
         >
           <TabsContent value="overview" className="h-full min-h-0 mt-0 focus-visible:outline-none">
             <div className="h-full max-h-[75vh] min-w-0 overflow-y-auto p-6 space-y-4">
+            {isClosedPlacementOutcome(client) ? (
+              <Card
+                className={cn(
+                  'min-w-0',
+                  !businessClosedDateStored
+                    ? 'border-2 border-amber-400 shadow-md ring-2 ring-amber-200'
+                    : ''
+                )}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-bold text-slate-900">
+                    Business Closed Date
+                  </CardTitle>
+                  <p className="text-xs text-slate-500">
+                    Used for your annual placement total. Only dated placements in the current calendar
+                    year count toward this year&apos;s goal.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {businessClosedDateStored ? (
+                    <p className="text-sm font-medium text-slate-800">
+                      {formatBusinessClosedLongDate(businessClosedDateStored)}
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      <span
+                        className="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
+                        style={{ background: '#F59E0B' }}
+                      >
+                        Close date missing
+                      </span>
+                      <p className="text-sm text-slate-700">
+                        Set this date to count toward your annual placement goal.
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-[10rem]">
+                      <Label
+                        htmlFor="business-closed-date-input"
+                        className="text-xs text-slate-600"
+                      >
+                        Close date (YYYY-MM-DD)
+                      </Label>
+                      <Input
+                        id="business-closed-date-input"
+                        type="date"
+                        className="mt-1 w-full max-w-[12rem]"
+                        value={
+                          businessClosedDateDraft
+                            ? toDateInputValue(businessClosedDateDraft)
+                            : ''
+                        }
+                        onChange={(e) => setBusinessClosedDateDraft(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      className="font-semibold text-white"
+                      style={{ background: '#3BBFBF' }}
+                      disabled={savingBusinessClosedDate || !businessClosedDateDraft.trim()}
+                      onClick={() => {
+                        void handleSaveBusinessClosedDate();
+                      }}
+                    >
+                      {savingBusinessClosedDate ? 'Saving…' : 'Save Close Date'}
+                    </Button>
+                  </div>
+                  {businessClosedPostSave ? (
+                    <p
+                      className="rounded-md px-3 py-2 text-sm font-medium"
+                      style={{
+                        background:
+                          businessClosedPostSave.tone === 'success'
+                            ? 'rgba(34, 197, 94, 0.15)'
+                            : 'rgba(148, 163, 184, 0.2)',
+                        color:
+                          businessClosedPostSave.tone === 'success'
+                            ? '#166534'
+                            : '#334155',
+                      }}
+                    >
+                      {businessClosedPostSave.text}
+                    </p>
+                  ) : null}
+                  <div
+                    className="space-y-1 border-t border-slate-100 pt-3 text-sm"
+                    style={{ color: '#2D4459' }}
+                  >
+                    <p className="m-0 font-semibold">Placement milestone</p>
+                    <p className="m-0 text-slate-700">
+                      Placed:{' '}
+                      {businessClosedDateStored
+                        ? formatBusinessClosedLongDate(businessClosedDateStored)
+                        : 'not set'}
+                    </p>
+                    <p className="m-0 text-slate-700">
+                      {(() => {
+                        const cy = new Date().getFullYear();
+                        if (!businessClosedDateStored) {
+                          return 'Does not count toward current year goal until you set a close date.';
+                        }
+                        const y = Number.parseInt(
+                          businessClosedDateStored.slice(0, 4),
+                          10
+                        );
+                        if (!Number.isFinite(y)) {
+                          return 'Counts toward: unclear year on file.';
+                        }
+                        if (y === cy) {
+                          return `Counts toward: ${cy} goal.`;
+                        }
+                        return 'Does not count toward current year goal.';
+                      })()}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
             <div className="grid grid-cols-1 min-w-0 gap-4 md:grid-cols-3">
               <Card className="min-w-0">
                 <CardHeader className="pb-2">
@@ -10885,6 +11112,20 @@ export default function ClientIntelligence() {
                   client={selectedDisplay}
                   onInactivate={handleInactivateClient}
                   onVisionUpdated={loadClients}
+                  onClientDataMutated={() => {
+                    void (async () => {
+                      const id = selectedClient?.id;
+                      if (id) {
+                        try {
+                          const fresh = await getClient(id);
+                          setSelectedClient(fresh);
+                        } catch (e) {
+                          console.error(e);
+                        }
+                      }
+                      loadClients({ silent: true });
+                    })();
+                  }}
                   onStageMoved={async (id, newInferredStage) => {
                     if (newInferredStage) {
                       setSelectedClient((prev) =>
